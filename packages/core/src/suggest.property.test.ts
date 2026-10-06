@@ -22,8 +22,8 @@ function rng(seed: number) {
 type Rng = ReturnType<typeof rng>;
 
 const HOSTS = ["github.com", "www.github.com", "news.ycombinator.com", "notion.so", "x.com", "en.wikipedia.org", "react.dev", "example.org", "a.b.co.uk", "localhost:3000", "xn--nxasmq6b.com", "Docs.Google.com"];
-const WORDS = ["react", "native", "banana", "nano", "layout", "github", "news", "notion", "an", "na", "net", "netflix", "pull", "issues", "perf", "Hermes", "Éclair", "naïve", "c++", "foo-bar", "a1", "9lives", "ok"];
-const TAILS = ["", "/", "?q=1", "#top", "/index.html", "?utm=a&b=c#x"];
+const WORDS = ["react", "native", "banana", "nano", "layout", "github", "news", "notion", "an", "na", "net", "netflix", "pull", "issues", "perf", "Hermes", "Éclair", "naïve", "c++", "foo-bar", "a1", "9lives", "ok", "re\u00a0act", "tab\tbed"];
+const TAILS = ["", "/", "?q=1", "#top", "/index.html", "?utm=a&b=c#x", "/react native", "/new tab/page"];
 
 function makeProfile(r: Rng, size: number) {
   const url = () => {
@@ -109,7 +109,8 @@ function compareRun(seed: number, size: number) {
     scope,
   };
   let source: SuggestionSource = p;
-  const queries = [...sequence(r, p), ...sequence(r, p)];
+  // Some keys come twice, the second time with other remote suggestions (they arrive after the key does).
+  const queries = [...sequence(r, p), ...sequence(r, p)].flatMap((q) => (r.int(5) === 0 ? [q, q] : [q]));
   for (const [i, q] of queries.entries()) {
     // Now and then the profile changes the way the app changes it: a visit makes a new history list, a bookmark a new
     // bookmarks list, a tab opening a new tabs list; the rows themselves are reused.

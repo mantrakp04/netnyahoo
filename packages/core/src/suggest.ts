@@ -62,23 +62,43 @@ type PageText = {
   shown: string;
   shownLower: string;
   titleLower: string;
+  // Lowercase text with every run of characters outside a-z0-9 turned into one space, and a space in front: a word starts
+  // with `w` exactly when the text includes " " + w.
+  titleWords: string;
+  shownWords?: string;
+  shownBlank?: boolean;
   host?: string;
   origin?: string | null;
+  hostLower?: string;
 };
 
 const pageTexts = new WeakMap<object, PageText>();
+
+// Math.log2(1 + visits) * 8 per candidate, remembered by visit count: a profile has a few dozen different counts, not thousands.
+const logVisitsOf: number[] = [];
+const logVisits = (visits: number) => (visits >= 0 && visits < 1024 && (visits | 0) === visits ? (logVisitsOf[visits] ??= Math.log2(1 + visits) * 8) : Math.log2(1 + visits) * 8);
+
+const NOT_WORD = /[^a-z0-9]+/g;
+const PLAIN_WORDS = /^[a-z0-9]+(?: [a-z0-9]+)*$/;
+// Most titles are lowercase words and single spaces already: one test then, no replacing.
+const wordsOf = (lower: string) => (PLAIN_WORDS.test(lower) ? ` ${lower}` : ` ${lower}`.replace(NOT_WORD, " "));
+const shownWordsOf = (t: PageText) => (t.shownWords ??= wordsOf(t.shownLower));
 
 function pageText(row: { url: string; title: string }): PageText {
   let text = pageTexts.get(row);
   if (!text) {
     const shown = displayUrl(row.url);
-    text = { url: row.url, key: pageKey(row.url), shown, shownLower: shown.toLowerCase(), titleLower: row.title.toLowerCase() };
+    const shownLower = shown.toLowerCase();
+    const titleLower = row.title.toLowerCase();
+    text = { url: row.url, key: pageKey(row.url), shown, shownLower, titleLower, titleWords: wordsOf(titleLower) };
     pageTexts.set(row, text);
   }
   return text;
 }
 
 const hostOfPage = (t: PageText) => (t.host ??= hostOf(t.url));
+const hostPart = (shown: string) => /^[^/?#]*/.exec(shown)![0];
+const hostLowerOfPage = (t: PageText) => (t.hostLower ??= hostPart(t.shownLower));
 const originOfPage = (t: PageText) => (t.origin === undefined ? (t.origin = /^https?:\/\/[^/?#]+/i.exec(t.url)?.[0] ?? null) : t.origin);
 
 type Candidate = {
@@ -87,8 +107,12 @@ type Candidate = {
   favicon: string | null;
   visits: number;
   lastVisit: number;
+  // Math.log2(1 + visits) * 8, once per candidate instead of once per key.
+  logVisits: number;
   bookmarked: boolean;
   tabId?: string;
+  // An open tab no history row or bookmark covers: it was visited just now, whatever "now" is.
+  fresh?: boolean;
   text: PageText;
 };
 
@@ -132,7 +156,7 @@ function advance(b: Builder, bookmarks: readonly BookmarkRow[], deadline: number
     const text = pageText(row);
     base.keys.add(text.key);
     if (!base.byKey.has(text.key)) {
-      const c: Candidate = { url: row.url, title: row.title, favicon: row.favicon, visits: 0, lastVisit: 0, bookmarked: true, text };
+      const c: Candidate = { url: row.url, title: row.title, favicon: row.favicon, visits: 0, lastVisit: 0, logVisits: 0, bookmarked: true, text };
       base.list.push(c);
       base.byKey.set(text.key, c);
     }
@@ -146,7 +170,7 @@ function advance(b: Builder, bookmarks: readonly BookmarkRow[], deadline: number
       const bookmarked = base.keys.has(text.key);
       let c = historyCandidates.get(h);
       if (!c || c.bookmarked !== bookmarked) {
-        c = { url: h.url, title: h.title, favicon: h.favicon, visits: h.visits, lastVisit: h.lastVisit, bookmarked, text };
+        c = { url: h.url, title: h.title, favicon: h.favicon, visits: h.visits, lastVisit: h.lastVisit, logVisits: logVisits(h.visits), bookmarked, text };
         historyCandidates.set(h, c);
       }
       b.list.push(c);
@@ -198,7 +222,14 @@ export function prepareSuggestions(source: SuggestionSource, deadline: number): 
   return advance(b, bookmarks, deadline);
 }
 
-function tabsOver(pool: Pool, tabs: readonly TabRow[], now: number, currentTabId?: string) {
+type TabsOver = { pool: Pool; currentTabId: string | undefined; tabIds: Map<string, string>; extra: Candidate[] };
+const tabsOverCache = new WeakMap<readonly TabRow[], TabsOver>();
+
+// Which pool entries are open tabs, and the open tabs the pool doesn't have. Kept for one tabs list, pool and current tab:
+// typing changes none of them.
+function tabsOver(pool: Pool, tabs: readonly TabRow[], currentTabId?: string): TabsOver {
+  const cached = tabsOverCache.get(tabs);
+  if (cached && cached.pool === pool && cached.currentTabId === currentTabId) return cached;
   const tabIds = new Map<string, string>();
   const extra: Candidate[] = [];
   for (const t of tabs) {
@@ -206,25 +237,19 @@ function tabsOver(pool: Pool, tabs: readonly TabRow[], now: number, currentTabId
     const text = pageText(t);
     if (tabIds.has(text.key)) continue;
     tabIds.set(text.key, t.id);
-    if (!pool.byKey.has(text.key)) extra.push({ url: t.url, title: t.title, favicon: t.favicon, visits: 0, lastVisit: now, bookmarked: false, tabId: t.id, text });
+    if (!pool.byKey.has(text.key)) extra.push({ url: t.url, title: t.title, favicon: t.favicon, visits: 0, lastVisit: 0, logVisits: 0, fresh: true, bookmarked: false, tabId: t.id, text });
   }
-  return { tabIds, extra };
-}
-
-const isWordChar = (code: number) => (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
-
-function wordStartsWith(text: string, word: string): boolean {
-  for (let i = text.indexOf(word); i >= 0; i = text.indexOf(word, i + 1)) {
-    if (i === 0 || !isWordChar(text.charCodeAt(i - 1))) return true;
-  }
-  return false;
+  const result = { pool, currentTabId, tabIds, extra };
+  tabsOverCache.set(tabs, result);
+  return result;
 }
 
 type Query = {
   q: string;
   segmentStarts: [string, string] | null;
   word: boolean;
-  tokens: { text: string; word: boolean }[];
+  spaced: string;
+  tokens: { text: string; word: boolean; spaced: string }[];
   needle: string;
 };
 
@@ -235,51 +260,101 @@ function parseQuery(q: string, tokens: readonly string[]): Query {
     q,
     segmentStarts: /[./]/.test(q) ? null : [`.${q}`, `/${q}`],
     word: WORD.test(q),
-    tokens: tokens.map((text) => ({ text, word: WORD.test(text) })),
+    spaced: ` ${q}`,
+    tokens: tokens.map((text) => ({ text, word: WORD.test(text), spaced: ` ${text}` })),
     needle: tokens.reduce((a, b) => (b.length > a.length ? b : a), ""),
   };
 }
 
+// A query of several words. Its own text has a space, so a page address (which has none unless it decodes to one)
+// can't start with it or include it: those tests are skipped for such a page.
 function matchScore(t: PageText, query: Query): number {
   const shown = t.shownLower;
   const title = t.titleLower;
-  const { q, segmentStarts } = query;
+  const { q } = query;
   if (!shown.includes(query.needle) && !title.includes(query.needle)) return 0;
   let s = 0;
-  if (shown.startsWith(q)) s = 100;
-  else if (segmentStarts && (shown.includes(segmentStarts[0]) || shown.includes(segmentStarts[1]))) s = 60;
-  else if (q.length >= 2 && shown.includes(q)) s = 30;
-  if (title.startsWith(q)) s += 40;
-  else if (q.length >= 2 ? title.includes(q) : query.word && wordStartsWith(title, q)) s += 20;
-  if (s > 0 || query.tokens.length < 2) return s;
+  if ((t.shownBlank ??= /\s/.test(shown))) {
+    const seg = query.segmentStarts;
+    if (shown.startsWith(q)) s = 100;
+    else if (seg && (shown.includes(seg[0]) || shown.includes(seg[1]))) s = 60;
+    else if (shown.includes(q)) s = 30;
+  }
+  const ti = title.indexOf(q);
+  if (ti === 0) s += 40;
+  else if (ti > 0) s += 20;
+  if (s > 0) return s;
   for (const token of query.tokens) {
-    if (token.word && wordStartsWith(title, token.text)) s += 15;
-    else if (token.word && wordStartsWith(shown, token.text)) s += 10;
+    if (token.word && t.titleWords.includes(token.spaced)) s += 15;
+    else if (token.word && shownWordsOf(t).includes(token.spaced)) s += 10;
     else if (token.text.length >= 3 && (title.includes(token.text) || shown.includes(token.text))) s += 5;
     else return 0;
   }
   return s;
 }
 
-function frecency(c: Candidate, tabId: string | undefined, now: number): number {
-  const ageDays = c.lastVisit ? Math.max(0, (now - c.lastVisit) / DAY) : 10;
-  return Math.log2(1 + c.visits) * 8 - Math.min(ageDays, 30) + (c.bookmarked ? 20 : 0) + (tabId ? 6 : 0);
+// matchScore for a query of one word: the needle is the query, so one indexOf per text answers the prefilter and the
+// start tests together.
+function matchScoreWord(t: PageText, query: Query): number {
+  const shown = t.shownLower;
+  const title = t.titleLower;
+  const q = query.q;
+  const si = shown.indexOf(q);
+  const ti = title.indexOf(q);
+  if (si < 0 && ti < 0) return 0;
+  let s = 0;
+  if (si === 0) s = 100;
+  else if (si > 0) {
+    const seg = query.segmentStarts;
+    if (seg && (shown.includes(seg[0]) || shown.includes(seg[1]))) s = 60;
+    else if (q.length >= 2) s = 30;
+  }
+  if (ti === 0) s += 40;
+  else if (q.length >= 2 ? ti > 0 : query.word && t.titleWords.includes(query.spaced)) s += 20;
+  return s;
 }
 
-let lastMatches: { pool: Pool; q: string; tokens: string[]; pages: Candidate[] } | null = null;
+// What a query matched, for each prefix of what is being typed: a longer query narrows the list of a shorter one that it
+// extends (backspacing finds the list of the query it returns to). Prefixes only, shortest first; one pool at a time.
+// `scores` are the pages' match scores, so the same query again (a space typed, backspace and retype, remote suggestions arriving) doesn't score them again.
+type Matched = { q: string; tokens: string[]; pages: Candidate[]; scores: number[] };
+const MATCHED_KEPT = 8;
+let matchedChain: { pool: Pool; list: Matched[] } = { pool: null as unknown as Pool, list: [] };
 
-function narrowing(pool: Pool, q: string, tokens: readonly string[]): Candidate[] | null {
-  const last = lastMatches;
-  if (!last || last.pool !== pool || !q.startsWith(last.q)) return null;
-  const i = last.tokens.length - 1;
-  const word = last.tokens[i]!;
-  return i === 0 || word === tokens[i] || word.length >= 3 ? last.pages : null;
+// The matches of the longest earlier query that the new one can only narrow, or null when none is.
+function narrowing(pool: Pool, q: string, tokens: readonly string[]): Matched | null {
+  const chain = matchedChain;
+  if (chain.pool !== pool) return null;
+  for (let k = chain.list.length - 1; k >= 0; k--) {
+    const last = chain.list[k]!;
+    if (!q.startsWith(last.q)) continue;
+    const i = last.tokens.length - 1;
+    const word = last.tokens[i]!;
+    if (i === 0 || word === tokens[i] || word.length >= 3) return last;
+  }
+  return null;
+}
+
+function remember(pool: Pool, q: string, tokens: string[], pages: Candidate[], scores: number[]) {
+  let chain = matchedChain;
+  if (chain.pool !== pool) matchedChain = chain = { pool, list: [] };
+  const list = chain.list;
+  while (list.length && !q.startsWith(list[list.length - 1]!.q)) list.pop();
+  if (q.length < 2) {
+    list.length = 0;
+    return;
+  }
+  if (list.length && list[list.length - 1]!.q === q) list.pop();
+  list.push({ q, tokens, pages, scores });
+  if (list.length > MATCHED_KEPT) list.shift();
 }
 
 type Ranked = { c: Candidate; tabId: string | undefined; m: number; s: number };
 
 class TopList {
   readonly items: Ranked[] = [];
+  // The score a row has to beat to get in: the last one's once the list is full.
+  floor = -Infinity;
   private readonly size: number;
   constructor(size: number) {
     this.size = size;
@@ -291,6 +366,7 @@ class TopList {
     while (i > 0 && items[i - 1]!.s < r.s) i--;
     items.splice(i, 0, r);
     if (items.length > this.size) items.pop();
+    if (items.length === this.size) this.floor = items[items.length - 1]!.s;
   }
 }
 
@@ -336,7 +412,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   }
 
   const pool = poolFor(source.history, source.bookmarks ?? NO_BOOKMARKS);
-  const { tabIds, extra } = tabsOver(pool, source.tabs, now, options.currentTabId);
+  const { tabIds, extra } = tabsOver(pool, source.tabs, options.currentTabId);
   const currentKey = options.currentUrl ? pageKey(options.currentUrl) : null;
   const known = (url: string) => {
     const key = pageKey(url);
@@ -347,29 +423,61 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   const websiteFirst = preference === "website";
   const oneWord = tokens.length === 1;
   const completes = websiteFirst && !scope && oneWord;
-  const pages = narrowing(pool, q, tokens) ?? pool.list;
+  const from = narrowing(pool, q, tokens);
+  const pages = from ? from.pages : pool.list;
+  // The same query as last time: its matches and their scores are known.
+  const again = from !== null && from.q === q;
   const parsed = parseQuery(q, tokens);
-  const matched: Candidate[] = [];
+  const matched: Candidate[] = again ? from.pages : [];
+  const scores: number[] = again ? from.scores : [];
+  let found = 0;
   const top = new TopList(limit + 1);
   const onSite = scope ? new TopList(4) : null;
+  const score = oneWord ? matchScoreWord : matchScore;
+  const bound = Boolean(scope);
   let inline: Ranked | null = null;
   for (const list of [pages, extra]) {
-    for (const c of list) {
-      const m = matchScore(c.text, parsed);
+    const inPages = list === pages;
+    for (let at = 0; at < list.length; at++) {
+      const c = list[at]!;
+      const m = again && inPages ? scores[at]! : score(c.text, parsed);
       if (m <= 0) continue;
-      if (list === pages) matched.push(c);
-      const tabId = c.tabId ?? tabIds.get(c.text.key);
-      const derank = currentKey !== null && c.text.key === currentKey ? 80 : 0;
-      const r: Ranked = { c, tabId, m, s: m + frecency(c, tabId, now) - derank };
-      top.offer(r);
+      if (inPages && !again) {
+        matched[found] = c;
+        scores[found++] = m;
+      }
+      const key = c.text.key;
+      const derank = currentKey !== null && key === currentKey ? 80 : 0;
+      // Frecency, as it was before it was inlined: log2 part kept per candidate, age part without Math.max/min.
+      let age: number;
+      if (c.fresh) age = 0;
+      else if (c.lastVisit) {
+        const d = (now - c.lastVisit) / DAY;
+        age = d > 0 ? (d < 30 ? d : 30) : 0;
+      } else age = 10;
+      const base = c.logVisits - age + (c.bookmarked ? 20 : 0);
+      // Without the open-tab bonus (6) the row can't get in the list, and can't be the inline completion: skip it
+      // before looking up its tab. The extra point is for float rounding.
+      if (!bound && top.floor >= m + base - derank + 7) {
+        if (!completes) continue;
+        if (inline === null ? false : inline.s >= m + base - derank + 7) continue;
+        if (!c.text.shownLower.startsWith(q)) continue;
+      }
+      const tabId = c.tabId ?? tabIds.get(key);
+      const s = m + (base + (tabId ? 6 : 0)) - derank;
+      let r: Ranked | undefined;
+      if (top.floor < s || top.items.length < limit + 1) {
+        r = { c, tabId, m, s };
+        top.offer(r);
+      }
       if (onSite) {
         const host = hostOfPage(c.text);
-        if (host === scope!.host || host.endsWith(`.${scope!.host}`)) onSite.offer(r);
+        if (host === scope!.host || host.endsWith(`.${scope!.host}`)) onSite.offer(r ?? { c, tabId, m, s });
       }
-      if (completes && (!inline || r.s > inline.s) && inlineMatch(c.text, q)) inline = r;
+      if (completes && (!inline || s > inline.s) && inlineMatch(c.text, q)) inline = r ?? { c, tabId, m, s };
     }
   }
-  lastMatches = q.length >= 2 ? { pool, q, tokens, pages: matched } : null;
+  remember(pool, q, tokens, matched, scores);
   const ranked = top.items;
 
   const out = new Output(limit);
@@ -417,11 +525,9 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
 }
 
 function inlineMatch(t: PageText, q: string): boolean {
-  if (hostPart(t.shownLower).startsWith(q) && originOfPage(t)) return true;
+  if (hostLowerOfPage(t).startsWith(q) && originOfPage(t)) return true;
   return q.includes("/") && !/[?#]/.test(t.shown) && t.shownLower.startsWith(q);
 }
-
-const hostPart = (shown: string) => /^[^/?#]*/.exec(shown)![0];
 
 function inlineTarget(q: string, c: Candidate): { text: string; url: string; favicon: string | null } {
   const origin = originOfPage(c.text);
