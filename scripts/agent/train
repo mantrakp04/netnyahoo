@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""The build train: one app build of the working tree, shared by every agent, instead of one build per agent.
+
+  scripts/agent/train request --as NAME [--config Debug|Release] [--note TEXT]   your edits are in: ask for a build
+  scripts/agent/train wait    --as NAME [--timeout SECS]                         block until a build covers your request
+  scripts/agent/train status                                                     queue, running build, last builds
+  scripts/agent/train serve   [--batch SECS] [--max-batch SECS]                  the orchestrator's builder loop
+
+How it works:
+  - An agent finishes a coherent set of edits (the tree compiles: typecheck, and native code you touched builds as far
+    as you can tell), then `request`s. Requests made within --batch seconds of each other (default 60, and at most
+    --max-batch, default 240, after the first) ride the same build.
+  - `serve` builds the whole working tree once per batch with scripts/agent/build-app --as train (derived data
+    apps/browser/build-train, incremental), per config asked for (Debug and/or Release), then clones the .app to
+    apps/browser/build-train/out/<n>-<config>/Netnyahoo.app so a later build never changes an app someone is running.
+  - `wait` prints `ok <app path>` (exit 0) or `failed <log path>` with the errors (exit 1) once a build that started
+    after your request finishes. A failure lists the files in the errors: if they're yours, fix and request again;
+    if not, tell the main session. Run your own hidden instances from your copy (`cp -c` the app into your scratch
+    if you need to modify it). Never build the app yourself while the train runs.
+  - JS-only changes need no build: Metro serves the tree to Debug builds, and js-bench bundles can be swapped into
+    Release copies as before.
+State lives in /tmp/nn-train (requests.jsonl, builds/<n>.json, serve.log).
+"""
+import argparse, json, os, re, subprocess, sys, time
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+STATE = "/tmp/nn-train"
+REQ = f"{STATE}/requests.jsonl"
+BUILDS = f"{STATE}/builds"
+OUT = f"{REPO}/apps/browser/build-train/out"
+os.makedirs(BUILDS, exist_ok=True)
+
+
+def requests():
+    try:
+        return [json.loads(l) for l in open(REQ) if l.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def builds():
+    out = []
+    for f in os.listdir(BUILDS):
+        if f.endswith(".json"):
+            try:
+                out.append(json.load(open(f"{BUILDS}/{f}")))
+            except Exception:
+                pass
+    return sorted(out, key=lambda b: b["n"])
+
+
+def cmd_request(a):
+    r = {"as": a.as_, "config": a.config, "note": a.note or "", "t": time.time()}
+    with open(REQ, "a") as f:
+        f.write(json.dumps(r) + "\n")
+    print(f"requested {a.config} build at {time.strftime('%H:%M:%S')}; now run: scripts/agent/train wait --as {a.as_}")
+
+
+def cmd_wait(a):
+    mine = [r for r in requests() if r["as"] == a.as_]
+    if not mine:
+        sys.exit("train: no request from you; run `train request --as NAME` first")
+    since = mine[-1]["t"]
+    config = mine[-1]["config"]
+    deadline = time.time() + a.timeout
+    while time.time() < deadline:
+        for b in builds():
+            if b["started"] >= since and b.get("done") and b["config"] == config:
+                if b["ok"]:
+                    print(f"ok {b['app']}  (build {b['n']}, {b['config']}, head {b['head']}, for {', '.join(b['for'])})")
+                    return
+                print(f"failed {b['log']}  (build {b['n']}, {b['config']})\n{b.get('errors', '')}")
+                sys.exit(1)
+        time.sleep(5)
+    print("train: still waiting (deadline); run `train wait` again — `train status` shows the queue")
+    sys.exit(75)
+
+
+def cmd_status(a):
+    bs = builds()
+    last = max([b["started"] for b in bs] or [0])
+    pending = [r for r in requests() if r["t"] > last]
+    print("pending:", ", ".join(f"{r['as']}({r['config']})" for r in pending) or "none")
+    for b in bs[-5:]:
+        state = "running" if not b.get("done") else ("ok" if b["ok"] else "FAILED")
+        print(f"build {b['n']} {b['config']} {state} started {time.strftime('%H:%M:%S', time.localtime(b['started']))}"
+              f" for {', '.join(b['for'])}" + (f" -> {b.get('app') or b.get('log')}" if b.get("done") else ""))
+
+
+def build_once(n, config, who):
+    started = time.time()
+    head = subprocess.run(["git", "-C", REPO, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+    rec = {"n": n, "config": config, "for": who, "started": started, "head": head}
+    json.dump(rec, open(f"{BUILDS}/{n:04d}-{config}.json", "w"))
+    p = subprocess.run([f"{REPO}/scripts/agent/build-app", "--as", "train", "--config", config, "--force"],
+                       capture_output=True, text=True, cwd=REPO)
+    text = p.stdout + p.stderr
+    log = f"{REPO}/apps/browser/build-train/build-app.log"
+    rec.update(done=True, ok=p.returncode == 0, log=log, seconds=round(time.time() - started))
+    if p.returncode == 0:
+        m = re.findall(r"(/\S+?\.app)\b", text)
+        src = m[-1] if m else None
+        dst = f"{OUT}/{n:04d}-{config}/Netnyahoo.app"
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        subprocess.run(["cp", "-cR", src, dst], check=False)
+        rec["app"] = dst
+    else:
+        rec["errors"] = "\n".join(l for l in text.splitlines() if "error" in l.lower())[-4000:]
+    json.dump(rec, open(f"{BUILDS}/{n:04d}-{config}.json", "w"))
+    # keep the last 4 outputs per config
+    outs = sorted(d for d in os.listdir(OUT) if d.endswith(config)) if os.path.isdir(OUT) else []
+    for d in outs[:-4]:
+        subprocess.run(["rm", "-rf", f"{OUT}/{d}"])
+    return rec
+
+
+def cmd_serve(a):
+    print(time.strftime("%H:%M:%S"), "train: serving", flush=True)
+    n = max([b["n"] for b in builds()] or [0])
+    while True:
+        last = max([b["started"] for b in builds()] or [0])
+        pending = [r for r in requests() if r["t"] > last]
+        if pending:
+            first, newest = min(r["t"] for r in pending), max(r["t"] for r in pending)
+            if time.time() - newest >= a.batch or time.time() - first >= a.max_batch:
+                n += 1
+                for config in sorted({r["config"] for r in pending}):
+                    who = sorted({r["as"] for r in pending if r["config"] == config})
+                    print(time.strftime("%H:%M:%S"), f"build {n} {config} for {', '.join(who)}", flush=True)
+                    rec = build_once(n, config, who)
+                    print(time.strftime("%H:%M:%S"), f"build {n} {config}", "ok" if rec["ok"] else "FAILED",
+                          f"{rec['seconds']}s", rec.get("app") or rec["log"], flush=True)
+        time.sleep(5)
+
+
+ap = argparse.ArgumentParser()
+sub = ap.add_subparsers(dest="cmd", required=True)
+r = sub.add_parser("request"); r.add_argument("--as", dest="as_", required=True)
+r.add_argument("--config", default="Debug", choices=["Debug", "Release"]); r.add_argument("--note")
+w = sub.add_parser("wait"); w.add_argument("--as", dest="as_", required=True); w.add_argument("--timeout", type=float, default=540)
+sub.add_parser("status")
+s = sub.add_parser("serve"); s.add_argument("--batch", type=float, default=60); s.add_argument("--max-batch", type=float, default=240)
+a = ap.parse_args()
+{"request": cmd_request, "wait": cmd_wait, "status": cmd_status, "serve": cmd_serve}[a.cmd](a)
