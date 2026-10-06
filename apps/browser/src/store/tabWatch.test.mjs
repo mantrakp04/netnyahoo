@@ -23,7 +23,7 @@ test("a watcher wakes for its tab's changes only", () => {
   const offB = watchTab(b, () => woke.b++);
   S().updateTab(a, { title: "A" });
   assert.deepEqual(woke, { a: 1, b: 0 });
-  S().updateLive(b, { progress: 0.5 });
+  S().updateLive(b, { isLoading: true });
   assert.deepEqual(woke, { a: 1, b: 0 }, "live state isn't the tab");
   S().updateTab(b, { title: "B" });
   assert.deepEqual(woke, { a: 1, b: 1 });

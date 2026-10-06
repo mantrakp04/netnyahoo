@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useActiveTabId, useTabLive, useWindowId } from "../../store/hooks";
+import { usePageProgress } from "../../store/pageProgress";
 import { splitOf } from "../../store/splits";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "../extensions/ToolbarExtensions";
 import { useHistoryAvailability } from "../layout/history";
@@ -83,7 +84,9 @@ export function SidebarAddressRow() {
 
 function PageField({ tab, windowId }: { tab: NonNullable<ReturnType<typeof useToolbarTab>>; windowId: string }) {
   const palette = toolbarPalette(useTheme(), null);
-  const progress = useTabLive(tab.id, (l) => (l.isLoading ? l.progress : null));
+  const loading = useTabLive(tab.id, (l) => l.isLoading);
+  const loaded = usePageProgress(tab.id);
+  const progress = loading ? loaded : null;
   const inSplit = useBrowser((s) => !!splitOf(s, tab.id));
   const extensionsWidth = useToolbarExtensionsWidth(windowId);
   return (

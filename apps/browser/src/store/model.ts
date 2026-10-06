@@ -28,7 +28,6 @@ export const INCOGNITO_PROFILE: Profile = { id: "incognito", name: "Incognito", 
 
 export const IDLE_LIVE: TabLive = {
   isLoading: false,
-  progress: 0,
   canGoBack: false,
   canGoForward: false,
   playingAudio: false,

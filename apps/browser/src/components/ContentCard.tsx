@@ -9,11 +9,13 @@ import { layout, useTheme } from "../lib/theme";
 import { startChromeTabs } from "../lib/chromeTabs";
 import { handOff, wantsPage } from "../lib/tabPages";
 import { noteDiscarded, noteGone, noteReady } from "../lib/tabLifecycle";
+import { forgetChromeTab, noteChromeTab, usePrewarm } from "../lib/preload";
 import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
+import { setPageProgress } from "../store/pageProgress";
 import { shallowEqual, useStoreWhile, useTabValue } from "../store/tabWatch";
 import { useActiveTabId, useSidebarOpen, useWindowId } from "../store/hooks";
-import { activeTabId, engineProfile, wake } from "../store/model";
+import { activeTabId, engineProfile, navigationTo, wake } from "../store/model";
 import { removeTabs } from "../store/tabs";
 import { splitOf } from "../store/splits";
 import type { SplitView, Tab } from "../store/types";
@@ -305,6 +307,7 @@ const TabPane = memo(function TabPane({
   useEffect(() => {
     if (visible && isNewTab && !mounted) patchPage(tabId, { wasNewTab: true });
   }, [visible, isNewTab, mounted]);
+  const prewarmed = usePrewarm(visible && isNewTab && !mounted && !small && !inSplit);
   const hideBar = autoHide && visible && !fullscreen;
   const mode = useToolbarMode(tabId, windowId, hideBar);
   const bookmarksBar = bookmarksBarShown(barMode, own.exists ? own : undefined) && !fullscreen && !inSplit && !small;
@@ -348,7 +351,7 @@ const TabPane = memo(function TabPane({
         <View style={autoLayout ? { height: motion.pageHeight } : { flex: 1 }}>
           {visible && !fullscreen && <ShareBar tabId={tabId} />}
           <View style={{ flex: 1 }}>
-            {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
+            {(mounted || prewarmed) && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={(!!warm && !newTabShown && !isNewTab) || prewarmed} />}
             {visible && isNewTab && !small && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} toolbar={toolbar} />)}
             {visible && <InternalPage tabId={tabId} />}
             {visible && (
@@ -402,14 +405,26 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
   const pending = useRef<string | null>(navigation?.url ?? (adoptId ? (tab()?.url ?? null) : null));
 
   const seq = navigation?.seq;
+  // A page Chrome loaded into a prewarmed tab on its own, which the tab's navigation now records: already loaded.
+  const adopted = useRef<string | null>(null);
   useEffect(() => {
     if (!navigation) return;
+    if (navigation.url === adopted.current) {
+      adopted.current = null;
+      return;
+    }
     pending.current = navigation.url;
     if (pageOf(tabId).newTabShown) patchPage(tabId, { newTabShown: null });
     void webviews.get(tabId)?.loadUrl(navigation.url, { userInitiated: !!navigation.userInitiated });
   }, [seq]);
   const fromNewTab = useRef(pageOf(tabId).wasNewTab && !adoptId);
-  useEffect(() => () => noteGone(tabId), []);
+  useEffect(
+    () => () => {
+      noteGone(tabId);
+      forgetChromeTab(tabId);
+    },
+    [],
+  );
   // This view goes while its tab keeps its page (lib/tabPages.ts): handed off before the native unmount (a layout
   // effect's cleanup runs in the commit). A tab that closed, went to sleep, changed profile or is going to one of the
   // app's own pages closes its page with the view.
@@ -418,9 +433,15 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
     () => () => {
       const t = tab();
       if (wantsPage(t) && engineProfile(t.profileId) === engineProfile(mountedProfile.current) && !isQuitting()) handOff(tabId, engineProfile(t.profileId));
+      // Its page goes with it: what loads next starts from nothing.
+      else setPageProgress(tabId, 0);
     },
     [],
   );
+
+  // A New Tab page's prewarmed tab (usePrewarm): nothing asked it to load yet, so what its about:blank reports isn't the
+  // tab's.
+  const prewarmOnly = () => !tab()?.navigation && !adoptId;
 
   const onOpenWindow = (request: OpenWindowRequest) => {
     const t = tab();
@@ -441,13 +462,20 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
       // The card under the page (ContentCard's background) is drawn once, by the app: a page without a background of its
       // own shows it, as on CEF. The page drawing it again darkened every transparent page.
       pageBackgroundColor="transparent"
-      onReady={(browserId) => {
+      onReady={(browserId, chromeTabId) => {
         setBrowserId(tabId, browserId);
+        noteChromeTab(tabId, chromeTabId);
         noteReady(tabId);
         if (tab()?.muted) void webviews.get(tabId)?.setMuted(true);
       }}
       onNavigationChange={({ url, title, canGoBack, canGoForward, isLoading, themeColor, themeColorSource }) => {
         const target = pending.current;
+        if (target === null && prewarmOnly()) {
+          if (isBlank(url)) return;
+          // Chrome navigated the prewarmed tab itself (an extension's chrome.tabs.update): the tab has that page now.
+          adopted.current = url;
+          store().updateTab(tabId, { navigation: navigationTo(url) });
+        }
         // A fresh browser reports about:blank before the requested navigation commits.
         if (target !== null && isBlank(url) && !target.startsWith("about:")) {
           store().updateLive(tabId, { isLoading: true });
@@ -496,7 +524,7 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
         patchPage(tabId, { backToNewTab: false, newTabShown: null });
         store().updateTab(tabId, { url: "", title: "", favicon: null });
       }}
-      onProgress={(progress) => store().updateLive(tabId, { progress })}
+      onProgress={(progress) => !prewarmOnly() && setPageProgress(tabId, progress)}
       onZoom={({ zoom }) => store().updateTab(tabId, { zoom })}
       onFindResult={({ count, active }) => store().setFind(tabId, { count, active })}
       onFavicon={(favicon) => {
@@ -521,7 +549,7 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
       onResponsive={() => patchPage(tabId, { unresponsive: false })}
       onFullscreen={(fullscreen) => patchPage(tabId, { fullscreen })}
       onMediaAccess={(mediaAccess) => patchPage(tabId, { mediaAccess: mediaAccess.camera || mediaAccess.microphone || mediaAccess.screen ? mediaAccess : null })}
-      onSecurity={(security) => patchPage(tabId, { security })}
+      onSecurity={(security) => !prewarmOnly() && patchPage(tabId, { security })}
       onContentBlocked={({ count }) => patchPage(tabId, { blocked: count })}
       onPopupBlocked={(popup) => {
         const first = !pageOf(tabId).popups.length;
@@ -552,7 +580,8 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
         pending.current = url;
         fromNewTab.current = false;
         patchPage(tabId, { backToNewTab: false, status: "" });
-        store().updateLive(tabId, { isLoading: false, progress: 0, canGoBack: false, canGoForward: false, playingAudio: false });
+        store().updateLive(tabId, { isLoading: false, canGoBack: false, canGoForward: false, playingAudio: false });
+        setPageProgress(tabId, 0);
         noteDiscarded(tabId);
       }}
       onActivateRequest={() => {

@@ -8,6 +8,7 @@ import { webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
 import { useIsBookmarked, useSettings, useTabLive } from "../store/hooks";
 import { bookmarkProfileId } from "../store/model";
+import { usePageProgress } from "../store/pageProgress";
 import type { Tab } from "../store/types";
 import { ToolbarButton, type ClickModifiers } from "./layout/controls";
 import { type ToolbarGeometry } from "./layout/geometry";
@@ -150,7 +151,7 @@ export const ReloadButton = memo(function ReloadButton({
 });
 
 const TabProgressBar = memo(function TabProgressBar({ tabId, color }: { tabId: string; color: string }) {
-  return <ProgressBar progress={useTabLive(tabId, (l) => l.progress)} color={color} />;
+  return <ProgressBar progress={usePageProgress(tabId)} color={color} />;
 });
 
 function ProgressBar({ progress, color }: { progress: number; color: string }) {

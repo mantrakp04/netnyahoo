@@ -53,7 +53,6 @@ export type Tab = {
 
 export type TabLive = {
   isLoading: boolean;
-  progress: number;
   canGoBack: boolean;
   canGoForward: boolean;
   playingAudio: boolean;

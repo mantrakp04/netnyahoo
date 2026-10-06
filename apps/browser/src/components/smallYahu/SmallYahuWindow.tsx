@@ -6,6 +6,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-nativ
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useActiveTab, useTabLive, useWindowId, useWindowUi } from "../../store/hooks";
+import { usePageProgress } from "../../store/pageProgress";
 import type { Tab } from "../../store/types";
 import { CommandPanel } from "../CommandPanel";
 import { ContentCard } from "../ContentCard";
@@ -81,6 +82,7 @@ function SmallYahuBar() {
 function PageField({ tab, windowId, hidden }: { tab: Tab; windowId: string; hidden: boolean }) {
   const theme = useTheme();
   const live = useTabLive(tab.id);
+  const progress = usePageProgress(tab.id);
   const insecure = usePage(tab.id, (p) => !!p.security && (p.security.level === "insecure" || p.security.level === "certificateError"));
   const { hovered, hoverProps } = useHover();
   const field = useRef<View>(null);
@@ -131,7 +133,7 @@ function PageField({ tab, windowId, hidden }: { tab: Tab; windowId: string; hidd
           )}
         </Pressable>
       </ContextMenuArea>
-      {live.isLoading ? <Progress progress={live.progress} color={theme.accent} /> : null}
+      {live.isLoading ? <Progress progress={progress} color={theme.accent} /> : null}
     </View>
   );
 }
