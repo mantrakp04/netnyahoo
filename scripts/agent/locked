@@ -6,7 +6,7 @@
 #   scripts/agent/locked <name> --release WHO                                   give back a --take
 #   scripts/agent/locked -h | --help                                            this text
 #
-# <name> is xcodebuild, pod or chromium.
+# <name> is xcodebuild, pod, chromium or perflab (any timing measurement: benches, profiles; one at a time).
 #   - xcodebuild is one lock per derived data: builds with different -derivedDataPath run in parallel (the Podfile and
 #     the build phases keep each build's writes in its own folder); two into the same one take turns. A command
 #     without -derivedDataPath (one run through `sh -c`, say) takes the single shared xcodebuild lock.
@@ -47,7 +47,7 @@ usage() {
 }
 
 name="${1:-}"
-case "$name" in -h | --help) help ;; xcodebuild | pod | chromium) ;; *) usage ;; esac
+case "$name" in -h | --help) help ;; xcodebuild | pod | chromium | perflab) ;; *) usage ;; esac
 shift
 wait=500 as="" take="" release="" ttl=60
 while [[ $# -gt 0 && "$1" != "--" ]]; do
