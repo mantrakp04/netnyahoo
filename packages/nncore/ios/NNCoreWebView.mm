@@ -560,12 +560,12 @@ const char kPageReportsKey = 0;
       return;
     }
     if (url.length && [view skipsNavigationDownload:url userInitiated:view->_pendingUserInitiated]) url = nil;
-    if (url.length) NNFieldMark(view->_transferKey, @"request", NNFieldNow());
+    if (url.length) NNFieldMarkNow(view->_transferKey, @"request");
     controller.hostChanges++;
     NNCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"about:blank" profile:profile foreground:NO];
     controller.hostChanges--;
     // Its navigation started in openTab, before this view was its delegate (tabDidChangeLoading:).
-    if (url.length && tab.loading) NNFieldMark(view->_transferKey, @"start", NNFieldNow());
+    if (url.length && tab.loading) NNFieldMarkNow(view->_transferKey, @"start");
     if (tab) [view attach:tab];
     if (tab && url.length) [view focusAfterLoad];
   });
@@ -1053,6 +1053,12 @@ const char kPageReportsKey = 0;
   [self.delegate webView:self event:name payload:payload];
 }
 
+// Field timing turned on or off: every page there is starts or stops reporting (page_script.js › Field timing).
+void NNCoreWebViewsSetFieldTiming(BOOL on) {
+  for (NNCoreWebView *view in LiveViews().allObjects)
+    if (view->_tab) [view callFrame:@"" kind:@"fieldTiming" json:on ? @"{\"on\":true}" : @"{\"on\":false}"];
+}
+
 + (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId {
   return RecentEvents()[@(browserId)] ?: @[];
 }
@@ -1157,7 +1163,7 @@ const char kPageReportsKey = 0;
 - (void)tabDidChangeLoading:(NNCoreTab *)tab {
   // A page starting to load starts its blocked count again, as CEF's at each main-frame navigation request.
   if (tab.loading) [self resetBlocked:YES];
-  if (tab.loading) NNFieldMark(_transferKey, @"start", NNFieldNow());
+  if (tab.loading) NNFieldMarkNow(_transferKey, @"start");
   [self queueNavigation];
 }
 
@@ -1182,7 +1188,7 @@ const char kPageReportsKey = 0;
 // script says, and none on a page it doesn't run in (an error page, chrome://). A page back from the back/forward cache
 // says again as it shows (page_script.js, pageshow).
 - (void)tabDidCommitDocument:(NNCoreTab *)tab {
-  NNFieldMark(_transferKey, @"commit", NNFieldNow());
+  NNFieldMarkNow(_transferKey, @"commit");
   _pageTheme = nil;
   _pageThemeSource = nil;
   [self queueNavigation];
@@ -1265,7 +1271,7 @@ const char kPageReportsKey = 0;
       answer(NO);
   } else if ([kind isEqualToString:@"selection"] && main) {
     [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
-  } else if ([kind isEqualToString:@"perf"] && main) {
+  } else if ([kind isEqualToString:@"perf"] && main && NNFieldTimingEnabled()) {
     // Field timing: epoch ms from the page's clock, kept only when plausible.
     for (NSString *what in @[ @"fcp", @"shown" ]) {
       NSNumber *at = [dict[what] isKindOfClass:NSNumber.class] ? dict[what] : nil;
@@ -1454,7 +1460,7 @@ const char kPageReportsKey = 0;
 
 - (void)loadNow:(NSString *)url userInitiated:(BOOL)userInitiated {
   if ([self skipsNavigationDownload:url userInitiated:userInitiated]) return;
-  NNFieldMark(_transferKey, @"request", NNFieldNow());
+  NNFieldMarkNow(_transferKey, @"request");
   if ([_tab respondsToSelector:@selector(loadURL:userInitiated:)]) [_tab loadURL:url userInitiated:userInitiated];
   else [_tab loadURL:url];
   [self focusAfterLoad];

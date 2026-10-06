@@ -28,6 +28,8 @@ constexpr NSUInteger kMaxMarks = 512;
 constexpr unsigned int kPostCommit = 2;
 
 std::atomic<bool> gEnabled{false};
+// The module (one per bridge) that set the state last: only it turns timing off as its bridge goes away.
+std::atomic<uintptr_t> gOwner{0};
 std::atomic<double> gLastInputAt{0};
 std::atomic<int> gLastInputKind{0};
 os_unfair_lock gLock = OS_UNFAIR_LOCK_INIT;
@@ -53,6 +55,8 @@ void SetEnabled(bool enabled) {
       [NSEvent removeMonitor:gInputMonitor];
       gInputMonitor = nil;
     }
+    // Pages loaded before a change start or stop reporting now, not at their next document.
+    NNCoreWebViewsSetFieldTiming(gEnabled);
   });
   if (enabled) return;
   os_unfair_lock_lock(&gLock);
@@ -80,6 +84,10 @@ void NNFieldMark(NSString *key, NSString *kind, double at) {
   os_unfair_lock_unlock(&gLock);
 }
 
+void NNFieldMarkNow(NSString *key, NSString *kind) {
+  if (gEnabled) NNFieldMark(key, kind, NNFieldNow());
+}
+
 void NNFieldMarkAtCommit(NSString *key, NSString *kind) {
   if (!gEnabled || !key.length) return;
   NSString *k = [key copy];
@@ -91,7 +99,7 @@ void NNFieldMarkAtCommit(NSString *key, NSString *kind) {
 
 // JS's side (NativeModules.NNFieldTiming). Its queue is React Native's UI manager's, so a markFrame call is handled after
 // the view updates of the commits JS made before it, and its block runs on the main thread in the same batch as them.
-@interface NNFieldTimingModule : NSObject <RCTBridgeModule>
+@interface NNFieldTimingModule : NSObject <RCTBridgeModule, RCTInvalidating>
 @end
 
 @implementation NNFieldTimingModule
@@ -109,7 +117,15 @@ RCT_EXPORT_MODULE(NNFieldTiming)
 }
 
 RCT_EXPORT_METHOD(setEnabled : (BOOL)enabled) {
+  gOwner = (uintptr_t)(__bridge void *)self;
   SetEnabled(enabled);
+}
+
+// A reload (or the bridge going away) drops JS's calls still queued, its "off" among them: off, unless a newer bridge's
+// JS has said since. The new JS always says at start (journeys.ts).
+- (void)invalidate {
+  uintptr_t me = (uintptr_t)(__bridge void *)self;
+  if (gOwner.compare_exchange_strong(me, 0)) SetEnabled(false);
 }
 
 // `kind` for `key` when the views JS changed before this call are committed to the screen.

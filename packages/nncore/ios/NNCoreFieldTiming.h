@@ -13,9 +13,13 @@ BOOL NNFieldTimingEnabled(void);
 double NNFieldNow(void);
 // `kind` happened to the app's tab `key` (a WebView's transferKey) at `at` (epoch ms).
 void NNFieldMark(NSString *_Nullable key, NSString *kind, double at);
+// The same, now: the clock is read only when field timing is on.
+void NNFieldMarkNow(NSString *_Nullable key, NSString *kind);
 // The same, timed when the Core Animation transaction now open commits (main thread): what changed in it is on its way
 // to the screen.
 void NNFieldMarkAtCommit(NSString *_Nullable key, NSString *kind);
+// Tells every live page to start or stop reporting its paint times (NNCoreWebView.mm; main thread).
+void NNCoreWebViewsSetFieldTiming(BOOL on);
 
 #ifdef __cplusplus
 }

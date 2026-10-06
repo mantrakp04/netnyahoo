@@ -510,31 +510,47 @@
     };
   };
 
-  // MARK: Field timing — only while the user shares diagnostics (the browser says so in config): when the page first
-  // painted content, and its first frame each time it's shown again after being hidden. Times only, as epoch ms.
+  // MARK: Field timing — only while the user shares diagnostics (the browser says so in config, and again whenever it
+  // changes): when the page first painted content, and its first frame each time it's shown again after being hidden.
+  // Times only, as epoch ms. Turned off, nothing stays installed and nothing in flight is sent.
   const PO = window.PerformanceObserver;
+  const disconnect = PO && PO.prototype.disconnect;
+  const { addEventListener: listen, removeEventListener: unlisten } = EventTarget.prototype;
   const raf = window.requestAnimationFrame;
   const dateNow = Date.now;
   const timeOrigin = performance.timeOrigin;
-  let fieldTiming = false;
-  const installFieldTiming = () => {
-    if (fieldTiming || !isTop) return;
-    fieldTiming = true;
+  let fieldTiming = null;
+  const setFieldTiming = (on) => {
+    if (!isTop || !on === !fieldTiming) return;
+    if (!on) {
+      fieldTiming.live = false;
+      try {
+        if (fieldTiming.observer) apply(disconnect, fieldTiming.observer, []);
+      } catch (e) {}
+      apply(unlisten, document, ["visibilitychange", fieldTiming.onVisibility]);
+      fieldTiming = null;
+      return;
+    }
+    const state = (fieldTiming = { live: true, observer: null, onVisibility: null });
+    const report = (data) => state.live && send("perf", data);
     try {
-      new PO((list) => {
-        for (const e of list.getEntries()) if (e.name === "first-contentful-paint") send("perf", { fcp: timeOrigin + e.startTime });
-      }).observe({ type: "paint", buffered: true });
+      state.observer = new PO((list) => {
+        for (const e of list.getEntries()) if (e.name === "first-contentful-paint") report({ fcp: timeOrigin + e.startTime });
+      });
+      state.observer.observe({ type: "paint", buffered: true });
     } catch (e) {}
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible") return;
-      apply(raf, window, [() => apply(raf, window, [() => send("perf", { shown: apply(dateNow, Date, []) })])]);
-    });
+    state.onVisibility = () => {
+      if (!state.live || document.visibilityState !== "visible") return;
+      apply(raf, window, [() => apply(raf, window, [() => report({ shown: apply(dateNow, Date, []) })])]);
+    };
+    apply(listen, document, ["visibilitychange", state.onVisibility]);
   };
+  handlers.fieldTiming = (message) => setFieldTiming(!!(message && message.on));
 
   handlers.config = (config) => {
     blockAutoplay = !!config.blockAutoplay;
     if (config.displayMediaPicker) installDisplayMedia();
-    if (config.fieldTiming) installFieldTiming();
+    if (config.fieldTiming) setFieldTiming(true);
   };
   send("hello", { top: isTop, url: location.href });
 

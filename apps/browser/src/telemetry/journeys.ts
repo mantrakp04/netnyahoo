@@ -243,9 +243,13 @@ export function launchCommitted() {
 
 // The command bar is usable once the app answers at once: the first timer after the first commit that runs within
 // 50 ms of being set (React Native's timers run on the main thread's frames, so this waits for both threads).
+let usableTimer: ReturnType<typeof setTimeout> | undefined;
+
 function probeUsable(l: Launch) {
   const set = Date.now();
-  setTimeout(() => {
+  usableTimer = setTimeout(() => {
+    usableTimer = undefined;
+    if (!on || launch !== l) return;
     const now = Date.now();
     if (now - set < 50 || now - set > 30_000 || now - (l.commit ?? now) > 30_000) l.usable = now;
     else probeUsable(l);
@@ -364,11 +368,19 @@ export function journeyNavigate(tabId: string) {
 
 // MARK: Lifecycle
 
-function setOn(next: boolean) {
-  if (next === on) return;
+// `initial`: said to native even when it matches, as native can still be on from a bridge this JS replaced (a reload).
+function setOn(next: boolean, initial = false) {
+  if (next === on && !initial) return;
   on = next;
   native?.setEnabled(next);
   if (next) return;
+  // A launch that saw sharing off isn't sent, even if it comes back on.
+  clearTimeout(usableTimer);
+  usableTimer = undefined;
+  if (launch) launchSent = true;
+  launch = null;
+  clearTimeout(timer);
+  timer = undefined;
   pending = [];
   marks.clear();
   samples.clear();
@@ -377,7 +389,7 @@ function setOn(next: boolean) {
 
 export function startJourneys(previous: { lastLaunchAt: number | null; lastQuitAt: number | null } | null) {
   if (previous) previousLaunch = previous;
-  setOn(isSharing());
+  setOn(isSharing(), true);
   useTelemetry.subscribe((t) => setOn(t.sharing));
   useBrowser.subscribe(watchStore);
 }

@@ -2,7 +2,9 @@
 
 What the app measures on users' Macs for the four sprint journeys ([sprint.md](sprint.md)), and the PostHog queries
 that read them per release. Only with diagnostics sharing on (Settings › Privacy & Security); with it off nothing is
-timed, no event monitor runs and pages aren't asked for paint times. Everything sent is a duration, a count or a rough
+timed, no event monitor runs and pages aren't asked for paint times. Turning it off stops every open page's reporting at
+once, drops what's in flight (a launch that saw it off is never sent), and a JS reload always tells native the current
+state, while the old bridge going away turns native timing off. Everything sent is a duration, a count or a rough
 range: never a URL, a title, or what was typed.
 
 Code: `apps/browser/src/telemetry/journeys.ts` (journeys, aggregation, events), `packages/nncore/ios/NNCoreFieldTiming.mm`
