@@ -324,6 +324,35 @@ try {
 }
 check("a page that stops responding is reported (Page Unresponsive)", !!hang, hang ?? "no unresponsive event within 28 s");
 
+// ⌘T makes the new tab's page ahead, on about:blank under the New Tab page (lib/preload.ts), so Enter only navigates it.
+// That blank page must not stay in the tab's history: Back from the first page opened there has nowhere to go
+// (nncore_api.mm loadURL replaces the blank entry). Before that fix Back landed on a raw about:blank.
+const newTabId = await (async () => {
+  const before = await instance.eval(`return nn.store.getState().tabs ? Object.keys(nn.store.getState().tabs) : [];`).catch(() => []);
+  execFileSync(process.env.SMOKE_KEYS, [pid, "17", "c"]); // ⌘T
+  for (const end = Date.now() + 5000; Date.now() < end; await sleep(200)) {
+    const now = await instance.eval(`return Object.keys(nn.store.getState().tabs);`).catch(() => []);
+    const added = now.filter((id) => !before.includes(id));
+    if (added.length) return added[0];
+  }
+  return null;
+})();
+await sleep(1500);
+const firstUrl = `${pages}/form.html?from-new-tab`;
+let newTabHistory = null;
+if (newTabId) {
+  await instance.eval(`nn.store.getState().navigate(${JSON.stringify(newTabId)}, ${JSON.stringify(firstUrl)}); return true;`).catch(() => null);
+  for (const end = Date.now() + 10000; !newTabHistory && Date.now() < end; await sleep(250)) {
+    const t = (await instance.targets()).find((x) => x.type === "page" && x.url === firstUrl);
+    if (t) newTabHistory = (await onPage(t, "Page.getNavigationHistory")).entries ?? null;
+  }
+}
+const newTabBack = newTabId ? await instance.eval(`return !!nn.store.getState().live[${JSON.stringify(newTabId)}]?.canGoBack;`).catch(() => null) : null;
+check("the first page opened from ⌘T has no Back (the prewarmed about:blank isn't in its history)",
+  newTabHistory?.length === 1 && newTabBack === false,
+  newTabId ? `${newTabHistory ? newTabHistory.map((e) => e.url.replace(/^.*\//, "")).join(" → ") : "page never loaded"}; canGoBack ${newTabBack}` : "⌘T made no tab");
+if (newTabId) await instance.eval(`nn.store.getState().closeTab(${JSON.stringify(newTabId)}); return true;`).catch(() => null);
+
 // A link from another app (Discord, Mail; the app is the default browser) opens in Small Yahu: a real GURL Apple Event
 // to this instance's pid, as Launch Services sends it. 0.2.22 and 0.2.23 dropped every one (AppKit installed no GURL
 // handler: NNCoreHost.mm's bootstrap delegate came after -finishLaunching registered them).

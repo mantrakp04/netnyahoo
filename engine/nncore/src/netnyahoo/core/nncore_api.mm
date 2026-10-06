@@ -1867,7 +1867,15 @@ std::optional<bool> RunPageCommand(content::WebContents* contents, int command) 
                                      ui::PAGE_TRANSITION_FROM_ADDRESS_BAR)
                                : ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
   params.has_user_gesture = userInitiated;
-  _contents->GetController().LoadURLWithParams(params);
+  // A New Tab page's tab, made ahead on about:blank (the app's prewarm): its first page
+  // takes that entry's place, so Back never lands on the blank page.
+  content::NavigationController& controller = _contents->GetController();
+  content::NavigationEntry* committed = controller.GetLastCommittedEntry();
+  if (controller.GetEntryCount() == 1 && committed && !committed->IsInitialEntry() &&
+      committed->GetURL().IsAboutBlank()) {
+    params.should_replace_current_entry = true;
+  }
+  controller.LoadURLWithParams(params);
 }
 
 - (void)goToOffset:(int)offset {
@@ -2562,10 +2570,14 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents,
     return;
   }
   // Chrome's closed-tab entry (⇧⌘T, chrome.sessions), as a user's close records it, now: a
-  // tag the host set just before is in it. Not for incognito or a page that never committed.
-  content::NavigationEntry* committed = _contents->GetController().GetLastCommittedEntry();
+  // tag the host set just before is in it. Not for incognito, a page that never committed, or
+  // a New Tab page's tab that only ever showed about:blank (made ahead of its navigation).
+  content::NavigationController& controller = _contents->GetController();
+  content::NavigationEntry* committed = controller.GetLastCommittedEntry();
+  const bool only_blank = controller.GetEntryCount() == 1 && committed &&
+                          committed->GetURL().IsAboutBlank();
   if (!Profile::FromBrowserContext(_contents->GetBrowserContext())->IsOffTheRecord() &&
-      committed && !committed->IsInitialEntry()) {
+      committed && !committed->IsInitialEntry() && !only_blank) {
     model->delegate()->CreateHistoricalTab(_contents);
   }
   model->DetachAndDeleteWebContentsAt(index);
