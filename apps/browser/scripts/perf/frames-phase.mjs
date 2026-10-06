@@ -10,7 +10,8 @@
 //
 // Per interaction (a window of fixed length after its start), medians over the repetitions of every run:
 //   frames                 display-link ticks delivered in the window (the window's length / the refresh interval is what the
-//                          screen asked for)
+//                          screen asked for); the window is extended to the ticks around it, so a stall that outlasts it is counted
+//   span                   the extended window's length in ms
 //   >8.33 / >16.7          ticks that came more than 8.33 (16.7) + 2 ms after the previous one: a 120 Hz (60 Hz) frame the main
 //                          thread did not deliver; on a 60 Hz screen every tick is over 8.33 and the column is meaningless
 //   dropped                refresh intervals skipped (a 41.7 ms gap at 120 Hz is 4)
@@ -106,22 +107,28 @@ class Records {
   }
 }
 
-// What happened in [a, b] (epoch ms). `refresh` is one refresh interval of the screen.
+// What happened in [a, b] (epoch ms), extended to the ticks around it: from the last tick at or before a to the first tick at or
+// after b. A stall that starts in the window and runs past its end is the interaction's, so the gap it ends is counted, and the
+// CPU time in it. `refresh` is one refresh interval of the screen.
 export function windowStats(rec, a, b, refresh) {
   const ticks = rec.f;
+  let first = 0;
+  while (first + 1 < ticks.length && ticks[first + 1].ts <= a) first++;
+  let last = first;
+  while (last < ticks.length - 1 && ticks[last].ts < b) last++;
   const gaps = [];
   let late = 0;
-  for (let i = 1; i < ticks.length; i++) {
-    if (ticks[i].ts < a || ticks[i].ts > b) continue;
+  for (let i = first + 1; i <= last; i++) {
     gaps.push(ticks[i].ts - ticks[i - 1].ts);
     late = Math.max(late, ticks[i].now - ticks[i].ts);
   }
+  const from = ticks[first]?.ts ?? a, to = ticks[last]?.ts ?? b;
   const busy = (list) => {
     let sum = 0, worst = 0, over = 0;
     for (const r of list) {
-      const s = Math.max(r.a, a), e = Math.min(r.a + r.d, b);
+      const s = Math.max(r.a, from), e = Math.min(r.a + r.d, to);
       if (e > s) sum += e - s;
-      if (r.a >= a && r.a <= b) {
+      if (r.a + r.d >= from && r.a <= to) {
         worst = Math.max(worst, r.d);
         if (r.d > 8.33) over++;
       }
@@ -129,19 +136,11 @@ export function windowStats(rec, a, b, refresh) {
     return { sum, worst, over };
   };
   const m = busy(rec.m), j = busy(rec.j);
-  // CPU time of the threads between the last tick before the window and the last tick in it.
-  const cpu = (key) => {
-    let before = null, last = null;
-    for (const t of ticks) {
-      if (t[key] === undefined || t[key] < 0) continue;
-      if (t.ts <= a) before = t[key];
-      if (t.ts <= b) last = t[key];
-    }
-    return before !== null && last !== null ? last - before : NaN;
-  };
-  const l = rec.l.filter((r) => r.a >= a && r.a <= b);
+  const cpu = (key) => (ticks[first]?.[key] >= 0 && ticks[last]?.[key] >= 0 ? ticks[last][key] - ticks[first][key] : NaN);
+  const l = rec.l.filter((r) => r.a >= from && r.a <= to);
   return {
     frames: gaps.length,
+    span: to - from,
     over8: gaps.filter((g) => g > 8.33 + 2).length,
     over16: gaps.filter((g) => g > 16.7 + 2).length,
     dropped: gaps.reduce((n, g) => n + Math.max(0, Math.round(g / refresh) - 1), 0),
