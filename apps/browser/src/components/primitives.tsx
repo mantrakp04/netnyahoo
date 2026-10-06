@@ -13,7 +13,8 @@ export function useHover() {
   return { hovered, hoverProps };
 }
 
-export function IconButton({
+// Memoized: the bars that hold it re-render on every key or hover while its props stay the same.
+export const IconButton = memo(function IconButton({
   icon,
   onPress,
   disabled,
@@ -64,7 +65,7 @@ export function IconButton({
       </Pressable>
     </View>
   );
-}
+});
 
 // Memoized (primitive props): it sits in rows that re-render for their own reasons (a title, a player's clock).
 export const Favicon = memo(function Favicon({

@@ -1,6 +1,6 @@
 import { displayUrl, resolveInput, searchUrl, scopedSearchUrl, type SearchScope, type Suggestion } from "@netnyahoo/core";
 import { ContextMenuArea, Symbol, copyText, pickFiles, showMenu, startDictation } from "@netnyahoo/shell";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useTheme } from "../lib/theme";
 import { journeyBarCommitted, journeyBarFocused, journeyKeystroke, journeyNavigate, journeySuggestions } from "../telemetry/journeys";
@@ -334,8 +334,21 @@ export function Omnibox({
     />
   );
 
-  const latest = useRef({ choose, profileId });
-  latest.current = { choose, profileId };
+  const latest = useRef({ choose, profileId, go, current, onCancel, tabId });
+  latest.current = { choose, profileId, go, current, onCancel, tabId };
+  // The bar's buttons take these, so they stay as they are while the field re-renders on each key.
+  const [barActions] = useState(() => ({
+    go: (url: string) => latest.current.go(url),
+    choose: () => latest.current.choose(latest.current.current),
+    dictate: () => {
+      input.current?.focus();
+      startDictation();
+    },
+    siteControls: () => {
+      latest.current.onCancel?.();
+      setPopover(latest.current.tabId, "siteControls");
+    },
+  }));
   const [rowActions] = useState<RowActions>(() => ({
     choose: (s) => latest.current.choose(s),
     hover: setSelected,
@@ -362,13 +375,13 @@ export function Omnibox({
         marginBottom: hero ? 8 : 0,
       }}
     >
-      <AddChip tabId={tabId} onGo={(url) => go(url)} />
+      <AddChip tabId={tabId} onGo={barActions.go} />
       <View style={{ flex: 1 }} />
-      <IconButton icon="mic" size={14} color={theme.textTertiary} tooltip="Dictation" onPress={() => { input.current?.focus(); startDictation(); }} />
+      <IconButton icon="mic" size={14} color={theme.textTertiary} tooltip="Dictation" onPress={barActions.dictate} />
       {hero ? (
-        <SendButton active={!!typed.trim()} onPress={() => choose(current)} />
+        <SendButton active={!!typed.trim()} onPress={barActions.choose} />
       ) : (
-        <GoButton label={destinationLabel(current)} onPress={() => choose(current)} />
+        <GoButton label={destinationLabel(current)} onPress={barActions.choose} />
       )}
     </View>
   );
@@ -389,10 +402,7 @@ export function Omnibox({
                 radius={13}
                 color={theme.textSecondary}
                 tooltip="Site Controls"
-                onPress={() => {
-                  onCancel?.();
-                  setPopover(tabId, "siteControls");
-                }}
+                onPress={barActions.siteControls}
               />
             ) : null}
           </View>
@@ -423,7 +433,7 @@ function destinationLabel(s: Suggestion | undefined): string {
   return "Go";
 }
 
-function AddChip({ tabId, onGo }: { tabId: string; onGo(url: string): void }) {
+const AddChip = memo(function AddChip({ tabId, onGo }: { tabId: string; onGo(url: string): void }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const { hovered, hoverProps } = useHover();
@@ -468,9 +478,9 @@ function AddChip({ tabId, onGo }: { tabId: string; onGo(url: string): void }) {
     </Pressable>
     </View>
   );
-}
+});
 
-function GoButton({ label, onPress }: { label: string; onPress(): void }) {
+const GoButton = memo(function GoButton({ label, onPress }: { label: string; onPress(): void }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   return (
@@ -496,9 +506,9 @@ function GoButton({ label, onPress }: { label: string; onPress(): void }) {
     </Pressable>
     </View>
   );
-}
+});
 
-function SendButton({ active, onPress }: { active: boolean; onPress(): void }) {
+const SendButton = memo(function SendButton({ active, onPress }: { active: boolean; onPress(): void }) {
   const theme = useTheme();
   return (
     <Pressable onPress={onPress} disabled={!active} style={{ marginLeft: 11.5 }}>
@@ -516,4 +526,4 @@ function SendButton({ active, onPress }: { active: boolean; onPress(): void }) {
       </View>
     </Pressable>
   );
-}
+});
