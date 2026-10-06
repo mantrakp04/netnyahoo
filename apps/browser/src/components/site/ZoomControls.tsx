@@ -1,4 +1,5 @@
 import { Symbol } from "@netnyahoo/shell";
+import { memo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { webviews } from "../../lib/webviews";
@@ -9,7 +10,7 @@ import { type ToolbarPalette } from "../layout/toolbarColors";
 import { useHover } from "../primitives";
 
 // Chrome's zoom icon: in the address field whenever the page isn't at 100%, opening − / + / Reset.
-export function ZoomIndicator({ tabId, zoom, palette, onFocus }: { tabId: string; zoom: number; palette: ToolbarPalette; onFocus: () => void }) {
+export const ZoomIndicator = memo(function ZoomIndicator({ tabId, zoom, palette, onFocus }: { tabId: string; zoom: number; palette: ToolbarPalette; onFocus: () => void }) {
   if (Math.abs(zoom - 1) < 0.001) return null;
   return (
     <ToolbarButton
@@ -25,7 +26,7 @@ export function ZoomIndicator({ tabId, zoom, palette, onFocus }: { tabId: string
       tooltip={`Zoom: ${Math.round(zoom * 100)}%`}
     />
   );
-}
+});
 
 export function ZoomPopover({ tabId, right, left, top }: { tabId: string; right?: number; left?: number; top: number }) {
   const theme = useTheme();

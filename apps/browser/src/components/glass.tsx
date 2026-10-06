@@ -1,4 +1,5 @@
 import { GlassEffect, isLiquidGlass } from "@netnyahoo/shell";
+import { memo } from "react";
 import { useTheme, type Theme } from "../lib/theme";
 
 export const liquidGlass = isLiquidGlass();
@@ -14,7 +15,7 @@ export function glassTint(theme: Theme, fill: string, raised = false, dark = the
   return toHex([mix(r, pr), mix(g, pg), mix(b, pb), alpha * 255]);
 }
 
-export function GlassFill({
+export const GlassFill = memo(function GlassFill({
   fill,
   tint,
   radius,
@@ -39,7 +40,7 @@ export function GlassFill({
       style={{ position: "absolute", top: -border, left: -border, right: -border, bottom: -border }}
     />
   );
-}
+});
 
 function rgba(color: string): [number, number, number, number] {
   const m = color.match(/rgba?\(([^)]+)\)/);

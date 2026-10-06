@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { useCalendar, useNow } from "../../live/calendar";
@@ -8,7 +8,7 @@ import { useBrowser } from "../../store/browser";
 import { useSidebarTokens } from "../sidebar/tokens";
 import { useLiveColors } from "./colors";
 
-export function NextMeetingBadge({ tabId }: { tabId: string }) {
+export const NextMeetingBadge = memo(function NextMeetingBadge({ tabId }: { tabId: string }) {
   // The URL, not the check: the selector runs on every store update, the regex only when it changes.
   const pinnedUrl = useBrowser((s) => {
     const t = s.tabs[tabId];
@@ -63,4 +63,4 @@ export function NextMeetingBadge({ tabId }: { tabId: string }) {
       </View>
     </Animated.View>
   );
-}
+});

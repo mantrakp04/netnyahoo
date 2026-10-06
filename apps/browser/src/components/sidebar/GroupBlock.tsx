@@ -71,13 +71,13 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
   );
 });
 
-function Entry({ entry, section, groupId }: { entry: string; section: "list" | "pinnedGroups"; groupId: string }) {
+const Entry = memo(function Entry({ entry, section, groupId }: { entry: string; section: "list" | "pinnedGroups"; groupId: string }) {
   return entry.startsWith("s:") ? (
     <SplitRowItem splitId={entry.slice(2)} section={section} parentGroup={groupId} />
   ) : (
     <TabRowItem tabId={entry.slice(2)} section={section} parentGroup={groupId} />
   );
-}
+});
 
 // `open` is the members' collapse animation: the chevron turns on its frames, so the two never drift apart.
 function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; windowId: string; collapsed: boolean; open: Animated.Value }) {

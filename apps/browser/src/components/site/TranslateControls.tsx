@@ -1,4 +1,5 @@
 import { showMenu, translation, type MenuItem } from "@netnyahoo/shell";
+import { memo } from "react";
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { isIncognitoProfile } from "../../store/model";
@@ -17,7 +18,7 @@ import {
   useTranslateState,
 } from "./translate";
 
-export function TranslateButton({ tabId, palette, onFocus }: { tabId: string; palette: ToolbarPalette; onFocus: () => void }) {
+export const TranslateButton = memo(function TranslateButton({ tabId, palette, onFocus }: { tabId: string; palette: ToolbarPalette; onFocus: () => void }) {
   const theme = useTheme();
   const state = useTranslateState(tabId);
   if (!translation || (!state.source && state.status === "idle")) return null;
@@ -38,7 +39,7 @@ export function TranslateButton({ tabId, palette, onFocus }: { tabId: string; pa
       tooltip={translated ? `Show Original (${languageName(state.source ?? "")})` : "Translate this page"}
     />
   );
-}
+});
 
 async function chooseLanguage(tabId: string) {
   const languages = await otherLanguages();
