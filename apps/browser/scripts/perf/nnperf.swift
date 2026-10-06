@@ -12,6 +12,8 @@
 //                                     `enter`, `esc`) or `text:<chars>` (US layout, a key down and up per character,
 //                                     <gap ms> apart). Prints {"spec", "at"} per spec: epoch ms when its first key down
 //                                     was created, the instant the press starts for the journey rows
+//   nnperf display                    {"asleep", "locked"}: whether the main display is off and whether the login session's
+//                                     screen is locked (macOS gives windows no display-link frames then)
 //   nnperf input <pid> <secs>         {"inputSecs", "overWindowSecs"}: how long, polling every 250 ms, someone used the
 //                                     mouse, trackpad or keyboard (HIDIdleTime), and how much of that with the pointer
 //                                     moving over one of the pid's windows
@@ -74,6 +76,9 @@ case "rusage":
   for p in args.dropFirst(2) { if let pid = pid_t(p), let r = rusage(pid) { printJSON(r) } }
 case "windows":
   printJSON(windows(pid_t(args[2]) ?? 0))
+case "display":
+  let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+  printJSON(["asleep": CGDisplayIsAsleep(CGMainDisplayID()) != 0, "locked": (session?["CGSSessionScreenIsLocked"] as? Bool) ?? false])
 case "quit":
   exit(NSRunningApplication(processIdentifier: pid_t(args[2]) ?? 0)?.terminate() == true ? 0 : 1)
 case "waitwindow":

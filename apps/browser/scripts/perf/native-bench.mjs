@@ -31,6 +31,12 @@
 //                               navigate   J4: a real Enter in the command bar with a local test page's URL → the engine
 //                                          asked to load, navigation started, committed, first contentful paint; from a new
 //                                          tab's bar (⌘T) and from a page's panel (⌘L). Same instance as newtabkey.
+//                               frames     the frame rig (frames-phase.mjs, nnframes.m): per interaction of the four journeys
+//                                          (command bar, tab switch, sidebar collapse/expand/scroll/hover, profile swipe, new
+//                                          window) on the big seed, display-link frames over 8.33/16.7 ms, worst frame, main
+//                                          and JS thread busy time. --frames-n repetitions (default 8). Needs the display on.
+//                               framecounts the same interactions with the JS perf probe on: commits, host updates, layout
+//                                          passes, mount batches (counts, no timing; the ratchet's numbers)
 //                               windows    8 new windows per run, alone
 //                               throttle   hidden animating tabs' rAF and timer rates
 //                               churn      leak check: open and close 10 tabs 5 times
@@ -38,6 +44,7 @@
 //                               prepare    prepare the app copies and exit (see --prepared)
 //     --env K=V               repeatable: extra environment for every instance (DYLD_INSERT_LIBRARIES is appended to
 //                             the marker library). Instances stay muted; don't pass NETNYAHOO_ALLOW_AUDIO.
+//     --frames-n <n>          repetitions of each interaction per run in frames (default 8; framecounts uses at most 3)
 //     --journey-n <n>         iterations of each journey per run in newtabkey and navigate (default 10)
 //     --page-port <n>         the test pages' server port (default: any free port)
 //     --seed big              launch, newtabkey and navigate phases: start every launch from seed.mjs's big saved session (200 tabs in two
@@ -112,6 +119,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { buildSeed } from "./seed.mjs";
+import { frameRows, frameTable, framesLibrary, framesRun } from "./frames-phase.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, "../..");
@@ -138,6 +146,7 @@ const { values: opt } = parseArgs({
     "fresh-copy": { type: "boolean" },
     "page-port": { type: "string", default: "0" },
     "journey-n": { type: "string", default: "10" },
+    "frames-n": { type: "string", default: "8" },
     hold: { type: "string", default: "0" },
     help: { type: "boolean", short: "h" },
   },
@@ -430,7 +439,7 @@ class Instance {
     if (spawnSync("pgrep", ["-f", main]).status === 0) throw new Error("a bench instance is still running");
     // --env K=V; an extra DYLD_INSERT_LIBRARIES loads after the marker.
     const extra = [...opt.env, ...this.env].filter((e) => !e.startsWith("DYLD_INSERT_LIBRARIES="));
-    const dyld = [markerLibrary(), ...opt.env.filter((e) => e.startsWith("DYLD_INSERT_LIBRARIES=")).map((e) => e.slice(22))].join(":");
+    const dyld = [markerLibrary(), ...(this.frames ? [framesLibrary(toolDir, here)] : []), ...opt.env.filter((e) => e.startsWith("DYLD_INSERT_LIBRARIES=")).map((e) => e.slice(22))].join(":");
     this.t0 = Date.now();
     execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${this.dataDir}`,
       "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `NETNYAHOO_UPDATE_FEED_URL=${this.feed}`,
@@ -1209,6 +1218,7 @@ function summary(res) {
     if (loads.length) rows.push({ name: "journeys: 1-minute load average at each run's start and end", median: median(loads), min: Math.min(...loads), max: Math.max(...loads), n: loads.length, unit: "", digits: 0 });
     rows.push({ name: "journeys: fetches the guard answered (nothing left the machine)", median: J.reduce((n, r) => n + (r.blocked ?? 0), 0), min: 0, max: 0, n: J.length, unit: "", digits: 0 });
   }
+  rows.push(...frameRows(res));
   return rows;
 }
 
@@ -1235,12 +1245,14 @@ const fail = (message) => {
 };
 if (!opt.app) fail("usage: native-bench.mjs --app <Netnyahoo.app> [--control <app>] [--out dir] [--only phases] … (--help)");
 const JOURNEY_PHASES = ["newtabkey", "navigate"];
-const PHASES = ["launch", "session", ...SESSION_PARTS, ...JOURNEY_PHASES, "windows", "throttle", "churn", "sample", "prepare"];
+const FRAME_PHASES = ["frames", "framecounts"];
+const PHASES = ["launch", "session", ...SESSION_PARTS, ...JOURNEY_PHASES, ...FRAME_PHASES, "windows", "throttle", "churn", "sample", "prepare"];
 const only = new Set(opt.only.split(",").map((p) => p.trim()).filter(Boolean));
 for (const p of only) if (!PHASES.includes(p)) fail(`--only: no phase "${p}"; phases: ${PHASES.join(", ")}`);
+if (only.has("frames") || only.has("framecounts")) opt.seed ??= "big";
 if (opt.seed && opt.seed !== "big") fail(`--seed: only "big" exists, got "${opt.seed}"`);
 if (opt["fresh-copy"] && ![...only].every((p) => p === "launch" || p === "prepare")) fail("--fresh-copy works with --only launch");
-if (opt.seed && ![...only].every((p) => p === "launch" || p === "prepare" || JOURNEY_PHASES.includes(p))) fail("--seed big works with --only launch, newtabkey and navigate (the other phases measure a one-tab session)");
+if (opt.seed && ![...only].every((p) => p === "launch" || p === "prepare" || JOURNEY_PHASES.includes(p) || FRAME_PHASES.includes(p))) fail("--seed big works with --only launch, newtabkey, navigate, frames and framecounts (the other phases measure a one-tab session)");
 for (const e of opt.env) if (!/^[A-Za-z_]\w*=/.test(e)) fail(`--env wants K=V, got "${e}"`);
 if (!(+opt.hold >= 0)) fail(`--hold wants seconds, got "${opt.hold}"`);
 if (opt.control && opt.compare) log("--compare is ignored with --control: the control is the before column");
@@ -1252,7 +1264,7 @@ function makeSide(app, label, role) {
   const dir = join(opt.out, label);
   mkdirSync(dir, { recursive: true });
   return { role, label, tag: "", src: resolve(app), dir, template: join(dir, "template"), app: null, bundle: null,
-    results: { meta: {}, launch: [], session: [], windows: [], journeys: [], throttle: [], sample: [] } };
+    results: { meta: {}, launch: [], session: [], windows: [], journeys: [], frames: [], throttle: [], sample: [] } };
 }
 const candidate = makeSide(opt.app, opt.label ?? labelOf(opt.app), "candidate");
 let control = null;
@@ -1306,6 +1318,9 @@ try {
   if (only.has("launch")) await interleaved(+opt["launch-runs"], launchRun);
   const parts = new Set(SESSION_PARTS.filter((p) => only.has("session") || only.has(p)));
   if (parts.size) await interleaved(+opt.runs, (side, i) => sessionRun(side, i, parts));
+  const framesCtx = { Instance, freshDir, nnperf, sleep, log, WINDOW, base, opt, toolDir, loadavg };
+  if (only.has("frames")) await interleaved(+opt.runs, (side, i) => framesRun(framesCtx, side, i, { counts: false }));
+  if (only.has("framecounts")) await interleaved(+opt.runs, (side, i) => framesRun(framesCtx, side, i, { counts: true }));
   const journeys = new Set(JOURNEY_PHASES.filter((p) => only.has(p)));
   if (journeys.size) await interleaved(+opt.runs, (side, i) => journeyRun(side, i, journeys));
   if (only.has("windows")) await interleaved(+opt.runs, windowsRun);
@@ -1321,6 +1336,7 @@ try {
     if (results.churn) console.log(`\n${tag}Browser process after each open/close-10-tabs round (MB):`, results.churn.map((r) => Math.round(r.browserMB)).join(" → "));
     if (results.sample.length) console.log(`${tag}Main thread samples:`, JSON.stringify(results.sample[0]));
   }
+  if (sides.some((x) => x.results.frames.length)) console.log(`\n${frameTable(Object.fromEntries(sides.map((x) => [x.label, x.results])))}`);
   if (control) console.log(`\nresults: ${join(candidate.dir, "results.json")}, ${join(control.dir, "results.json")}`);
 } finally {
   await cleanup();
