@@ -4087,11 +4087,14 @@ try {
       if (reachable && !ok(remoteFetch)) throw new Error(`${remoteUrl} not loaded (${JSON.stringify(remoteFetch)})`);
       const remote = `${ok(remoteFetch) ? "ok" : "null"}${reachable ? "" : " (not reachable from this script)"}`;
       // A private window's profile: fetched through it, handed back as data (Chrome's favicon store refuses it). A
-      // private profile no window shows is never made for a fetch.
-      const noWindow = await fetchIcon(`${favBase}/icon.png?no-private-window`, "incognito:nnfav");
+      // private profile no window shows is never made for a fetch. Native calls take the engine's profile name
+      // (incognito:<window>@<engine profile>, the app's engineProfile), not the store's id (…@default).
+      const noWindow = await fetchIcon(`${favBase}/icon.png?no-private-window`, "incognito:nnfav@");
       if (noWindow.uri !== null) throw new Error("a fetch made a private profile");
       privateWindow = await evalApp(`return nn.actions.openWindow({ incognito: true, url: "${favBase}/icon.png?private-page" })`);
-      const privateProfile = await until("the private window's profile", () => evalApp(`return nn.store.getState().windows["${privateWindow}"]?.profileId ?? null`), 10000);
+      const privateProfile = await until("the private window's engine profile", async () =>
+        (await evalApp(`return globalThis.expo.modules.NetnyahooCEF.tabStrips()`)).strips.find((st) => st.appWindow === privateWindow)?.profile ?? null, 10000);
+      if (!privateProfile.startsWith("incognito:")) throw new Error(`the private window's engine profile: ${JSON.stringify(privateProfile)}`);
       await until("the private page", () => (seen.some((s) => s.path === "/icon.png?private-page") ? true : null), 10000);
       const privately = await fetchIcon(`${favBase}/icon.png?private`, privateProfile);
       if (!ok(privately)) throw new Error(`the private window's fetch failed: ${JSON.stringify(privately)}`);
