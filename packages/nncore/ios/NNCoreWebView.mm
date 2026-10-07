@@ -487,6 +487,8 @@ static BOOL HeldSelector(SEL selector) {
   CFTimeInterval _sentProgressAt;
   double _sentProgress;
   BOOL _progressQueued;
+  // When a link dragged onto its own page last opened (page_script.js › Link drags).
+  CFTimeInterval _linkDropAt;
   // The page script's reports, per frame (as packages/cef's NNClient keeps them).
   NSMutableDictionary<NSString *, NSNumber *> *_mediaFrames;
   NSMutableDictionary<NSString *, NSDictionary *> *_nowPlaying;
@@ -1514,6 +1516,27 @@ void NNCoreWebViewsSetFieldTiming(BOOL on) {
     AnswerHello(tab, _profile, dict, frameId, main);
   } else if ([kind isEqualToString:@"selection"] && main) {
     [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
+  } else if ([kind isEqualToString:@"linkDrop"] && main) {
+    // A link dragged out of the page and let go over it, nothing there taking it (page_script.js › Link drags): Chrome
+    // drops nothing on the page a drag came from, so it opens in a new tab. The page can send this whenever it likes, so
+    // only from the page on screen, once, and only for a drag that just ended in a release over this page: the button is
+    // up, the release came after the drag's last move (not a drag cancelled with Escape after an earlier click) and the
+    // pointer is over the page in this window (not another app's window above it).
+    NSString *url = Text(dict, @"url", 8192);
+    NSString *scheme = (url.length ? [NSURL URLWithString:url].scheme.lowercaseString : nil) ?: @"";
+    const CFTimeInterval now = CACurrentMediaTime();
+    const CGEventSourceStateID state = kCGEventSourceStateCombinedSessionState;
+    const double sinceUp = CGEventSourceSecondsSinceLastEventType(state, kCGEventLeftMouseUp);
+    const BOOL released = !(NSEvent.pressedMouseButtons & 1) && sinceUp < 1 &&
+                          sinceUp <= CGEventSourceSecondsSinceLastEventType(state, kCGEventLeftMouseDragged);
+    const NSPoint mouse = NSEvent.mouseLocation;
+    NSWindow *window = self.window;
+    const BOOL over = window && [NSWindow windowNumberAtPoint:mouse belowWindowWithWindowNumber:0] == window.windowNumber &&
+                      NSPointInRect([self convertPoint:[window convertPointFromScreen:mouse] fromView:nil], self.bounds);
+    if (_visible && [@[ @"http", @"https" ] containsObject:scheme] && released && over && now - _linkDropAt > 1) {
+      _linkDropAt = now;
+      [self emit:@"openWindow" payload:@{@"url" : url, @"disposition" : @"foreground", @"userGesture" : @YES}];
+    }
   } else if ([kind isEqualToString:@"perf"] && main && NNFieldTimingEnabled()) {
     // Field timing: epoch ms from the page's clock, kept only when plausible.
     for (NSString *what in @[ @"fcp", @"shown" ]) {

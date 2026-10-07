@@ -745,6 +745,58 @@
   addEventListener("resize", hideSelection);
   addEventListener("pagehide", hideSelection);
 
+  // MARK: Link drags — Chrome drops nothing on the page a drag came from, so a link dragged out of the top document and
+  // let go over it, nothing there taking it (no drop zone, not a field), asks the app to open it in a new tab. Not for a
+  // ⌘-click that became a small drag (under DRAG_MIN px), nor a drop outside the page (the sidebar, another app). The
+  // page runs after this and can replace any method or getter below, so they're the originals (the app checks again
+  // that a drag really ended over the page).
+  if (isTop) try {
+    const DRAG_MIN = 40;
+    const getter = (proto, name) => {
+      const get = Object.getOwnPropertyDescriptor(proto, name).get;
+      return (o) => apply(get, o, []);
+    };
+    const target = getter(Event.prototype, "target");
+    const nodeType = getter(Node.prototype, "nodeType");
+    const parent = getter(Node.prototype, "parentElement");
+    const closest = Element.prototype.closest;
+    const href = getter(HTMLAnchorElement.prototype, "href");
+    const transfer = getter(DragEvent.prototype, "dataTransfer");
+    const dropEffect = getter(DataTransfer.prototype, "dropEffect");
+    const [clientX, clientY, screenX, screenY] = ["clientX", "clientY", "screenX", "screenY"].map((n) => getter(MouseEvent.prototype, n));
+    const width = getter(window, "innerWidth");
+    const height = getter(window, "innerHeight");
+    const test = RegExp.prototype.test;
+    const { hypot } = Math;
+    let linkDrag = null;
+    document.addEventListener(
+      "dragstart",
+      guard((e) => {
+        linkDrag = null;
+        let el = target(e);
+        if (!e.isTrusted || !el) return;
+        if (nodeType(el) !== 1) el = parent(el);
+        const a = el && apply(closest, el, ["a[href]"]);
+        const url = a && href(a);
+        if (url && apply(test, /^https?:/, [url])) linkDrag = { url, x: screenX(e), y: screenY(e) };
+      }),
+      true,
+    );
+    document.addEventListener(
+      "dragend",
+      guard((e) => {
+        const drag = linkDrag;
+        linkDrag = null;
+        const data = drag && e.isTrusted && transfer(e);
+        if (!data || dropEffect(data) !== "none") return;
+        const x = clientX(e), y = clientY(e);
+        const over = x > 0 && y > 0 && x < width(window) && y < height(window);
+        if (over && hypot(screenX(e) - drag.x, screenY(e) - drag.y) >= DRAG_MIN) send("linkDrop", { url: drag.url });
+      }),
+      true,
+    );
+  } catch (e) {}
+
   // MARK: Scroll direction, for the toolbar that tucks away while you read (tabs on top). From the page's real scroll
   // (the document, or an element scroller filling most of the window), not wheel deltas, and only while the user is
   // scrolling (wheel, keys, a press or a scrollbar drag in the last second): scroll restoration or a chat scrolling
