@@ -4861,12 +4861,15 @@ try {
     // must stay at (18, 20) from the window's top-left, visible and opaque, through every pass. The log samples them
     // synchronously at each pass and at each change to them or the title bar views holding them; on 0.2.22's first
     // NNCore build they went to AppKit's (9, 9) at each switch or close and came back 10–430 ms later.
+    // Hiding the sidebar takes them out of the window with it (Dia): while it's hidden they hold one spot past the
+    // window's left edge, through tab work too. The slides themselves (out and back) aren't sampled.
     const w = (await state()).windowId;
     const W = JSON.stringify(w);
-    const from = existsSync(lightsLog) ? readFileSync(lightsLog, "utf8").length : 0;
-    const run = async (body) => {
+    const logLength = () => (existsSync(lightsLog) ? readFileSync(lightsLog, "utf8").length : 0);
+    const from = logLength();
+    const run = async (body, settle = 500) => {
       const result = await evalApp(body);
-      await sleep(500);
+      await sleep(settle);
       return result;
     };
     const tabs = [];
@@ -4874,28 +4877,45 @@ try {
     for (const id of [tabs[0], tabs[2], tabs[1], tabs[3]]) await run(`nn.actions.switchToTab("${id}"); return true`);
     await run(`return nn.store.getState().createSplit(["${tabs[2]}", "${tabs[3]}"])`);
     await run(`nn.store.getState().closeTab("${tabs[3]}"); return true`);
-    await run(`nn.store.getState().toggleSidebar(${W}); return true`);
+    const hiding = logLength();
+    await run(`nn.store.getState().toggleSidebar(${W}); return true`, 1500);
+    const hidden = logLength();
     await run(`nn.actions.switchToTab("${tabs[0]}"); return true`);
-    await run(`nn.store.getState().toggleSidebar(${W}); return true`);
+    const showing = logLength();
+    await run(`nn.store.getState().toggleSidebar(${W}); return true`, 1500);
+    const shown = logLength();
     for (const id of [tabs[0], tabs[1], tabs[2]]) await run(`nn.store.getState().closeTab("${id}"); return true`);
     const other = await run(`return nn.actions.openWindow()`);
     await run(`nn.store.getState().closeWindow(${JSON.stringify(other)}); return true`);
-    const lines = readFileSync(lightsLog, "utf8").slice(from).split("\n").filter(Boolean);
+    const log = readFileSync(lightsLog, "utf8");
+    const linesOf = (a, b) => log.slice(a, b).split("\n").filter(Boolean);
     const sample = (line) => line.match(/ -> (.*?) \| /)?.[1] ?? line;
-    const bad = lines.filter((line) => {
-      const state = sample(line);
-      return !state.startsWith("close=(18.0,20.0) ") || !state.endsWith(" hidden=0 alpha=1.00") || / _NSTheme\w*Widget set/.test(line);
-    });
-    // Each window's buttons are in one place throughout (minimise and zoom too).
-    const places = new Map();
-    for (const line of lines) {
-      const window = line.match(/window=(\d+)/)?.[1];
-      places.set(window, (places.get(window) ?? new Set()).add(sample(line)));
+    // Each slide's last sample is where it came to rest: out of the window, then back at (18, 20).
+    const rest = (a, b) => linesOf(a, b).filter((line) => line.includes(" layout -> ")).slice(-1);
+    const docked = [...linesOf(from, hiding), ...rest(showing, shown), ...linesOf(shown)];
+    const away = [...rest(hiding, hidden), ...linesOf(hidden, showing)];
+    if (!away.length || !rest(showing, shown).length) throw new Error(`no settled layout logged for the sidebar's slides`);
+    const lines = [...docked, ...away];
+    const healthy = (line) => sample(line).endsWith(" hidden=0 alpha=1.00") && !/ _NSTheme\w*Widget set/.test(line);
+    const bad = docked.filter((line) => !sample(line).startsWith("close=(18.0,20.0) ") || !healthy(line));
+    // Hidden: all three past the left edge (the zoom button, rightmost, ends 14 pt right of its x), level with their place.
+    const out = (line) => {
+      const xs = [...sample(line).matchAll(/=\((-?[\d.]+),(-?[\d.]+)\)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      return xs.length === 3 && xs.every(([x, y]) => x + 14 <= 0 && y === 20);
+    };
+    const window = (line) => line.match(/window=(\d+)/)?.[1];
+    const badAway = away.filter((line) => window(line) === window(docked[0] ?? "") && (!out(line) || !healthy(line)));
+    // Each window's buttons are in one place throughout each phase (minimise and zoom too).
+    const moved = [];
+    for (const [phase, set] of [["docked", docked], ["hidden", away]]) {
+      const places = new Map();
+      for (const line of set) places.set(window(line), (places.get(window(line)) ?? new Set()).add(sample(line)));
+      for (const [win, at] of places) if (at.size > 1) moved.push({ phase, window: win, places: [...at] });
     }
-    const moved = [...places].filter(([, set]) => set.size > 1).map(([window, set]) => ({ window, places: [...set] }));
     if (!lines.some((line) => line.includes(" layout -> "))) throw new Error("no layout pass logged (is NETNYAHOO_TRAFFIC_LIGHTS_LOG set?)");
-    if (bad.length || moved.length) throw new Error(`traffic lights left their spot: ${JSON.stringify({ moved, bad: bad.slice(0, 6) })}`);
-    return { samples: lines.length, layoutPasses: lines.filter((line) => line.includes(" layout -> ")).length, at: [...places.values()].map((set) => [...set][0]) };
+    if (bad.length || badAway.length || moved.length)
+      throw new Error(`traffic lights left their spot: ${JSON.stringify({ moved, bad: bad.slice(0, 6), badAway: badAway.slice(0, 6) })}`);
+    return { samples: lines.length, hiddenSamples: away.length, layoutPasses: lines.filter((line) => line.includes(" layout -> ")).length };
   });
 
   await check("launch-cocoa-args", async () => {
