@@ -36,7 +36,9 @@ export function openFromPage({ url, adoptId, disposition, profile }: OpenWindowR
   if (disposition === "window") {
     return void openWindow(w.incognito ? { incognito: true, url, profileId: originalProfile(s, w) } : { profileId: from.profileId, url, adoptId });
   }
-  const background = disposition === "background";
+  // A page of a Space the window isn't showing never brings it back: its tab opens behind (a stray drop on a page
+  // painting unseen once opened the dropped link in the next Space, and the window went there).
+  const background = disposition === "background" || from.profileId !== w.profileId;
   s.newTab(w.id, { url, adoptId, openerId: from.tabId, profileId: from.profileId, background });
 }
 

@@ -315,6 +315,27 @@ NSString *JSONString(id value) {
 // The page's reports a view keeps, held on its tab between views (-stashPageReports).
 const char kPageReportsKey = 0;
 
+// The drag types a view under a page registered (Chrome's WebContentsViewCocoa), put away while the page isn't shown.
+const char kDropTypesKey = 0;
+
+// Whether the views under `root` take drops. AppKit finds a drop's destination with a hit test of its own (the topmost
+// view under the pointer registered for the dragged types) that counts neither alpha nor React Native's pointerEvents:
+// a page painting unseen (warm for a swipe, or just leaving the screen) stacked above the shown one took its drops, and
+// Chrome opened the dropped link as a new tab of that page, in its profile (a link dragged on x.com opened in the next
+// Space, logged out). Registered again as the page shows, or leaves its view.
+void AcceptDrops(NSView *root, BOOL accept) {
+  if (!root) return;
+  NSArray<NSPasteboardType> *held = objc_getAssociatedObject(root, &kDropTypesKey);
+  if (accept && held) {
+    objc_setAssociatedObject(root, &kDropTypesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [root registerForDraggedTypes:held];
+  } else if (!accept && !held && root.registeredDraggedTypes.count) {
+    objc_setAssociatedObject(root, &kDropTypesKey, root.registeredDraggedTypes, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [root unregisterDraggedTypes];
+  }
+  for (NSView *sub in root.subviews) AcceptDrops(sub, accept);
+}
+
 }  // namespace
 
 @interface NNCoreWebView () <NNCoreTabDelegate>
@@ -939,6 +960,8 @@ static BOOL HeldSelector(SEL selector) {
   [NNCoreTabs setView:nil forTab:_tab];
   [NNCoreWebView noteShown:_tab];
   [self stashPageReports];
+  // Wherever the page goes next (another view, parked, a window of Chrome's), it takes drops until that says otherwise.
+  AcceptDrops(_tab.view, YES);
   if (_tab.view.superview == self) [_tab.view removeFromSuperview];
   [self dropDevTools];
   [self resetBlocked:NO];
@@ -1095,18 +1118,23 @@ static BOOL HeldSelector(SEL selector) {
 }
 
 - (void)devToolsChanged:(NSView *)devToolsView {
-  if (_devtoolsView && _devtoolsView != devToolsView && _devtoolsView.superview == self) [_devtoolsView removeFromSuperview];
+  if (_devtoolsView && _devtoolsView != devToolsView && _devtoolsView.superview == self) {
+    AcceptDrops(_devtoolsView, YES);
+    [_devtoolsView removeFromSuperview];
+  }
   _devtoolsView = devToolsView;
   if (devToolsView && devToolsView.superview != self) {
     [devToolsView removeFromSuperview];
     NSView *page = _tab.view;
     if (page.superview == self) [self addSubview:devToolsView positioned:NSWindowBelow relativeTo:page];
     else [self addSubview:devToolsView];
+    AcceptDrops(devToolsView, _visible);
   }
   [self layoutPage];
 }
 
 - (void)dropDevTools {
+  AcceptDrops(_devtoolsView, YES);
   if (_devtoolsView.superview == self) [_devtoolsView removeFromSuperview];
   _devtoolsView = nil;
 }
@@ -1138,7 +1166,10 @@ static BOOL HeldSelector(SEL selector) {
 - (void)applyPainting {
   self.alphaValue = _visible || !(_warm || _leaving) ? 1 : 0;
   const BOOL shown = self.paints;
-  for (NSView *sub in self.subviews) sub.hidden = !shown;
+  for (NSView *sub in self.subviews) {
+    sub.hidden = !shown;
+    AcceptDrops(sub, _visible);
+  }
   if (TraceVisibility())
     NSLog(@"[nncore-vis] %@ paint visible=%d warm=%d tab=%d page=%@ inWindow=%ld hiddenAncestor=%d", _transferKey,
           _visible, _warm, _tab ? (int)_tab.tabId : -1, _tab.view.superview == self ? @"here" : @"elsewhere",
