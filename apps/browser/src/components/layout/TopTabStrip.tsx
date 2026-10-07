@@ -1193,22 +1193,44 @@ function NewTabButton({ windowId }: { windowId: string }) {
   );
 }
 
+/** The hover strip along the window's top that brings the tab strip's peek out, and where the peek sits. */
+const HOVER_HEIGHT = 6;
+const PEEK_LEFT = 6;
+const PEEK_TOP = 4;
+
 export function TopStripPeek({ windowWidth, enabled }: { windowWidth: number; enabled: boolean }) {
   const theme = useTheme();
   const { slide, live, show, hide } = usePeek(enabled);
+  // The strip and the panel overlap (y 4–6), and AppKit sends no enter for a view that appears under the pointer, only a
+  // leave once it goes. So a leave asks where the pointer went: into the other one keeps the peek out.
+  const leaveStrip = (e: { nativeEvent: { clientY: number } }) => {
+    if (live && e.nativeEvent.clientY < HOVER_HEIGHT) hide();
+  };
+  const leavePanel = (e: { nativeEvent: { clientX: number; clientY: number } }) => {
+    const x = e.nativeEvent.clientX + PEEK_LEFT;
+    const y = e.nativeEvent.clientY + PEEK_TOP;
+    if (!(y >= 0 && y < HOVER_HEIGHT && x >= layout.trafficLightsWidth)) hide();
+  };
   return (
     <>
-      {enabled ? <View onMouseEnter={show} style={{ position: "absolute", left: layout.trafficLightsWidth, right: 0, top: 0, height: 6 }} /> : null}
+      {enabled ? (
+        <View
+          onMouseEnter={show}
+          onMouseLeave={leaveStrip}
+          // No further right than the panel: a leave downwards is into it.
+          style={{ position: "absolute", left: layout.trafficLightsWidth, right: PEEK_LEFT, top: 0, height: HOVER_HEIGHT }}
+        />
+      ) : null}
       <Animated.View
         pointerEvents={live ? "auto" : "none"}
         onMouseEnter={live ? show : undefined}
-        onMouseLeave={live ? hide : undefined}
+        onMouseLeave={live ? leavePanel : undefined}
         style={{
           position: "absolute",
-          left: 6,
-          width: windowWidth - 12,
+          left: PEEK_LEFT,
+          width: windowWidth - PEEK_LEFT * 2,
           // Out of the window while hidden (a transform doesn't move hover tracking): its tabs mustn't hover under the page.
-          top: live ? 4 : -10_000,
+          top: live ? PEEK_TOP : -10_000,
           height: PEEK_HEIGHT,
           opacity: slide,
           transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-PEEK_HEIGHT - 8, 0] }) }],

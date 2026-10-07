@@ -31,6 +31,8 @@ AccessibilityInfo.isReduceMotionEnabled().then(
 AccessibilityInfo.addEventListener("reduceMotionChanged", (on) => (reduceMotion = on));
 
 const SPRING = springConfig(DOCK_SPRING);
+/** The hover strip at the window's left edge that brings the peek out. */
+const STRIP_WIDTH = 8;
 
 /**
  * The window's dock position: 1 with the sidebar shown, 0 with it hidden, springing between them as Dia's does when
@@ -190,6 +192,17 @@ function SidebarDock({
     [width],
   );
 
+  // The strip and the panel overlap (x 6–8), and AppKit sends no enter for a view that appears under the pointer, only
+  // a leave once it goes. So a leave asks where the pointer went: into the other one keeps the peek out.
+  const leaveStrip = (e: { nativeEvent: { clientX: number } }) => {
+    if (peek.live && e.nativeEvent.clientX < STRIP_WIDTH) peek.hide();
+  };
+  const leavePanel = (e: { nativeEvent: { clientX: number; clientY: number } }) => {
+    const x = e.nativeEvent.clientX + PEEK_ORIGIN[0];
+    const y = e.nativeEvent.clientY + PEEK_ORIGIN[1];
+    if (!(x >= 0 && x < STRIP_WIDTH && y >= layout.sidebarHeader)) peek.hide();
+  };
+
   // The hover strip (from the first hide) and the panel's fill and shadow (from the first peek) are made once and kept:
   // adding a view re-adds its siblings to their superview (the card with its pages, or the sidebar).
   const strip = useRef(false);
@@ -207,19 +220,21 @@ function SidebarDock({
         <View
           pointerEvents={!open && !fullscreen ? "auto" : "none"}
           onMouseEnter={peek.show}
+          onMouseLeave={leaveStrip}
           style={{
             position: "absolute",
             left: 0,
             top: layout.sidebarHeader,
-            bottom: 0,
-            width: !open && !fullscreen ? 8 : 0,
+            // No lower than the panel: a leave to the right is into it.
+            bottom: layout.cardInset,
+            width: !open && !fullscreen ? STRIP_WIDTH : 0,
           }}
         />
       )}
       <Animated.View
         pointerEvents={fullscreen || moving || (!open && !peeking) ? "none" : "auto"}
         onMouseEnter={peeking ? peek.show : undefined}
-        onMouseLeave={peeking ? peek.hide : undefined}
+        onMouseLeave={peeking ? leavePanel : undefined}
         style={{
           position: "absolute",
           left: away ? -10_000 : peeking ? PEEK_ORIGIN[0] : 0,
