@@ -4798,10 +4798,12 @@ try {
   });
 
   await check("extension-tab-empty-window", async () => {
-    // An extension's tabs.create while the app's window shows no page (its tabs closed: a new-tab placeholder only):
-    // Chrome puts its tab in that window's Browser, which no app view holds, so the app hears onTabs and opens the
-    // URL as its own tab there. With every app window closed, Chrome 154 itself refuses ("No current window"); that
-    // is recorded, not asserted.
+    // An extension's tabs.create while the app's window shows no page (its tabs closed: a New Tab placeholder only):
+    // Chrome puts its tab in that window's Browser and the app adopts that very tab, once, in front, in that window
+    // under its profile. It arrives through the placeholder's view (openWindow, adoptId tab:<browser>; the
+    // extensions module's onTabs only when no view of the profile is shown anywhere: recorded, not asserted). The
+    // extension's tab id stays that tab's: chrome.tabs sees it active, in the app window's Chrome window, loaded
+    // once. With every app window closed, Chrome 154 itself refuses ("No current window"); recorded, not asserted.
     if (exited) await launch("app3.out.log");
     await until("the app", async () => {
       try {
@@ -4832,18 +4834,58 @@ try {
         });
         return made.result?.value ?? made.exceptionDetails?.exception?.description;
       };
-      // Every tab of the window closed: the app keeps the window with a new-tab placeholder (no page).
-      await evalApp(`const s = nn.store.getState(); s.closeTabs([...s.windows["${windowId}"].tabIds]); return true`);
+      // The app's only window (earlier checks' windows closed: Chrome would pick its last active one), every tab of it
+      // closed: the app keeps the window with a new-tab placeholder (no page).
+      await evalApp(`const s = nn.store.getState(); Object.keys(s.windows).filter((id) => id !== "${windowId}").forEach((id) => s.closeWindow(id));
+        s.closeTabs([...s.windows["${windowId}"].tabIds]); return true`);
+      await until("one app window", async () => ((await evalApp(`return Object.keys(nn.store.getState().windows).length`)) === 1 ? true : null), 10000);
       const empty = await until("the window without pages", async () => {
         const s = await state();
         return s.windowId === windowId && s.tabs.every((t) => !t.url) ? s : null;
       }, 10000);
       await sleep(1000);
       const created = await create(`${base}/e?empty-window`);
-      const event = await until("onTabs", async () => (await evalApp(`return globalThis.__nnTabs`)).find((e) => e.url?.includes("e?empty-window")) ?? null, 10000)
+      const made = JSON.parse(created.startsWith("{") ? created : "null");
+      if (!made) throw new Error(`tabs.create: ${created}`);
+      const shownTab = async () => {
+        const s = await state();
+        const tabs = s.tabs.filter((t) => t.url?.includes("e?empty-window"));
+        return s.active === tabs[0]?.id && tabs[0].title === "Page E" && !tabs[0].loading ? { s, tabs } : null;
+      };
+      const { s: after, tabs: appTabs } = await until("the extension's tab shown as an app tab", shownTab, 10000)
         .catch(async (e) => { throw new Error(`${e.message}; tabs.create: ${created}; strips ${JSON.stringify(await cef(`tabStrips()`))}`); });
-      const opened = await until("the URL as an app tab", async () =>
-        (await state()).tabs.find((t) => t.url?.includes("e?empty-window") && t.title === "Page E") ?? null, 10000);
+      await sleep(1500);
+      const opened = appTabs[0];
+      const chromeTab = JSON.parse((await cdp(worker, "Runtime.evaluate", {
+        expression: `Promise.all([chrome.tabs.get(${made.id}).then((t) => ({ id: t.id, windowId: t.windowId, active: t.active, url: t.url }), (e) => ({ error: e.message })),
+          chrome.tabs.query({}).then((ts) => ts.filter((t) => (t.url || t.pendingUrl || "").includes("e?empty-window")).map((t) => t.id))]).then(JSON.stringify)`,
+        awaitPromise: true,
+        returnByValue: true,
+      })).result.value);
+      const strips = (await cef(`tabStrips()`)).strips.filter((st) => st.appWindow === windowId);
+      const strip = strips.find((st) => st.tabs.some((t) => t.key === opened.id));
+      const out = {
+        appTabs: (await state()).tabs.filter((t) => t.url?.includes("e?empty-window")).length,
+        window: after.windowId === windowId,
+        profile: opened.profileId === after.profileId ? opened.profileId : `${opened.profileId} in a ${after.profileId} window`,
+        adoptId: opened.adoptId ?? null,
+        chromeTab: chromeTab[0],
+        chromeTabs: chromeTab[1],
+        strip: strip ? { strip: strip.strip, active: strip.tabs.find((t) => t.active)?.key === opened.id, keyless: strip.tabs.filter((t) => !t.key).length } : null,
+        loads: served.get("/e?empty-window") ?? 0,
+      };
+      const wrong = [
+        out.appTabs !== 1 && "not exactly one app tab",
+        !out.window && "another window",
+        out.profile !== after.profileId && "another profile",
+        !out.adoptId?.startsWith("tab:") && "a fresh tab, not Chrome's",
+        (out.chromeTab.error || out.chromeTab.windowId !== made.windowId || !out.chromeTab.active) && "chrome.tabs doesn't see the extension's tab active in its window",
+        JSON.stringify(out.chromeTabs) !== JSON.stringify([made.id]) && "chrome.tabs has another tab for the URL",
+        (!out.strip || out.strip.strip !== made.windowId || !out.strip.active || out.strip.keyless) && "Chrome's strip for the app window disagrees",
+        out.loads !== 1 && "the page loaded more than once",
+      ].filter(Boolean);
+      if (wrong.length) throw new Error(`${wrong.join("; ")}: ${JSON.stringify(out)}`);
+      const event = (await evalApp(`return globalThis.__nnTabs`)).some((e) => e.url?.includes("e?empty-window"));
       // Every window closed.
       await evalApp(`const s = nn.store.getState(); Object.keys(s.windows).forEach((id) => s.closeWindow(id)); return true`);
       await until("no app windows", async () => ((await evalApp(`return Object.keys(nn.store.getState().windows).length`)) === 0 ? true : null), 10000);
@@ -4851,7 +4893,7 @@ try {
       const noWindow = await create(`${base}/e?no-window`);
       await sleep(1500);
       const noWindowEvent = (await evalApp(`return globalThis.__nnTabs`)).some((e) => e.url?.includes("e?no-window"));
-      return { placeholderTabs: empty.tabs.length, tabsCreate: created, onTabs: event, appTab: opened.id, adoptId: opened.adoptId ?? null,
+      return { placeholderTabs: empty.tabs.length, tabsCreate: created, appTab: opened.id, ...out, route: event ? "onTabs" : "openWindow",
         noWindow: { tabsCreate: noWindow, onTabs: noWindowEvent } };
     } finally {
       await evalApp(`globalThis.__nnTabsSub?.remove(); return true`).catch(() => null);

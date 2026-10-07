@@ -62,6 +62,32 @@ class FakeChrome {
     if (!s.active) s.active = browser;
     this.emit(stripId, -1);
   }
+  // Chrome makes a tab on its own (an extension's tabs.create), in front or behind: no view holds it yet, so it has
+  // no key until the app adopts it (its openWindow, adoptId "tab:<browser>", comes after this transaction).
+  made(stripId, active) {
+    const s = this.strip(stripId);
+    const browser = this.nextBrowser++;
+    s.tabs.push({ key: null, browser, pinned: false });
+    if (active) {
+      s.active = browser;
+      s.pickedOnClose = false;
+    }
+    this.emit(stripId, null);
+    return browser;
+  }
+  // The app's view took Chrome's tab: it has the view's key from now on.
+  adopted(browser, key) {
+    for (const [id, s] of this.strips) {
+      const t = s.tabs.find((t) => t.browser === browser);
+      if (t) (t.key = key), this.emit(id, null);
+    }
+  }
+  // A view lets its browser go without closing it (a tab parked on its way to another window): no key any more.
+  parked(key) {
+    const f = this.find(key);
+    f.tab.key = null;
+    this.emit(f.id, null);
+  }
   // Chrome closes a tab; when it was the active one it shows the next (TabStripModel::DetermineNewSelectedIndex).
   remove(key) {
     const f = this.find(key);
@@ -431,4 +457,48 @@ test("as in Dia: an extension pinning one pane of a split leaves the split; coll
   await settle(win);
   assert.equal(S().groups[g].collapsed, false);
   assert.equal(shown(win.w), "c");
+});
+
+test("an extension's new tab is shown when Chrome made it in front, and stays behind when Chrome made it behind", async () => {
+  const win = windowWith("a");
+  await settle(win);
+  const [a] = S().windows[win.w].tabIds;
+  for (const [active, url, expected] of [[true, "e", "e"], [false, "f", "e"]]) {
+    // Chrome's tab is in the strip, without a key, before the app hears of it: the app doesn't put its own shown tab
+    // back over it meanwhile.
+    const browser = chrome.made(win.strip, active);
+    await settle();
+    // The app's view announces it (openFromPage: a new tab of the window, in front), then takes it.
+    const id = S().newTab(win.w, { url: `${url}.com`, adoptId: `tab:${browser}`, openerId: a });
+    await settle();
+    chrome.adopted(browser, id);
+    await settle(win);
+    assert.equal(shown(win.w), expected, `tabs.create({ active: ${active} })`);
+    assert.equal(chromeShown(win.strip), expected, "Chrome shows what the app shows");
+    assert.deepEqual(chromeOrder(win.strip), order(win.w));
+  }
+});
+
+test("a switch while Chrome's new tab waits for the app wins; a parked tab Chrome still shows doesn't hold the strip", async () => {
+  const win = windowWith("a", "b");
+  await settle(win);
+  const [a, b] = S().windows[win.w].tabIds;
+  // The user picks b after the extension's tab appeared in Chrome, after the app opened it: b stays shown.
+  const browser = chrome.made(win.strip, true);
+  await settle();
+  const id = S().newTab(win.w, { url: "g.com", adoptId: `tab:${browser}`, openerId: a });
+  await settle();
+  S().activate(b);
+  await settle();
+  assert.equal(chromeShown(win.strip), "b", "the switch reaches Chrome before the adoption");
+  chrome.adopted(browser, id);
+  await settle(win);
+  assert.equal(shown(win.w), "b");
+  assert.equal(chromeShown(win.strip), "b");
+  // b's browser parked (keyless, still Chrome's active tab): the store's switch to a still goes out.
+  chrome.parked(b);
+  await settle();
+  S().activate(a);
+  await settle();
+  assert.equal(chromeShown(win.strip), "a");
 });

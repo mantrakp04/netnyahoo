@@ -36,6 +36,12 @@ const groups: GroupBindings = new Map();
 // until something other than the app's commands changes the strip.
 const tried = new Map<string, { sig: string; since: number }>();
 const changedAt = new Map<number, number>();
+// A tab Chrome made in front of a strip on its own (an extension's tabs.create), which no view holds yet, and the
+// tab the store showed there then: until the app adopts it (its openWindow comes after this transaction), the
+// store's tab isn't put back over it. Chrome's activation is the new tab's (liveTabs: a tab Chrome made takes
+// Chrome's activation the first time the app sees it); putting the store's tab back sent every such tab behind.
+// A switch in the store meanwhile is sent as usual.
+const madeInFront = new Map<number, { browser: number; over: string | null }>();
 
 if (__DEV__) {
   (globalThis as { nnChromeTabs?: unknown }).nnChromeTabs = {
@@ -93,13 +99,17 @@ function receive(tx: TabStripTransaction) {
   let s = start;
   for (const strip of tx.strips) {
     const before = mirror.get(strip.strip);
-    if (strip.closed) mirror.delete(strip.strip);
-    else mirror.set(strip.strip, strip);
+    if (strip.closed) {
+      mirror.delete(strip.strip);
+      madeInFront.delete(strip.strip);
+    } else mirror.set(strip.strip, strip);
     if (tx.cmd === null || tx.cmd < 0) changedAt.set(strip.strip, tx.rev);
     if (tx.cmd === null) {
       // A command of the app's own on its way to this strip comes after Chrome's change, and wins.
       const waiting = inflight.get(strip.strip);
       const siblings = [...mirror.values()].filter((x) => x.window === strip.window && x.strip !== strip.strip);
+      const made = strip.tabs.find((t) => t.active && !t.key && !before?.tabs.some((b) => b.browser === t.browser));
+      if (made) madeInFront.set(strip.strip, { browser: made.browser, over: stripPlan(s, strip)?.active ?? null });
       s = chromeChanged(s, before, strip, {
         seen,
         siblings,
@@ -141,7 +151,10 @@ function project(s: BrowserState) {
     const actual = stripActual(strip, plan);
     // The shown tab first: Chrome's commands and extensions act on its active tab.
     const order = `${plan.keys.join(",")}|${plan.pinned}`;
-    if (plan.active && plan.active !== actual.active) {
+    const made = madeInFront.get(strip.strip);
+    const unadopted = !!made && plan.active === made.over && strip.tabs.some((t) => t.browser === made.browser && t.active && !t.key);
+    if (made && !unadopted) madeInFront.delete(strip.strip);
+    if (plan.active && plan.active !== actual.active && !unadopted) {
       // Chrome's active tab is gone from the store (it closed): the store's pick is a successor.
       const successor = !!actual.active && !s.tabs[actual.active];
       send(strip.strip, "activate", plan.active, { op: "activate", strip: strip.strip, key: plan.active }, undefined, successor);

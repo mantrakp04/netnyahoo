@@ -195,7 +195,8 @@ ordered transaction that names its cause. There are no echo windows, timers or "
   closes the gap: `activate` first, then `arrange`, then `group` (a Chrome group for a store group that has none,
   missing members, title, color and collapsed, as Dia's engine mirrors it; Chrome's model keeps the active tab when
   its group collapses);
-  one command per strip at a time; the same command isn't sent
+  one command per strip at a time; no `activate` while Chrome's active tab has no key (a tab Chrome made in front,
+  before the app adopts it: its activation is Chrome's, above); the same command isn't sent
   again until something other than the app's commands changed that strip (a plan Chrome can't reach doesn't loop).
 - NNCore (`NNCoreTabStrip.mm`) takes the strips from Chrome's own tab strip models, which name the Browser, so a
   strip's window is never inferred from its tabs.
