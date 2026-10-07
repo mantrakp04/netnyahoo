@@ -75,11 +75,13 @@ test("the toolbar's buttons don't move with the sidebar: the hidden sidebar's to
 });
 
 test("the sidebar's own button (address bar in the sidebar) always fits; back, forward and reload as there's room", () => {
-  assert.equal(dm.navButtonsFitting(160), 1);
-  assert.equal(dm.navButtonsFitting(190), 2, "the default width: the button, back and forward");
-  assert.equal(dm.navButtonsFitting(224.75), 3);
-  assert.equal(dm.navButtonsFitting(400), 3);
-  assert.equal(dm.navButtonsFitting(100), 0);
+  assert.equal(dm.navButtonsFitting(160).count, 1);
+  const narrow = dm.navButtonsFitting(190);
+  assert.equal(narrow.count, 3, "the default width keeps reload");
+  assert.ok(narrow.step >= dm.HEADER_MIN_STEP && narrow.step < 35, "closed up, not crowded");
+  assert.deepEqual(dm.navButtonsFitting(224.75), { count: 3, step: 35 });
+  assert.deepEqual(dm.navButtonsFitting(400), { count: 3, step: 35 });
+  assert.equal(dm.navButtonsFitting(100).count, 0);
 });
 
 test("hidden or shown is each window's own, and survives a quit and relaunch; new windows open with it shown", () => {

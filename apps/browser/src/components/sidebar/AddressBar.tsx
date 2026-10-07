@@ -18,7 +18,7 @@ import { HistoryButton, ReloadButton, UrlField, useToolbarTab } from "../Toolbar
 import { HEADER_TOOLS, navButtonsFitting } from "../layout/dockMotion";
 
 const BUTTON = layout.toolbarButton;
-const { gap: GAP, toggleX: TOGGLE_X, edge: EDGE } = HEADER_TOOLS;
+const { toggleX: TOGGLE_X, edge: EDGE } = HEADER_TOOLS;
 // Dia: lights y26.75pt, x70.75pt; 5pt gap, 7pt inset.
 const LIGHTS_Y = 26.75;
 
@@ -37,8 +37,8 @@ export function SidebarHeaderTools({ width }: { width: number }) {
         onPress={() => useBrowser.getState().toggleSidebar(windowId)}
         tooltip="Auto-Hide Tabs (⌘S)"
       />
-      <View style={{ position: "absolute", top, right: EDGE, flexDirection: "row", gap: GAP }}>
-        {tab && fitting ? <NavigationButtons tab={tab} palette={palette} count={fitting} /> : null}
+      <View style={{ position: "absolute", top, right: EDGE, flexDirection: "row" }}>
+        {tab && fitting.count ? <NavigationButtons tab={tab} palette={palette} {...fitting} /> : null}
       </View>
     </>
   );
@@ -46,14 +46,16 @@ export function SidebarHeaderTools({ width }: { width: number }) {
 
 const alreadyFocused = () => {};
 
-function NavigationButtons({ tab, palette, count }: { tab: NonNullable<ReturnType<typeof useToolbarTab>>; palette: ToolbarPalette; count: number }) {
+function NavigationButtons({ tab, palette, count, step }: { tab: NonNullable<ReturnType<typeof useToolbarTab>>; palette: ToolbarPalette; count: number; step: number }) {
   const loading = useTabLive(tab.id, (l) => l.isLoading);
   const history = useHistoryAvailability(tab.id);
+  // Closed up in a narrow sidebar, the buttons' boxes overlap a little; their glyphs don't.
+  const next = { marginLeft: step - BUTTON };
   return (
     <>
       <HistoryButton tabId={tab.id} windowId={tab.windowId} direction={-1} disabled={!history.back} palette={palette} onFocus={alreadyFocused} />
-      {count > 1 && <HistoryButton tabId={tab.id} windowId={tab.windowId} direction={1} disabled={!history.forward} palette={palette} onFocus={alreadyFocused} />}
-      {count > 2 && <ReloadButton tab={tab} loading={loading} palette={palette} onFocus={alreadyFocused} />}
+      {count > 1 && <HistoryButton style={next} tabId={tab.id} windowId={tab.windowId} direction={1} disabled={!history.forward} palette={palette} onFocus={alreadyFocused} />}
+      {count > 2 && <ReloadButton style={next} tab={tab} loading={loading} palette={palette} onFocus={alreadyFocused} />}
     </>
   );
 }
