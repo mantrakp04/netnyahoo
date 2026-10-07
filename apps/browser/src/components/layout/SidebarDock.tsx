@@ -14,6 +14,7 @@ import {
   devPeeks,
   DOCK_SPRING,
   lightsCenter,
+  PEEK_ORIGIN,
   peekShown,
   setDockMoving,
   setPeekShown,
@@ -221,8 +222,8 @@ function SidebarDock({
         onMouseLeave={peeking ? peek.hide : undefined}
         style={{
           position: "absolute",
-          left: away ? -10_000 : peeking ? 6 : 0,
-          top: peeking ? layout.cardTop : 0,
+          left: away ? -10_000 : peeking ? PEEK_ORIGIN[0] : 0,
+          top: peeking ? PEEK_ORIGIN[1] : 0,
           bottom: peeking ? layout.cardInset : 0,
           width,
           transform: [{ translateX: slideOut }],
@@ -269,8 +270,9 @@ function useTrafficLights(
   const sent = useRef<string | undefined>(undefined);
   apply.current = () => {
     const v = values.current;
-    const offset = o.fullscreen ? 0 : o.peeking ? (o.width + 12) * (1 - v.slide) : o.width * (1 - v.dock);
-    const center = lightsCenter(offset);
+    // Peeking, they ride in the panel, which comes in from past the edge to its inset (left: PEEK_ORIGIN, peekIn).
+    const offset = o.fullscreen ? 0 : o.peeking ? (o.width + 12) * (1 - v.slide) - PEEK_ORIGIN[0] : o.width * (1 - v.dock);
+    const center = lightsCenter(offset, o.peeking && !o.fullscreen ? PEEK_ORIGIN[1] : 0);
     const key = center ? center.join(",") : "";
     if (key === sent.current) return;
     sent.current = key;

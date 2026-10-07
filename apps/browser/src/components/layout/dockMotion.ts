@@ -47,14 +47,18 @@ export function springAt(
 /** Where AppKit puts the traffic lights (NNCore's default centre, NNCoreChromeWindow.mm), window top-left points. */
 export const LIGHTS_CENTER: readonly [number, number] = [25, 27];
 
+/** The peek panel's top-left in the window (Dia's 6/6; Arc's is 5/5): the panel holds the lights, so they sit as far in. */
+export const PEEK_ORIGIN: readonly [number, number] = [6, 6];
+
 /**
- * The traffic lights' centre with the sidebar `offset` points to the left of its place (0 = shown, `width` = gone):
- * they belong to the sidebar's top row and go with it, as in Dia. null: their own place (nothing to move). A sidebar all
- * the way out puts them past the window's left edge, where AppKit doesn't draw them.
+ * The traffic lights' centre with the sidebar `offset` points to the left of its place (0 = shown, `width` = gone) and
+ * `down` points below it (the peek panel's inset): they belong to the sidebar's top row and go with it, as in Dia. null:
+ * their own place (nothing to move). A sidebar all the way out puts them past the window's left edge, where AppKit
+ * doesn't draw them.
  */
-export function lightsCenter(offset: number): [number, number] | null {
+export function lightsCenter(offset: number, down = 0): [number, number] | null {
   const dx = Math.round(offset * 2) / 2;
-  return dx === 0 ? null : [LIGHTS_CENTER[0] - dx, LIGHTS_CENTER[1]];
+  return dx === 0 && down === 0 ? null : [LIGHTS_CENTER[0] - dx, LIGHTS_CENTER[1] + down];
 }
 
 /** The card's left edge for a dock position (1 shown, 0 hidden) and a sidebar width. */

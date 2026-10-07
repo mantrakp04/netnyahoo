@@ -42,6 +42,8 @@ test("the traffic lights go with the sidebar: at their place when it's shown, pa
   assert.equal(dm.lightsCenter(0), null, "shown: nothing to move");
   assert.equal(dm.lightsCenter(0.2), null, "a rounding hair from shown: still their place");
   assert.deepEqual(dm.lightsCenter(95), [25 - 95, 27], "half way out");
+  const [px, py] = dm.PEEK_ORIGIN;
+  assert.deepEqual(dm.lightsCenter(-px, py), [25 + px, 27 + py], "in the peek panel: as far in as the panel");
   for (const width of [160, 190, 400]) {
     const [x] = dm.lightsCenter(width);
     // The zoom button is the rightmost: 46 pt right of the close button's centre, 7 pt to its edge.

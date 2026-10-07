@@ -434,7 +434,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
    if (sendIdleEvents) {
      [self startTimers];
 diff --git a/React/Views/RCTView.m b/React/Views/RCTView.m
-index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..751d6a53f627a66a8199b7fa98cf2fd311fc3329 100644
+index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..b93796f 100644
 --- a/React/Views/RCTView.m
 +++ b/React/Views/RCTView.m
 @@ -143,6 +143,9 @@ @implementation RCTView {
@@ -500,6 +500,41 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..751d6a53f627a66a8199b7fa98cf2fd3
  
    if (useIOSBorderRendering) {
      layer.cornerRadius = cornerRadii.topLeftHorizontal;
+@@ -1514,6 +1519,20 @@ - (BOOL)acceptsFirstResponder
+ 	return [self focusable] || [super acceptsFirstResponder];
+ }
+ 
++// [Netnyahoo: AppKit asks for tracking areas only when a view's geometry changes, so handlers set on a view already
++// laid out (a peek panel getting onMouseLeave as it comes out) had none, and its pointer never left. Netnyahoo]
++- (void)setOnMouseEnter:(RCTDirectEventBlock)onMouseEnter
++{
++  _onMouseEnter = [onMouseEnter copy];
++  [self updateTrackingAreas];
++}
++
++- (void)setOnMouseLeave:(RCTDirectEventBlock)onMouseLeave
++{
++  _onMouseLeave = [onMouseLeave copy];
++  [self updateTrackingAreas];
++}
++
+ - (void)updateTrackingAreas
+ {
+   BOOL hasMouseHoverEvent = self.onMouseEnter || self.onMouseLeave;
+@@ -1522,6 +1541,13 @@ - (void)updateTrackingAreas
+   if (!wouldRecreateIdenticalTrackingArea) {
+     if (_trackingArea) {
+       [self removeTrackingArea:_trackingArea];
++      // [Netnyahoo: forget it too. Kept, a view that lost its hover handlers and got them back with the same bounds
++      // counted the removed area as "identical" and never added one again: no mouseEntered/mouseExited from then on
++      // (the sidebar's peek panel stayed out after its first peek). Netnyahoo]
++      _trackingArea = nil;
++      // [Netnyahoo: and what it knew: a view that is under the pointer when it loses its area never hears it leave, and
++      // its next scroll (viewBoundsChanged:) would send a leave for it. Netnyahoo]
++      _hasMouseOver = NO;
+     }
+ 
+     if (hasMouseHoverEvent) {
 diff --git a/React/Views/ScrollView/RCTScrollView.m b/React/Views/ScrollView/RCTScrollView.m
 index eb79ff32614392cb16e6eb3dbec6cc5b037fe27a..18b2f96cf65892c3db53b751d2878ecb5b05a71d 100644
 --- a/React/Views/ScrollView/RCTScrollView.m

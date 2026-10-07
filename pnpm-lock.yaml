@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   expo-modules-core@3.0.30: 14f38f047989f5c300e3d7dcd43b906b370469ebcb3ceba585ff00f45cd7ddb3
-  react-native-macos@0.81.9: 783e08f22b41e2bdd1df207046302ac0c44db8d738a7ed65a96f01bff4ac97eb
+  react-native-macos@0.81.9: b926667efa65f53335dedf32f57fa57a6541002ea1552fac403d9ba6d37cb767
 
 importers:
 
@@ -53,7 +53,7 @@ importers:
         version: 0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4)
       react-native-macos:
         specifier: 0.81.9
-        version: 0.81.9(patch_hash=783e08f22b41e2bdd1df207046302ac0c44db8d738a7ed65a96f01bff4ac97eb)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
+        version: 0.81.9(patch_hash=b926667efa65f53335dedf32f57fa57a6541002ea1552fac403d9ba6d37cb767)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
       zustand:
         specifier: ^5.0.8
         version: 5.0.15(@types/react@19.1.17)(react@19.1.4)
@@ -6496,7 +6496,7 @@ snapshots:
 
   react-is@18.3.1: {}
 
-  react-native-macos@0.81.9(patch_hash=783e08f22b41e2bdd1df207046302ac0c44db8d738a7ed65a96f01bff4ac97eb)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
+  react-native-macos@0.81.9(patch_hash=b926667efa65f53335dedf32f57fa57a6541002ea1552fac403d9ba6d37cb767)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
     dependencies:
       '@jest/create-cache-key-function': 29.7.0
       '@react-native-macos/virtualized-lists': 0.81.9(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
