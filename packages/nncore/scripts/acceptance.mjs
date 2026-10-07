@@ -4908,7 +4908,10 @@ try {
     // NNCore build they went to AppKit's (9, 9) at each switch or close and came back 10–430 ms later.
     // Hiding the sidebar takes them out of the window with it (Dia): while it's hidden they hold one spot past the
     // window's left edge, through tab work too. The slides themselves (out and back) aren't sampled.
-    const w = (await state()).windowId;
+    // A window to work in: the checks before may have closed every one (extension-tab-empty-window does).
+    const w = (await state()).windowId ?? (await evalApp(`return nn.actions.openWindow()`));
+    if (!w) throw new Error("no window to work in");
+    await sleep(1000);
     const W = JSON.stringify(w);
     const logLength = () => (existsSync(lightsLog) ? readFileSync(lightsLog, "utf8").length : 0);
     const from = logLength();
