@@ -74,8 +74,9 @@ Removed after 0.2.19 with the hidden chrome:// pages they served (their callers 
 ## Using it
 
 The app's build (`apps/browser/macos`) stages `out/Release_GN_arm64/Chromium Framework.framework` itself
-(`packages/nncore/scripts/stage-framework.sh`, under the chromium lock) and embeds it (`embed.sh`); there is no
-distribution to install and nothing to pin. After an engine change, rebuild incrementally
+(`packages/nncore/scripts/stage-framework.sh`, under the chromium lock) and embeds it (`embed.sh`). A checkout without a Chromium
+tree downloads the prebuilt engine matching `engine/` instead (`packages/nncore/scripts/fetch-engine.sh`, published
+with each release whose engine changed; `docs/releasing.md`). After an engine change, rebuild incrementally
 (`scripts/agent/locked chromium -- autoninja -C out/Release_GN_arm64 chrome_framework`) and the next app build picks
 it up. (CEF's distribution, `setup.sh`, `engine.lock` and its release asset went with the cutover.)
 

@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Each has three assets:
+Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Each has three assets, four when the engine changed:
 
 - `Netnyahoo-<version>.dmg`: what people download (the app and an `/Applications` link).
 - `Netnyahoo-<version>.zip`: the archive Sparkle installs updates from.
@@ -10,6 +10,10 @@ Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Eac
   `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml`, the URL 0.2.13 and
   earlier poll directly. The count can't block an update: see `infra/site/nginx.conf` and `docs/growth.md`
   › Installs.
+- `NNCore-<engine tree>.tar.xz`, only when `engine/` changed since the last one: the release's engine (Chrome's
+  framework, stripped), so the app builds without a Chromium tree. `packages/nncore/prebuilt-engines.tsv` maps
+  `engine/`'s git tree to the release and the archive's SHA-256; `packages/nncore/scripts/fetch-engine.sh` downloads
+  it (the app's build runs it when there's no local engine build).
 
 Each version's notes are a file in the repo, `docs/release-notes/<version>.md` (how to write one:
 `docs/release-notes/README.md`). The GitHub release, the update dialog and the website's
@@ -80,8 +84,11 @@ deployed with the new entry by the time the update reaches people.
    git tag v<version> && git push origin main v<version>
    gh release create v<version> -R mantrakp04/netnyahoo --title "Netnyahoo <version>" \
      --notes-file dist/<version>/release-notes.md \
-     dist/<version>/Netnyahoo-<version>.dmg dist/<version>/Netnyahoo-<version>.zip dist/<version>/appcast.xml
+     dist/<version>/Netnyahoo-<version>.dmg dist/<version>/Netnyahoo-<version>.zip dist/<version>/appcast.xml \
+     $(ls dist/<version>/NNCore-*.tar.xz 2>/dev/null)
    ```
+   With a new engine, then append `dist/<version>/prebuilt-engine.tsv` to `packages/nncore/prebuilt-engines.tsv` and
+   commit it.
 5. Deploy the site so `/release-notes` shows the new version (the updated app opens it on its first launch):
    `pnpm -C apps/site run deploy` builds `apps/site` with `SITE_URL=https://netnyahoo.com` and ships it
    (`infra/site/hexclave.deploy.ts`). Also bump `VERSION` and `DMG_SIZE` in `apps/site/src/data/release.ts`

@@ -10,10 +10,14 @@
 # waiting for another: two builds that find a new engine at once both copy and sign, and the first to publish wins.
 #
 #   NNCORE_FRAMEWORK=<path to Chromium Framework.framework>   another build than out/Release_GN_arm64
+# Without a local engine build, it uses the prebuilt one matching engine/ (fetch-engine.sh downloads it once).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
 src=${NNCORE_FRAMEWORK:-$HOME/chromium-build/chromium_git/chromium/src/out/Release_GN_arm64/Chromium Framework.framework}
+if [[ -z "${NNCORE_FRAMEWORK:-}" && ! -d "$src" ]]; then
+  src=$("$here/fetch-engine.sh") || exit 1
+fi
 dest=${NNCORE_STAGE_DIR:-$repo/apps/browser/build-nncore/NNCoreFramework}
 cache=${NNCORE_STAGE_CACHE:-$repo/apps/browser/build-nncore/staged}
 name="Chromium Framework"

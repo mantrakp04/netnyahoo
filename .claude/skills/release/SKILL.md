@@ -194,9 +194,21 @@ Check the page with `pnpm -C apps/site build` (the table renders as a box that s
 git tag v<version> && git push origin main v<version>
 gh release create v<version> -R mantrakp04/netnyahoo --title "Netnyahoo <version>" \
   --notes-file dist/<version>/release-notes.md \
-  dist/<version>/Netnyahoo-<version>.dmg dist/<version>/Netnyahoo-<version>.zip dist/<version>/appcast.xml
+  dist/<version>/Netnyahoo-<version>.dmg dist/<version>/Netnyahoo-<version>.zip dist/<version>/appcast.xml \
+  $(ls dist/<version>/NNCore-*.tar.xz 2>/dev/null)
 curl -fsL https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml | grep -o 'shortVersionString>[0-9.]*' | head -1
 .claude/skills/release/scripts/feed.sh <version>
+```
+
+When engine/ changed since the last prebuilt engine, release.sh also packed `NNCore-<tree>.tar.xz` (the command
+above uploads it) and wrote its table line. Once the release is up, commit that line, so builds without a Chromium tree
+find it (`packages/nncore/scripts/fetch-engine.sh`):
+
+```bash
+if [ -f dist/<version>/prebuilt-engine.tsv ]; then
+  cat dist/<version>/prebuilt-engine.tsv >> packages/nncore/prebuilt-engines.tsv
+  git add packages/nncore/prebuilt-engines.tsv && git commit -m "Prebuilt engine: <version>'s" && git push origin main
+fi
 ```
 
 Both must show the new version. Copies from 0.2.13 and earlier poll GitHub's URL directly; newer ones poll

@@ -14,7 +14,9 @@
 # what an in-place update from an earlier copy depends on, launches the app once hidden and checks its bundle is still
 # sealed, notarizes and staples the app and the DMG, and writes Netnyahoo-<version>.dmg, Netnyahoo-<version>.zip
 # (Sparkle's update archive), appcast.xml (signed with the Sparkle EdDSA key in the login keychain) and
-# release-notes.md (the GitHub release's notes, from docs/release-notes/<version>.md).
+# release-notes.md (the GitHub release's notes, from docs/release-notes/<version>.md). When engine/ changed since the
+# last prebuilt engine, also NNCore-<engine tree>.tar.xz and its line for packages/nncore/prebuilt-engines.tsv
+# (prebuilt-engine.tsv), so the app builds without a Chromium tree (packages/nncore/scripts/fetch-engine.sh).
 #
 # A release needs the notes file, MARKETING_VERSION set to <version> (and CURRENT_PROJECT_VERSION bumped) and a
 # clean tree under apps/browser, packages and engine. A candidate needs none of those: it builds the working tree as
@@ -258,6 +260,28 @@ while IFS= read -r -d '' code; do
 done < <(find "$app" \( -name "*.app" -o -name "*.framework" -o -name "*.dylib" -o -name "*.xpc" -o -name "*.plugin" \
   -o -path "*/Helpers/*" -type f -perm -u+x -o -path "*/MacOS/*" -type f \) -print0)
 
+# The engine for building without a Chromium tree (packages/nncore/scripts/fetch-engine.sh): this release's framework,
+# stripped and signed, as NNCore-<engine tree>.tar.xz, unless an earlier release already has this engine/. Packed in
+# the background while the launch check and notarization run; the release skill publishes it and the table line.
+engine_tree="$(git -C "$root" rev-parse HEAD:engine)"
+engine_archive="$dist/NNCore-${engine_tree:0:12}.tar.xz"
+engine_pack=""
+if [ "$rc" = 0 ] && [ -z "${NNCORE_FRAMEWORK:-}" ] \
+  && ! awk -v t="$engine_tree" '$1 == t { found = 1 } END { exit !found }' "$nncore/prebuilt-engines.tsv"; then
+  echo "==> Pack the engine (background)"
+  (
+    set -e
+    if command -v xz >/dev/null; then
+      tar --no-mac-metadata -cf - -C "$app/Contents/Frameworks" "Chromium Framework.framework" | xz -T0 -9 >"$engine_archive"
+    else
+      tar --no-mac-metadata -cJf "$engine_archive" -C "$app/Contents/Frameworks" "Chromium Framework.framework"
+    fi
+    printf '%s\t%s\t%s\n' "$engine_tree" "$version" "$(shasum -a 256 "$engine_archive" | awk '{ print $1 }')" \
+      >"$dist/prebuilt-engine.tsv"
+  ) >"$dist/engine-pack.log" 2>&1 &
+  engine_pack=$!
+fi
+
 echo "==> Launch check"
 # Running the app must leave its bundle as signed: anything written into it breaks the signature (Chrome indexing
 # uBlock's rulesets next to the extension did, in 0.1.0). Launch it hidden with a throwaway data dir, wait for the
@@ -357,8 +381,16 @@ phased_args=()
 mv "$updates/appcast.xml" "$dist/appcast.xml"
 rm -rf "$updates"
 
+engine_files=()
+if [ -n "$engine_pack" ]; then
+  wait "$engine_pack" || { cat "$dist/engine-pack.log" >&2; die "packing the engine failed ($dist/engine-pack.log)"; }
+  rm -f "$dist/engine-pack.log"
+  engine_files=("$engine_archive" "$dist/prebuilt-engine.tsv")
+fi
+
 echo
 [ "$notarize" = 1 ] && echo "Notarized and stapled." || echo "NOT notarized."
+[ -n "$engine_pack" ] && echo "New engine: publish $(basename "$engine_archive") with the release, then add prebuilt-engine.tsv's line to packages/nncore/prebuilt-engines.tsv."
 [ "$rc" = 1 ] && echo "Release candidate: never publish dist/$version-rc."
 [ -n "$phased" ] && echo "Phased rollout: $phased s between steps (the appcast item has phasedRolloutInterval; the whole release takes $((phased * 7)) s)."
-du -sh "$app" "$dmg" "$zip" "$dist/appcast.xml" "$dist/release-notes.md"
+du -sh "$app" "$dmg" "$zip" "$dist/appcast.xml" "$dist/release-notes.md" ${engine_files[@]+"${engine_files[@]}"}

@@ -23,10 +23,17 @@ Requires Xcode 26+, CocoaPods, Node 22+, pnpm 11.
 pnpm install
 ```
 
-Build the engine: Chrome's framework from our patched Chromium tree in `~/chromium-build`
-(`docs/cef-source-build.md` › "Rebuilding", then `engine/chromium/apply.sh`, `engine/nncore/apply.sh` and
-`autoninja -C out/Release_GN_arm64 chrome_framework`; the first build takes about 2 hours). The app's build stages
-it from there.
+The engine (Chrome's framework, built from our patched Chromium) comes prebuilt: with no local engine build, the app's
+build downloads the one matching your checkout's `engine/` (about 110 MB, once; Apple Silicon only) and checks it
+against `packages/nncore/prebuilt-engines.tsv`. Every release whose engine changed publishes one. If `main`'s engine
+is newer than the last release's, work from a release tag (`v0.2.30`, say), or run
+`packages/nncore/scripts/fetch-engine.sh --nearest` to build against the newest prebuilt anyway. Passkeys and saved
+cards need our team ID and won't work in a build signed by anyone else.
+
+To change the engine itself (anything under `engine/`), build it from source: Chrome's framework from our patched
+Chromium tree in `~/chromium-build` (`docs/cef-source-build.md` › "Rebuilding", then `engine/chromium/apply.sh`,
+`engine/nncore/apply.sh` and `autoninja -C out/Release_GN_arm64 chrome_framework`; the first build takes about 2
+hours). The app's build stages it from there when it exists.
 
 ```bash
 pnpm pods
