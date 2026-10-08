@@ -380,6 +380,8 @@ NSTimeInterval gActedOcclusionGap = NAN;
 // The acted transition whose "visible again" is still to come: a transition started before it arrives takes it over,
 // as macOS reports the window visible after the last one.
 const void *kActedOcclusionTurnKey = &kActedOcclusionTurnKey;
+// The window's frame before an acted full screen, given back as it leaves.
+const void *kActedRestoreFrameKey = &kActedRestoreFrameKey;
 
 // The window's full screen acted out (a test instance): what -toggleFullScreen: does, without the Space.
 void ActWindowFullScreen(NNCoreWindow *coreWindow, BOOL enter, NSTimeInterval seconds) {
@@ -398,6 +400,15 @@ void ActWindowFullScreen(NNCoreWindow *coreWindow, BOOL enter, NSTimeInterval se
   if (trace) NSLog(@"[nncore-vis] window %ld acted %@", (long)window.windowNumber, enter ? @"willEnterFullScreen" : @"willExitFullScreen");
   [center postNotificationName:enter ? NSWindowWillEnterFullScreenNotification : NSWindowWillExitFullScreenNotification object:window];
   if (enter) set(YES);
+  // AppKit gives the window its new size as the transition starts: the screen's on the way in, the one it had on the
+  // way out, so a run sees the page resized as the owner does.
+  if (enter) {
+    objc_setAssociatedObject(window, kActedRestoreFrameKey, [NSValue valueWithRect:window.frame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (NSScreen *screen = window.screen ?: NSScreen.mainScreen) [window setFrame:screen.frame display:YES];
+  } else if (NSValue *restore = objc_getAssociatedObject(window, kActedRestoreFrameKey)) {
+    objc_setAssociatedObject(window, kActedRestoreFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [window setFrame:restore.rectValue display:YES];
+  }
   objc_setAssociatedObject(window, kActingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   const NSTimeInterval gap = gActedOcclusionGap;
   if (!isnan(gap)) {
@@ -436,6 +447,87 @@ void ToggleWindowFullScreen(NNCoreWindow *coreWindow) {
 
 NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange";
 
+// Page full screen changes the page's layout and the window's in steps, each waiting for the page to have drawn the
+// one before: AppKit pictures the window as its full-screen transition starts and animates that picture, and the page,
+// a Chrome view laid out by the app's JS, draws a new size or layout a frame or several (a heavy page: hundreds of ms)
+// after its view changes. Done at once (up to 0.2.30), the transition pictured the page mid-change: the full-screen video kept
+// in the shrinking window for the whole way out, ghosted over the page, and the page sized for the old window in a
+// corner of the new one on the way in.
+//
+// A wait asks the page (twice requestAnimationFrame, so it has drawn) for its size and full-screen state until its size
+// matches its view as it is then and `test` says it drew (1) or there is no point waiting (-1), for at most
+// kPageDrawWait; a page that can't answer (hidden, closed, no frame) doesn't wait. `done` runs once, on the main
+// thread.
+static const NSTimeInterval kPageDrawWait = 0.4;
+
+@interface NNPageDrawWait : NSObject
+@end
+
+@implementation NNPageDrawWait {
+  __weak NNCoreTab *_tab;
+  NSInteger (^_test)(BOOL fullScreen, BOOL fills);
+  void (^_done)(void);
+}
+
++ (void)tab:(NNCoreTab *)tab draws:(NSInteger (^)(BOOL fullScreen, BOOL fills))test then:(void (^)(void))done {
+  NSView *page = tab.view;
+  if (!page.window || page.isHiddenOrHasHiddenAncestor || ![tab respondsToSelector:@selector(evaluate:completion:)]) return done();
+  NNPageDrawWait *wait = [NNPageDrawWait new];
+  wait->_tab = tab;
+  wait->_test = test;
+  wait->_done = done;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kPageDrawWait * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    if (wait->_done && getenv("NETNYAHOO_TRACE_VISIBILITY")) NSLog(@"[nncore-vis] full screen: the page didn't draw in time");
+    [wait finish];
+  });
+  [wait ask];
+}
+
+- (void)finish {
+  void (^done)(void) = _done;
+  _done = nil;
+  if (done) done();
+}
+
+- (void)ask {
+  NNCoreTab *tab = _tab;
+  NSView *page = tab.view;
+  if (!_done) return;
+  if (!page.window) return [self finish];
+  const NSSize asked = [page convertRect:page.bounds toView:nil].size;
+  // Weak: a page that never answers (its requestAnimationFrame replaced) keeps only this block, not the wait.
+  __weak NNPageDrawWait *weakSelf = self;
+  [tab evaluate:@"requestAnimationFrame(() => requestAnimationFrame(() => post('result', JSON.stringify("
+                @"[innerWidth * devicePixelRatio, innerHeight * devicePixelRatio, !!document.fullscreenElement]))))"
+     completion:^(NSString *json) {
+       [weakSelf answered:json asked:asked];
+     }];
+}
+
+- (void)answered:(NSString *)json asked:(NSSize)asked {
+  if (!_done) return;
+  NSView *page = _tab.view;
+  NSWindow *window = page.window;
+  // No page to ask any more (closed, moved away, no frame or an exception): nothing to wait for.
+  if (!window || !json) return [self finish];
+  NSArray *drawn = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+  if (![drawn isKindOfClass:NSArray.class] || drawn.count != 3 || ![drawn[0] isKindOfClass:NSNumber.class] ||
+      ![drawn[1] isKindOfClass:NSNumber.class] || ![drawn[2] isKindOfClass:NSNumber.class])
+    return [self finish];
+  const NSSize now = [page convertRect:page.bounds toView:nil].size, pixels = [page convertSizeToBacking:page.bounds.size];
+  const NSSize content = window.contentView.bounds.size;
+  const BOOL fills = fabs(now.width - content.width) < 1 && fabs(now.height - content.height) < 1;
+  const BOOL sized = NSEqualSizes(asked, now) && fabs([drawn[0] doubleValue] - pixels.width) <= 2 &&
+                     fabs([drawn[1] doubleValue] - pixels.height) <= 2;
+  const NSInteger drew = sized ? _test([drawn[2] boolValue], fills) : 0;
+  if (getenv("NETNYAHOO_TRACE_VISIBILITY"))
+    NSLog(@"[nncore-vis] full screen: page drew %@, its view %@ (fills=%d) -> %ld", json, NSStringFromSize(pixels), fills, (long)drew);
+  if (drew) return [self finish];
+  [self ask];
+}
+
+@end
+
 // One per app window.
 @interface NNWindowFullScreen : NSObject
 @end
@@ -451,6 +543,13 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
   BOOL _seen;
   BOOL _closed;
   NSArray *_observers;
+  // What waits for the page to have drawn its new layout (NNPageDrawWait).
+  __weak NNCoreTab *_leftTab;  // The page that just left full screen, while the window still has to.
+  NSInteger _waitingFor;       // The window's transition waiting for it: 1 in, -1 out, 0 none.
+  NSUInteger _wait;            // Which wait, so the answer to an older one does nothing.
+  BOOL _askedWait;             // The current wait has asked.
+  BOOL _drew;                  // The page drew it (or can't answer): the transition may start.
+  NSInteger _telling;          // Exits the app hasn't been told of yet, waiting for the page to draw them.
 }
 
 + (instancetype)ofWindow:(NNCoreWindow *)coreWindow create:(BOOL)create {
@@ -543,7 +642,7 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
 
 - (void)settled:(BOOL)entered ours:(BOOL)ours {
   if (!entered && !ours) {
-    // Left by hand: the page leaves full screen too, and its exit comes back through -tab:fullScreen:.
+    // Left by hand: the page leaves full screen too, and its exit comes back through -tab:fullScreen:tell:.
     _entered = NO;
     NNCoreTab *tab = _tab;
     if (tab && [tab respondsToSelector:@selector(exitFullscreen)]) return [tab exitFullscreen];
@@ -551,10 +650,44 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
   [self sync];
 }
 
-- (void)tab:(NNCoreTab *)tab fullScreen:(BOOL)fullScreen {
-  if (fullScreen) _tab = tab;
-  else if (_tab == tab || !_tab) _tab = nil;
-  [self sync];
+// Each page's full-screen changes, counted across windows: a delayed exit is told only if nothing changed since.
+static NSMapTable<NNCoreTab *, NSNumber *> *FullScreenChanges() {
+  static NSMapTable *changes = [NSMapTable weakToStrongObjectsMapTable];
+  return changes;
+}
+
+// `tell` tells the app's JS, whose layout (sidebar, toolbar) follows. Out of full screen, it does once the page has
+// drawn itself out of it where it is: the full-screen video never shows inside the app's sidebar and toolbar. The
+// change is already counted (-[NNCoreWindowController window:tab:didChangeFullscreen:], in every window).
+- (void)tab:(NNCoreTab *)tab fullScreen:(BOOL)fullScreen tell:(void (^)(void))tell {
+  const NSUInteger change = [FullScreenChanges() objectForKey:tab].unsignedIntegerValue;
+  // Another page, or the same one again: a wait for the window's transition starts over for it.
+  _waitingFor = 0;
+  if (fullScreen) {
+    _tab = tab;
+    tell();
+    return [self sync];
+  }
+  if (_tab == tab || !_tab) {
+    if (_tab) _leftTab = _tab;
+    _tab = nil;
+  }
+  _telling++;
+  __weak NNWindowFullScreen *weakSelf = self;
+  __weak NNCoreTab *weakTab = tab;
+  // A page Chrome took out (Esc) stays in full screen until its view next changes size (Chrome tells the page with a
+  // resize): the app's layout gives it that, at once.
+  [NNPageDrawWait tab:tab
+                draws:^NSInteger(BOOL fullScreen, BOOL) { return fullScreen ? -1 : 1; }
+                 then:^{
+                   NNWindowFullScreen *me = weakSelf;
+                   if (me) me->_telling--;
+                   // Unless the page went back into full screen meanwhile (here or in another window): the app never heard
+                   // it leave.
+                   NNCoreTab *t = weakTab;
+                   if (t && [FullScreenChanges() objectForKey:t].unsignedIntegerValue == change) tell();
+                   [me sync];
+                 }];
 }
 
 - (void)sync {
@@ -562,17 +695,58 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
   NSWindow *window = coreWindow.window;
   if (!window || _closed || _transitioning) return;
   const BOOL full = IsWindowFullScreen(window), page = _tab != nil;
-  if (page && !full && !_entered) {
+  const NSInteger toggle = page && !full && !_entered ? 1 : !page && full && _entered ? -1 : 0;
+  if (toggle != _waitingFor) {
+    // A new wait, or none (the page changed its mind meanwhile): an older answer counts for nothing.
+    _waitingFor = toggle;
+    _drew = _askedWait = NO;
+    _wait++;
+  }
+  if (toggle == 1) {
+    // In: the page fills the window in full screen, drawn, then the window grows.
+    if (![self pageDrew:_tab entering:YES]) return;
     _entered = YES;
     _asked = 1;
     ToggleWindowFullScreen(coreWindow);
-  } else if (!page && full && _entered) {
+  } else if (toggle == -1) {
+    // Out: the page drew itself out of full screen, the app laid its sidebar and toolbar out around it and the page
+    // drew that, then the window shrinks.
+    if (_telling > 0 || ![self pageDrew:_leftTab entering:NO]) return;
     _entered = NO;
     _asked = -1;
+    _leftTab = nil;
     ToggleWindowFullScreen(coreWindow);
   } else if (!page) {
     _entered = NO;
   }
+}
+
+- (BOOL)pageDrew:(NNCoreTab *)tab entering:(BOOL)entering {
+  if (_drew) {
+    _drew = _askedWait = NO;
+    _waitingFor = 0;
+    _wait++;
+    return YES;
+  }
+  if (_askedWait) return NO;
+  _askedWait = YES;
+  const NSUInteger wait = _wait;
+  __weak NNWindowFullScreen *weakSelf = self;
+  __block BOOL now = YES;  // Answered at once (nothing to wait for): no need to sync again.
+  [NNPageDrawWait tab:tab
+                draws:^NSInteger(BOOL fullScreen, BOOL fills) { return fullScreen == entering && fills == entering; }
+                 then:^{
+                   NNWindowFullScreen *me = weakSelf;
+                   if (!me || me->_wait != wait) return;
+                   me->_drew = YES;
+                   if (!now) [me sync];
+                 }];
+  now = NO;
+  if (!_drew) return NO;
+  _drew = _askedWait = NO;
+  _waitingFor = 0;
+  _wait++;
+  return YES;
 }
 
 - (NSDictionary *)state {
@@ -582,6 +756,8 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
     @"page" : tab ? @(nncore_host::BrowserId(tab)) : NSNull.null,
     @"entered" : @(_entered),
     @"asked" : @(_asked),
+    @"waitingForPage" : @(_waitingFor),
+    @"telling" : @(_telling),
     @"transitioning" : @(_transitioning),
     @"ours" : @(_ours),
     @"settling" : @(_settling),
@@ -827,9 +1003,16 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
 }
 
 - (void)window:(NNCoreWindow *)window tab:(NNCoreTab *)tab didChangeFullscreen:(BOOL)fullscreen {
-  [[self viewFor:tab] emit:@"fullscreen" payload:@{@"fullscreen" : @(fullscreen)}];
+  [FullScreenChanges() setObject:@([FullScreenChanges() objectForKey:tab].unsignedIntegerValue + 1) forKey:tab];
+  __weak NNCoreWindowController *weakSelf = self;
+  __weak NNCoreTab *weakTab = tab;
+  void (^tell)(void) = ^{
+    NNCoreTab *t = weakTab;
+    if (t) [[weakSelf viewFor:t] emit:@"fullscreen" payload:@{@"fullscreen" : @(fullscreen)}];
+  };
   // The app's windows only: a hidden one (a stray tab's, extension pages') shows nothing to fill the screen with.
-  if (!_stray && !_standalone) [[NNWindowFullScreen ofWindow:window create:YES] tab:tab fullScreen:fullscreen];
+  if (_stray || _standalone) return tell();
+  [[NNWindowFullScreen ofWindow:window create:YES] tab:tab fullScreen:fullscreen tell:tell];
 }
 
 // Chrome's password bubble, already in packages/cef's PasswordPrompt shape (save, update or saved; usernames,

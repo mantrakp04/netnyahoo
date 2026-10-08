@@ -3631,7 +3631,11 @@ try {
       // The page leaves while the window's transition into full screen runs: the window comes back out once it ends.
       await fsWindow(tab.id, "fakeFullScreenMs:1500");
       await fsEnter(tab.id, t);
-      const mid = await win();
+      // The window's transition starts once the page has drawn its full-screen layout (a frame or a few).
+      const mid = await until("the window's transition started", async () => {
+        const w = await win();
+        return w.pageFullScreen?.transitioning ? w : null;
+      }, 2000).catch(() => win());
       await cdp(t, "Runtime.evaluate", { expression: "document.exitFullscreen().then(() => 'ok', (e) => e.name)", awaitPromise: true, returnByValue: true });
       await fsLeft(tab.id, t, "the page out mid-transition");
       out.midTransition = { during: mid.pageFullScreen, after: await settled("the window out after the transition", (w) => !w.fullScreen && !w.pageFullScreen?.entered) };
@@ -3639,7 +3643,10 @@ try {
       // Its tab closes while the window goes full screen.
       await fsEnter(tab.id, t);
       const n = await cef(`devWindowNumber(${await browserOf(tab.id)})`);
-      const closing = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`)).pageFullScreen;
+      const closing = await until("the window's transition started", async () => {
+        const w = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`)).pageFullScreen;
+        return w?.transitioning ? w : null;
+      }, 2000).catch(async () => JSON.parse(await cef(`devWindow(${n}, "fullScreen")`)).pageFullScreen);
       if (!closing?.transitioning) throw new Error(`the transition had ended before the close: ${JSON.stringify(closing)}`);
       await closeTab(tab.id);
       // The window finishes going in (AppKit ignores a toggle mid-transition), then comes back out: two transitions.
