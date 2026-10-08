@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildSuggestions } from "@netnyahoo/core";
-import { completionToWrite, fieldChange, withoutFirst } from "./inline.ts";
+import { acceptsCompletion, completionToWrite, fieldChange, withoutFirst } from "./inline.ts";
 
 const now = Date.UTC(2026, 8, 25);
 const history = [
@@ -228,4 +228,55 @@ test("fieldChange: any deletion drops the completion; typing brings it back", ()
   // Selecting part of the text and typing a different letter replaces it: not a deletion.
   assert.equal(sup("github", "", "gx"), false);
   assert.equal(sup("github", "", "xthub"), false);
+});
+
+// Chrome's rules need the selection the edit replaced and the caret it left (RN reports the caret first).
+const sel = (start, end = start) => ({ start, end });
+const edit = (typed, shown, next, before, after) => fieldChange(typed, shown, next, [], { before, after }).suppress;
+
+test("fieldChange with the field's selection: a replaced selection is typing, a removal is a deletion", () => {
+  // gi + ⌘A, then "g": the whole text was replaced, nothing was deleted.
+  assert.equal(edit("gi", "", "g", sel(0, 2), sel(1)), false);
+  assert.equal(edit("gi", "thub.com", "g", sel(0, 10), sel(1)), false);
+  // ⌫ at the end of "gi" gives the same text but a caret left of the old selection start.
+  assert.equal(edit("gi", "", "g", sel(2), sel(1)), true);
+  // ⌫ over the selected completion, ⌦ at the caret, ⌫ in the middle, cutting a selection.
+  assert.equal(edit("gi", "thub.com", "gi", sel(2, 10), sel(2)), true);
+  assert.equal(edit("github", "", "gihub", sel(2), sel(2)), true);
+  assert.equal(edit("github", "", "gihub", sel(3), sel(2)), true);
+  assert.equal(edit("github", "", "ghub", sel(1, 3), sel(1)), true);
+  // ⌦ leaves the caret where it was and reports no selection: the bar passes that caret as both.
+  assert.equal(edit("gi", "", "g", sel(1), sel(1)), true);
+  // Typing, also over the selected completion (the field is shorter than before, with text put in).
+  assert.equal(edit("gi", "thub.com", "git", sel(2, 10), sel(3)), false);
+  assert.equal(edit("gi", "", "git", sel(2), sel(3)), false);
+  assert.equal(edit("", "", "g", sel(0), sel(1)), false);
+  // A longer replacement is a paste, over a selection or not.
+  assert.equal(edit("", "", "git", sel(0), sel(3)), true);
+  assert.equal(edit("gi", "thub.com", "gitlab", sel(2, 10), sel(6)), true);
+  assert.equal(edit("github", "", "gixyzthub", sel(2), sel(5)), true);
+  assert.equal(edit("gi", "", "g😀", sel(1, 2), sel(3)), false);
+  // A selection that doesn't explain the edit (stale) falls back to the text.
+  assert.equal(edit("gi", "", "git", sel(0), sel(3)), false);
+  assert.equal(edit("", "", "github", sel(9), sel(6)), true);
+});
+
+test("fieldChange without a selection: pasting more than a character blocks the completion", () => {
+  const sup = (typed, shown, next) => fieldChange(typed, shown, next, []).suppress;
+  assert.equal(sup("", "", "github"), true);
+  assert.equal(sup("gi", "", "gitlab"), true);
+  assert.equal(sup("gi", "thub.com", "git"), false);
+  assert.equal(sup("", "", "g"), false);
+});
+
+test("the caret reaching the end of the text with the completion accepts it", () => {
+  assert.equal(acceptsCompletion("git", "hub.com", sel(10), []), true);
+  // Still selected, left of the end, caret at the start of the completion (Backspace, Delete), or no completion.
+  assert.equal(acceptsCompletion("git", "hub.com", sel(3, 10), []), false);
+  assert.equal(acceptsCompletion("git", "hub.com", sel(3), []), false);
+  assert.equal(acceptsCompletion("git", "", sel(3), []), false);
+  // A write in flight passes its own selection changes through here.
+  assert.equal(acceptsCompletion("git", "hub.com", sel(10), [{ typed: "git", completion: "hub.com" }]), false);
+  // After accepting, typed is "github.com": ⌫ there is a plain deletion.
+  assert.equal(edit("github.com", "", "github.co", sel(10), sel(9)), true);
 });

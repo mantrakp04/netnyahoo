@@ -17,7 +17,7 @@ registerHooks({
   },
 });
 const { useBrowser } = await import("../../store/browser.ts");
-const { useSuggestions, scopeFor } = await import("./useSuggestions.ts");
+const { useSuggestions, scopeFor, keywordScope } = await import("./useSuggestions.ts");
 const { currentBarActions } = await import("./actions.ts");
 
 const S = () => useBrowser.getState();
@@ -107,4 +107,13 @@ test("the bar's actions and known hosts follow the store: bookmark, mute, pin, p
   assert.equal(scopeFor("newhost.example", w)?.host, "newhost.example", "a host opened in a tab");
   S().closeTab(t);
   assert.equal(scopeFor("newhost.example", w), null, "gone with its tab");
+});
+
+test("Space enters a site's search only after its bare host or an engine keyword", () => {
+  const { w } = setup();
+  assert.equal(keywordScope("youtube.com", w)?.name, "YouTube");
+  assert.equal(keywordScope("www.youtube.com/", w)?.name, "YouTube");
+  assert.equal(keywordScope("zebra.example", w)?.host, "zebra.example", "a host from history");
+  for (const text of ["youtube", "github.com/foo", "github.com?x=1", "youtube.com:443", "me@github.com", "nothere.example"])
+    assert.equal(keywordScope(text, w), null, text);
 });

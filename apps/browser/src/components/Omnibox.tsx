@@ -15,10 +15,10 @@ import { registerHeroBar, savedNtpQuery, saveNtpQuery, type BarSnapshot } from "
 import { dispositionFor, openFromBar, switchFromBar, type Disposition } from "./omnibox/open";
 import { clipboardPasteAction, pasteMenuItem, pasteTarget, readClipboard } from "./omnibox/paste";
 import { ScopeChip } from "./omnibox/ScopeChip";
-import { SuggestionIcon, SuggestionList, type RowActions } from "./omnibox/SuggestionRow";
+import { SuggestionIcon, SuggestionList, isRemovable, type RowActions } from "./omnibox/SuggestionRow";
 import { useDropdownStart } from "./omnibox/dropdownStart";
 import { useInlineCompletion } from "./omnibox/useInlineCompletion";
-import { scopeFor, useSuggestions } from "./omnibox/useSuggestions";
+import { keywordScope, scopeFor, useSuggestions } from "./omnibox/useSuggestions";
 import { setPopover } from "./layout/pageState";
 import { IconButton, useHover } from "./primitives";
 
@@ -29,6 +29,8 @@ const BASE_KEYS = [
   { key: "Escape" },
   { key: "ArrowUp" },
   { key: "ArrowDown" },
+  { key: "PageUp" },
+  { key: "PageDown" },
   { key: "Tab" },
   { key: "n", ctrlKey: true },
   { key: "p", ctrlKey: true },
@@ -39,6 +41,8 @@ const BASE_KEYS = [
   { key: "Enter", ctrlKey: true, shiftKey: true },
 ];
 const SCOPE_KEYS = [...BASE_KEYS, { key: "Backspace" }];
+// ⇧⌦ is the field's own forward delete unless the selected row can be removed from history (Chrome's TryDeletingPopupLine).
+const REMOVE_KEYS = [...BASE_KEYS, { key: "Delete", shiftKey: true }];
 
 export function Omnibox({
   variant,
@@ -71,6 +75,18 @@ export function Omnibox({
     restored?.selection ?? (initial ? { start: 0, end: initial.length } : null),
   );
   const selection = useRef<Selection>(restored?.selection ?? { start: 0, end: typed.length });
+  // The selection before the latest change to it: RN reports the caret after an edit before the edit's text, so a
+  // text change finds the selection it replaced here (Chrome's just_deleted_text and paste rules need it).
+  const selectionBefore = useRef<Selection>(selection.current);
+  const selectionAt = useRef(0);
+  const noteSelection = (next: Selection) => {
+    const now = selection.current;
+    if (now.start !== next.start || now.end !== next.end) {
+      selectionBefore.current = now;
+      selectionAt.current = Date.now();
+    }
+    selection.current = next;
+  };
   const input = useRef<TextInput>(null);
   const root = useRef<View>(null);
 
@@ -96,11 +112,23 @@ export function Omnibox({
 
   const snapshot = useRef<BarSnapshot | null>(null);
   snapshot.current = { typed, edited, selection: selection.current, selected, scope };
+  const fieldText = useRef(value);
+  fieldText.current = value;
+  // Focusing a field that isn't being edited reports AppKit's select-all and then the caret at the end (RN's
+  // reactFocus), after the selection the bar applies with it: those two would leave `selection` wrong for the
+  // first key (⌘L, then a letter the address starts with, read as a deletion).
+  const editing = useRef(false);
+  const focusEcho = useRef(false);
+  const focusField = () => {
+    if (!editing.current && fieldText.current) focusEcho.current = true;
+    input.current?.focus();
+  };
   useEffect(() => {
     if (!hero) return;
     const focus = () => {
-      input.current?.focus();
-      setPendingSelection({ start: 0, end: (snapshot.current?.typed ?? "").length });
+      focusField();
+      // Everything in the field, the shown completion too.
+      setPendingSelection({ start: 0, end: fieldText.current.length });
     };
     const unregister = registerHeroBar(windowId, focus);
     return () => {
@@ -113,7 +141,7 @@ export function Omnibox({
   useLayoutEffect(() => {
     if (!pendingSelection) return;
     input.current?.setSelection(pendingSelection.start, pendingSelection.end);
-    selection.current = pendingSelection;
+    noteSelection(pendingSelection);
     setPendingSelection(null);
   }, [pendingSelection]);
 
@@ -189,7 +217,9 @@ export function Omnibox({
     setSuppressCompletion(true);
   };
 
-  const move = (delta: 1 | -1) => setSelected((i) => Math.max(0, Math.min(Math.min(i, items.length - 1) + delta, items.length - 1)));
+  // ↑ and ↓ wrap around the rows, as in Chrome (OmniboxPopupSelection::GetNextSelection).
+  const move = (delta: 1 | -1) =>
+    setSelected((i) => (items.length ? (Math.min(i, items.length - 1) + delta + items.length) % items.length : 0));
 
   const onKeyDown = (e: { nativeEvent: { key: string; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean } }) => {
     const { key, metaKey, altKey, shiftKey, ctrlKey } = e.nativeEvent;
@@ -201,6 +231,9 @@ export function Omnibox({
     }
     if (key === "ArrowDown" || (ctrlKey && key === "n")) return move(1);
     if (key === "ArrowUp" || (ctrlKey && key === "p")) return move(-1);
+    if (key === "PageUp") return setSelected(0);
+    if (key === "PageDown") return setSelected(Math.max(0, items.length - 1));
+    if (key === "Delete" && shiftKey) return isRemovable(current) ? rowActions.remove(current.url) : undefined;
     if (key === "Tab") {
       if (shiftKey) return move(-1);
       if (tabScope) return enterScope(tabScope);
@@ -246,7 +279,7 @@ export function Omnibox({
       setPendingSelection({ start: start + insert.length, end: start + insert.length });
     }
     if (choice === "selectAll") setPendingSelection({ start: 0, end: value.length });
-    input.current?.focus();
+    focusField();
   };
 
   // Opt-in field timing (telemetry/journeys.ts): a new tab's bar, and its first suggestions.
@@ -267,13 +300,20 @@ export function Omnibox({
 
   const onChangeText = (next: string) => {
     if (__DEV__) heardAt.current = Date.now();
-    const change = inline.read(next);
+    // An edit's caret arrives just before its text. An edit that leaves the caret where it was (⌦) has none, so a
+    // selection that changed earlier (a click) is what it started from.
+    const fresh = Date.now() - selectionAt.current < 100;
+    const change = inline.read(next, { before: fresh ? selectionBefore.current : selection.current, after: selection.current });
     if (change.echo) {
-      if (!change.stale) selection.current = { start: change.inline.typed.length, end: next.length };
+      if (!change.stale) noteSelection({ start: change.inline.typed.length, end: next.length });
       return;
     }
+    focusEcho.current = false;
     keyAt.current = Date.now();
     journeyKeystroke(tabId);
+    // Space right after an exact keyword or site host (youtube.com␣) enters its search, as Tab does.
+    const keyword = !scope && next === typed + " " ? keywordScope(typed, windowId) : null;
+    if (keyword) return enterScope(keyword);
     setEdited(true);
     setTyped(change.typed);
     setSuppressCompletion(change.suppress);
@@ -281,12 +321,17 @@ export function Omnibox({
   };
 
   useOmniboxDriver(`${windowId}:${variant}`, {
-    type: onChangeText,
+    // As the field reports a keystroke: the caret after the edit first, then the text.
+    type: (text) => {
+      noteSelection({ start: text.length, end: text.length });
+      onChangeText(text);
+    },
     clear: reset,
     key: (key, mods) => onKeyDown({ nativeEvent: { key, ...mods } }),
+    select: (start, end) => noteSelection({ start, end }),
     submit: () => choose(current),
     measure: () => new Promise((resolve) => root.current?.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }))),
-    state: () => ({ typed, value, selection: selection.current, completion: shownCompletion, suggested: completion, selected: selectedIndex, scope, scopeFrom: scopeFrom.current, tabScope, items }),
+    state: () => ({ typed, value, selection: selection.current, completion: shownCompletion, suggested: completion, preventInline: suppressCompletion, selectionBefore: selectionBefore.current, selected: selectedIndex, scope, scopeFrom: scopeFrom.current, tabScope, items }),
   });
 
   const leadingIcon =
@@ -303,7 +348,7 @@ export function Omnibox({
   const focusOnce = () => {
     if (focused.current) return;
     focused.current = true;
-    input.current?.focus();
+    focusField();
     const { start, end } = selection.current;
     input.current?.setSelection(start, end);
     journeyBarFocused(tabId);
@@ -315,7 +360,22 @@ export function Omnibox({
       onLayout={focusOnce}
       value={value}
       onSelectionChange={(e) => {
-        selection.current = e.nativeEvent.selection;
+        const next = e.nativeEvent.selection;
+        if (focusEcho.current) {
+          const atEnd = next.start === value.length && next.end === value.length;
+          if (atEnd || (next.start === 0 && next.end === value.length)) {
+            if (atEnd) focusEcho.current = false;
+            return;
+          }
+          focusEcho.current = false;
+        }
+        noteSelection(next);
+        // → and ⌘→ (or a click at the end) accept the completion: it is typed text from here on (the next ⌫ deletes from it).
+        if (inline.accepts(next)) {
+          setTyped(value);
+          setSuppressCompletion(true);
+          setSelected(0);
+        }
       }}
       onChangeText={onChangeText}
       placeholder={scope ? `Search ${scope.name}` : hero ? "Ask anything…" : "Search or enter address"}
@@ -323,8 +383,15 @@ export function Omnibox({
       selectionColor={theme.selection}
       enableFocusRing={false}
       onSubmitEditing={() => choose(current)}
-      onBlur={onCancel}
-      keyDownEvents={scope && !typed ? SCOPE_KEYS : BASE_KEYS}
+      onFocus={() => {
+        editing.current = true;
+      }}
+      onBlur={() => {
+        editing.current = false;
+        focusEcho.current = false;
+        onCancel?.();
+      }}
+      keyDownEvents={scope && !typed ? SCOPE_KEYS : isRemovable(current) ? REMOVE_KEYS : BASE_KEYS}
       onKeyDown={onKeyDown}
       style={{
         flex: 1,
@@ -342,7 +409,7 @@ export function Omnibox({
     go: (url: string) => latest.current.go(url),
     choose: () => latest.current.choose(latest.current.current),
     dictate: () => {
-      input.current?.focus();
+      focusField();
       startDictation();
     },
     siteControls: () => {

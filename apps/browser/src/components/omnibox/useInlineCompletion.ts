@@ -1,7 +1,7 @@
 import { completeInline } from "@netnyahoo/shell";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { findNodeHandle, type TextInput } from "react-native";
-import { completionToWrite, fieldChange, withoutFirst, type FieldChange, type Inline, type PendingInline } from "./inline";
+import { acceptsCompletion, completionToWrite, fieldChange, withoutFirst, type EditContext, type FieldChange, type Inline, type PendingInline, type Selection } from "./inline";
 
 export function useInlineCompletion(input: RefObject<TextInput | null>, typed: string, wanted: string) {
   const [inline, setInline] = useState<Inline | null>(null);
@@ -26,8 +26,8 @@ export function useInlineCompletion(input: RefObject<TextInput | null>, typed: s
     completeInline(tag, write.typed, write.completion).then(settle, () => settle(0));
   }, [input, typed, wanted, shown]);
 
-  const read = (next: string): FieldChange => {
-    const change = fieldChange(typed, shown, next, pending.current);
+  const read = (next: string, edit?: EditContext): FieldChange => {
+    const change = fieldChange(typed, shown, next, pending.current, edit);
     if (change.echo) {
       pending.current = pending.current.slice(change.settled);
       if (!change.stale) setInline(change.inline);
@@ -38,5 +38,7 @@ export function useInlineCompletion(input: RefObject<TextInput | null>, typed: s
     return change;
   };
 
-  return { shown, read };
+  const accepts = (selection: Selection) => acceptsCompletion(typed, shown, selection, pending.current);
+
+  return { shown, read, accepts };
 }

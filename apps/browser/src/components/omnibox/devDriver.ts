@@ -6,6 +6,8 @@ export type OmniboxDriver = {
   clear(): void;
   key(key: string, mods?: { metaKey?: boolean; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean }): void;
   submit(): void;
+  // Stands in for the field's selection event (a native select that moved the selection).
+  select(start: number, end: number): void;
   state(): unknown;
   measure(): Promise<{ x: number; y: number; width: number; height: number }>;
 };
@@ -42,6 +44,7 @@ export function useOmniboxDriver(id: string, driver: OmniboxDriver) {
       clear: () => latest.current.clear(),
       key: (key, mods) => latest.current.key(key, mods),
       submit: () => latest.current.submit(),
+      select: (start, end) => latest.current.select(start, end),
       state: () => latest.current.state(),
       measure: () => latest.current.measure(),
     };
