@@ -209,27 +209,28 @@ export function AutoHideToolbar({
 
   const { bar, fade } = motion;
   const H = layout.toolbarHeight;
+  // The bar's motion is wired up the first time it leaves (in the commit that starts it), and stays for the way back. A
+  // tab switched to shows its bar, so a switch mounts it with plain styles: no native animation nodes, no strip.
+  const [moved, setMoved] = useState(mode !== "shown");
+  if (!moved && mode !== "shown") setMoved(true);
   // Made once: a new interpolation is a new native node, detached and reattached on every render.
-  const { bandScale, bandLift, dividerTop, controls, label, shrink } = useMemo(
-    () => ({
-      // The band: the bar's height down to the strip's, its top edge fixed (scaled about its middle, then lifted).
-      bandScale: bar.interpolate({ inputRange: [0, 1], outputRange: [1, STRIP_HEIGHT / H] }),
-      bandLift: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM / 2] }),
-      dividerTop: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM] }),
-      controls: fade.interpolate({ inputRange: [0, 0.2, 0.4, 0.6, 1], outputRange: [1, 0.45, 0.15, 0, 0] }),
-      label: fade.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] }),
-      shrink: [
-        // Toward the top centre: scaled about its middle, then lifted so its top edge stays put, and a little more.
-        { translateY: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -((1 - SHRINK) * H) / 2 - 3] }) },
-        { scale: bar.interpolate({ inputRange: [0, 1], outputRange: [1, SHRINK] }) },
-      ],
-    }),
-    [bar, fade, H],
+  const anim = useMemo(
+    () =>
+      moved && {
+        // The band: the bar's height down to the strip's, its top edge fixed (scaled about its middle, then lifted).
+        bandScale: bar.interpolate({ inputRange: [0, 1], outputRange: [1, STRIP_HEIGHT / H] }),
+        bandLift: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM / 2] }),
+        dividerTop: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM] }),
+        controls: fade.interpolate({ inputRange: [0, 0.2, 0.4, 0.6, 1], outputRange: [1, 0.45, 0.15, 0, 0] }),
+        label: fade.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] }),
+        shrink: [
+          // Toward the top centre: scaled about its middle, then lifted so its top edge stays put, and a little more.
+          { translateY: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -((1 - SHRINK) * H) / 2 - 3] }) },
+          { scale: bar.interpolate({ inputRange: [0, 1], outputRange: [1, SHRINK] }) },
+        ],
+      },
+    [moved, bar, fade, H],
   );
-  // The strip comes the first time the bar leaves (it fades in as the controls fade out) and stays for the fade back:
-  // a tab switched to shows its bar, so a switch mounts none of it.
-  const [strip, setStrip] = useState(mode !== "shown");
-  if (!strip && mode !== "shown") setStrip(true);
   const host = url.startsWith("file:") ? "File" : breadcrumb(url).host;
 
   return (
@@ -237,26 +238,26 @@ export function AutoHideToolbar({
       {/* The band, the card under it first: a peeking bar covers the page, and a website colour never fades out. */}
       <Animated.View
         pointerEvents="none"
-        style={{ position: "absolute", left: 0, right: 0, top: 0, height: H, backgroundColor: theme.card, transform: [{ translateY: bandLift }, { scaleY: bandScale }] }}
+        style={{ position: "absolute", left: 0, right: 0, top: 0, height: H, backgroundColor: theme.card, transform: anim ? [{ translateY: anim.bandLift }, { scaleY: anim.bandScale }] : undefined }}
       >
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: band }]} />
       </Animated.View>
       {url ? (
         <Animated.View
           pointerEvents="none"
-          style={{ position: "absolute", left: 0, right: 0, top: H - StyleSheet.hairlineWidth, height: StyleSheet.hairlineWidth, backgroundColor: palette.divider, transform: [{ translateY: dividerTop }] }}
+          style={{ position: "absolute", left: 0, right: 0, top: H - StyleSheet.hairlineWidth, height: StyleSheet.hairlineWidth, backgroundColor: palette.divider, transform: anim ? [{ translateY: anim.dividerTop }] : undefined }}
         />
       ) : null}
       <Animated.View
         pointerEvents={collapsed ? "none" : "box-none"}
         onMouseEnter={() => modeNow.current === "peek" && clearTimeout(peekTimer.current)}
         onMouseLeave={() => modeNow.current === "peek" && peekLater(false, UNPEEK_DELAY)}
-        style={{ position: "absolute", left: 0, right: 0, top: 0, height: H, opacity: controls, transform: shrink }}
+        style={{ position: "absolute", left: 0, right: 0, top: 0, height: H, opacity: anim ? anim.controls : 1, transform: anim ? anim.shrink : undefined }}
       >
         <Toolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused} bare />
       </Animated.View>
-      {strip && (
-        <Animated.View pointerEvents={collapsed ? "auto" : "none"} style={{ position: "absolute", left: 0, right: 0, top: 0, height: STRIP_HEIGHT, opacity: label }}>
+      {anim && (
+        <Animated.View pointerEvents={collapsed ? "auto" : "none"} style={{ position: "absolute", left: 0, right: 0, top: 0, height: STRIP_HEIGHT, opacity: anim.label }}>
           <Pressable
             onPress={() => {
               clearTimeout(peekTimer.current);
