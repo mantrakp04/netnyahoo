@@ -208,3 +208,24 @@ test("a completion computed for older text is never applied", () => {
   assert.equal(w.js.typed, "mf");
   assert.deepEqual(w.js.pending, []);
 });
+
+test("fieldChange: any deletion drops the completion; typing brings it back", () => {
+  const sup = (typed, shown, next) => fieldChange(typed, shown, next, []).suppress;
+  // Backspace over the selected completion, Delete, cut of the selection.
+  assert.equal(sup("gi", "thub.com", "gi"), true);
+  // Further backspaces, ⌥⌫ / ⌘⌫ (whole word or everything), with no completion showing.
+  assert.equal(sup("gi", "", "g"), true);
+  assert.equal(sup("github", "", ""), true);
+  // Deleting or cutting from the middle or the start.
+  assert.equal(sup("github", "", "gihub"), true);
+  assert.equal(sup("github", "", "hub"), true);
+  assert.equal(sup("gi", "thub.com", "thub.com"), true);
+  // Typing, including over the selected completion (the field is shorter than before but text went in).
+  assert.equal(sup("gi", "thub.com", "git"), false);
+  assert.equal(sup("gi", "thub.com", "gix"), false);
+  assert.equal(sup("gi", "", "git"), false);
+  assert.equal(sup("", "", "g"), false);
+  // Selecting part of the text and typing a different letter replaces it: not a deletion.
+  assert.equal(sup("github", "", "gx"), false);
+  assert.equal(sup("github", "", "xthub"), false);
+});

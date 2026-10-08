@@ -54,6 +54,33 @@ test("free text puts a search first-class and never autocompletes", () => {
   assert.equal(items[0]?.kind, "search");
 });
 
+test("preventInline (after a deletion): no completion, and the search is first unless the typed text is the page", () => {
+  const typed = (text: string, preventInline: boolean) => buildSuggestions(text, { tabs: [], history }, { now, preventInline });
+  const before = typed("gi", false);
+  assert.equal(before.completion, "thub.com");
+  assert.equal(rows(before.items)[0], "https://github.com/");
+  const after = typed("gi", true);
+  assert.equal(after.completion, "");
+  assert.equal(rows(after.items)[0], "search:gi");
+  assert.ok(rows(after.items).includes("https://github.com/"), "the page stays in the list");
+  // A page that matches by title or host, but isn't what was typed, doesn't go first either.
+  assert.equal(rows(typed("gith", true).items)[0], "search:gith");
+  assert.equal(rows(typed("x.c", true).items)[0], "search:x.c");
+  // What was typed is the page's host: it still goes first, with no completion needed.
+  assert.equal(rows(typed("github.com", true).items)[0], "https://github.com/");
+  assert.equal(typed("github.com", true).completion, "");
+  assert.equal(rows(typed("x.com/home", true).items)[0], "https://x.com/home");
+  assert.equal(rows(typed("https://x.com/notifications", true).items)[0], "https://x.com/notifications");
+  // Typing again turns it back on.
+  assert.equal(typed("git", false).completion, "hub.com");
+});
+
+test("preventInline keeps quick-create, actions and calculator rules", () => {
+  const actions = [{ id: "newTab", title: "New Tab" }] as never;
+  assert.equal(rows(buildSuggestions("new tab", { tabs: [], history }, { now, actions, preventInline: true }).items)[0], "action:newTab");
+  assert.equal(rows(buildSuggestions("2+2", { tabs: [], history }, { now, preventInline: true }).items)[0], "search:2+2");
+});
+
 test("open tabs are marked so the bar can switch to them, except the bar's own tab", () => {
   const tabs = [{ id: "t1", url: "https://github.com/", title: "GitHub", favicon: null }];
   const { items } = buildSuggestions("gith", { tabs, history }, { now });

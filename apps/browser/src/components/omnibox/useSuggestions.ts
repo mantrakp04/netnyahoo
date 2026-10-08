@@ -58,6 +58,7 @@ export function useSuggestions({
   currentTabId,
   currentUrl,
   scope,
+  preventInline,
 }: {
   text: string;
   active: boolean;
@@ -66,6 +67,7 @@ export function useSuggestions({
   currentTabId?: string;
   currentUrl?: string;
   scope: SearchScope | null;
+  preventInline?: boolean;
 }): SuggestionResult {
   const allTabs = useBrowser((s) => s.tabs);
   const history = useBrowser((s) => s.history[profileId] ?? NO_HISTORY);
@@ -121,6 +123,7 @@ export function useSuggestions({
       currentTabId,
       currentUrl,
       scope,
+      preventInline,
     });
-  }, [active, text, query, source, engine, preference, remoteList, windowId, currentTabId, currentUrl, scope]);
+  }, [active, text, query, source, engine, preference, remoteList, windowId, currentTabId, currentUrl, scope, preventInline]);
 }

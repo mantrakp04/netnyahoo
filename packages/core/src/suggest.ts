@@ -43,6 +43,9 @@ export type SuggestOptions = {
   currentTabId?: string;
   currentUrl?: string;
   scope?: SearchScope | null;
+  // Chrome's prevent_inline_autocomplete, set after the user deleted text: no inline completion, and a page only
+  // goes first when what was typed is exactly the page's host or address (a typed URL still goes first).
+  preventInline?: boolean;
 };
 
 export function displayUrl(url: string): string {
@@ -401,7 +404,7 @@ export function suggestionKey(s: Suggestion): string {
 }
 
 export function buildSuggestions(raw: string, source: SuggestionSource, options: SuggestOptions = {}): SuggestionResult {
-  const { limit = 8, now = Date.now(), engine = BUILT_IN_ENGINES[0]!, preference = "website", remote = [], actions = [], scope } = options;
+  const { limit = 8, now = Date.now(), engine = BUILT_IN_ENGINES[0]!, preference = "website", remote = [], actions = [], scope, preventInline = false } = options;
   const query = raw.trim();
   if (!query) return { items: [], completion: "" };
   const q = query.toLowerCase();
@@ -427,7 +430,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
 
   const websiteFirst = preference === "website";
   const oneWord = tokens.length === 1;
-  const completes = websiteFirst && !scope && oneWord;
+  const completes = websiteFirst && !scope && oneWord && !preventInline;
   const from = narrowing(pool, q, tokens);
   const pages = from ? from.pages : pool.list;
   // The same query as last time: its matches and their scores are known.
@@ -515,7 +518,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else if (actionMatches[0]?.exact) first = actionRow(actionMatches[0].action);
   else if (target && completion) first = known(target.url) ?? { kind: "page", url: target.url, title: "", favicon: target.favicon };
   else if (typedUrl) first = known(typedUrl) ?? { kind: "page", url: typedUrl, title: "", favicon: null };
-  else if (websiteFirst && best && best.m >= 40) first = pageSuggestion(best.c, best.tabId);
+  else if (websiteFirst && best && best.m >= 40 && (!preventInline || typedIsPage(best.c.text, q))) first = pageSuggestion(best.c, best.tabId);
   else first = search;
 
   out.push(first);
@@ -528,6 +531,11 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
   out.push(...pageRows.slice(3));
   return { items: out.items, completion };
+}
+
+// What was typed is the page's host or its whole shown address: the only way a page is the default match with no completion.
+function typedIsPage(t: PageText, q: string): boolean {
+  return q === t.shownLower || q === hostLowerOfPage(t);
 }
 
 function inlineMatch(t: PageText, q: string): boolean {

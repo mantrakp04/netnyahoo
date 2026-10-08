@@ -393,7 +393,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | History suggestions (frecency) | ✓ | ✅ | removable rows |
 | Open‑tab suggestions ("Switch to Tab") | ✓ | ✅ | across windows |
 | Bookmark suggestions | ✓ | ✅ | |
-| Inline autocomplete | ✓ | ✅ | |
+| Inline autocomplete | ✓ | ✅ | Deleting text in any way (Backspace, Delete, ⌥⌫, ⌘⌫, cut, deleting the selected completion) drops the completion and puts the search for what was typed on top, as in Chrome and Dia (`preventInline` in `packages/core/src/suggest.ts`: a page only goes first then when what was typed is exactly its host or address, and a typed URL still goes first); the next typed character turns completion back on. Unit tests, and the dev driver in a hidden instance ("gi" → page first with "thub.com"; after a delete → search first, no completion; "t" → back). The native selected-completion delete itself isn't reachable from the dev driver (it bypasses the field), so it's covered by `inline.test.mjs` only |
 | Keyboard/hover selection | ✓ | ✅ | ↑↓, ⌃N/⌃P, Tab/⇧Tab |
 | Route input to site / search / Chat (on‑device router model) | ✓ | ⏸ | "Ask anything…" placeholder; input goes to a site or the search engine |
 | Force route ⌃⌘↩ → Chat | ✓ | ⏸ | |

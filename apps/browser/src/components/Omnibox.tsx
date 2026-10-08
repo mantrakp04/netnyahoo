@@ -82,6 +82,7 @@ export function Omnibox({
     currentTabId: tabId,
     currentUrl: currentUrl || undefined,
     scope,
+    preventInline: suppressCompletion,
   });
   const start = useDropdownStart(dropdown && !edited && !scope, tabId, profileId);
   const items = dropdown && !edited && !scope ? start : suggested;
