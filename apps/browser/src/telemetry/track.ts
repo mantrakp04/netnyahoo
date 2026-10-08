@@ -24,6 +24,9 @@ export const trackSuggestionChosen = (s: SuggestionLike) => capture("suggestion_
 
 export const trackSettingsSection = (section: string) => capture("settings_section_opened", { section });
 
+// A Ctrl+Tab switcher showed the focused tab's preview picture (once per switcher session).
+export const trackSwitcherPreview = () => capture("tab_switcher_preview_shown");
+
 // MARK: Command bar speed (sampled)
 
 const SAMPLE_EVERY = 5;

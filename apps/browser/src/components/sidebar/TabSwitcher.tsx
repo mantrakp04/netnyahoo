@@ -1,17 +1,21 @@
 import { FadeLabel, Surface } from "@netnyahoo/shell";
-import { Pressable, Text, View } from "react-native";
+import { useEffect } from "react";
+import { Image, Pressable, Text, View } from "react-native";
 import { displayUrl } from "@netnyahoo/core";
+import { lastPicture } from "../../lib/tabPictures";
 import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { tabTitle } from "./actions";
 import { useSidebarUi } from "./state";
-import { commitSwitcher, focusSwitcherRow } from "./switcher";
+import { commitSwitcher, focusSwitcherRow, reportSwitcherPreview } from "./switcher";
 import { TabIcon } from "./TabIcon";
 import { useSidebarTokens } from "./tokens";
 
 const WIDTH = 400;
 const ROW = 40;
 const MAX_ROWS = 9;
+// The focused tab's last picture (lib/tabPictures): memory only, shown only while the switcher is up.
+const PREVIEW_HEIGHT = 150;
 
 export function TabSwitcher({ windowId, windowWidth, windowHeight }: { windowId: string; windowWidth: number; windowHeight: number }) {
   const theme = useTheme();
@@ -20,7 +24,8 @@ export function TabSwitcher({ windowId, windowWidth, windowHeight }: { windowId:
   if (!switcher) return null;
   const start = Math.max(0, Math.min(switcher.index - Math.floor(MAX_ROWS / 2), switcher.ids.length - MAX_ROWS));
   const shown = switcher.ids.slice(start, start + MAX_ROWS);
-  const height = shown.length * ROW + 16 + 26;
+  const picture = lastPicture(switcher.ids[switcher.index] ?? "");
+  const height = shown.length * ROW + 16 + 26 + (picture ? PREVIEW_HEIGHT + 8 : 0);
   return (
     <Surface
       fill={hex(theme.panel)}
@@ -37,7 +42,20 @@ export function TabSwitcher({ windowId, windowWidth, windowHeight }: { windowId:
       {shown.map((id, i) => (
         <SwitcherRow key={id} tabId={id} focused={start + i === switcher.index} index={start + i} focusFill={tokens.switcherFocus} outline={tokens.switcherOutline} />
       ))}
+      {picture ? <SwitcherPreview data={picture.data} /> : null}
     </Surface>
+  );
+}
+
+function SwitcherPreview({ data }: { data: string }) {
+  const theme = useTheme();
+  useEffect(() => reportSwitcherPreview(), []);
+  return (
+    <Image
+      source={{ uri: `data:image/jpeg;base64,${data}` }}
+      resizeMode="cover"
+      style={{ width: WIDTH - 16, height: PREVIEW_HEIGHT, marginTop: 8, borderRadius: 10, borderWidth: 0.5, borderColor: hex(theme.panelBorder) }}
+    />
   );
 }
 

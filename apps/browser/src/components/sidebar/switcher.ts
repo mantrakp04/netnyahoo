@@ -1,16 +1,26 @@
 import { setSwitcherCapture } from "@netnyahoo/shell";
+import { trackSwitcherPreview } from "../../telemetry/track";
 import { useBrowser } from "../../store/browser";
 import { recentTabIds } from "../../store/organize";
 import { setSidebarUi, sidebarUi } from "./state";
 
 const SHOW_AFTER_MS = 140;
 let showTimer: ReturnType<typeof setTimeout> | undefined;
+let previewReported = false;
+
+// Once per switcher session, the first time a preview is on screen.
+export function reportSwitcherPreview() {
+  if (previewReported) return;
+  previewReported = true;
+  trackSwitcherPreview();
+}
 
 export function switcherStep(windowId: string, backward: boolean) {
   const current = sidebarUi().switcher;
   if (current && current.windowId === windowId) return moveSwitcher(backward ? -1 : 1);
   const ids = recentTabIds(useBrowser.getState(), windowId);
   if (ids.length < 2) return;
+  previewReported = false;
   setSidebarUi({ switcher: { windowId, ids, index: backward ? ids.length - 1 : 1, visible: false } });
   setSwitcherCapture(true);
   clearTimeout(showTimer);
