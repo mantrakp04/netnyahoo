@@ -1,6 +1,7 @@
 import { appUrlOrigin, toAppUrl } from "./appUrls.ts";
 import { cleanUrl } from "./cleanUrl.ts";
 import { displayHost } from "./idn.ts";
+import { PSL_TLDS } from "./tlds.ts";
 
 export const SEARCH_URL = "https://www.google.com/search?q=";
 
@@ -46,17 +47,30 @@ const KNOWN_TLDS = new Set(
     "tv tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw"
   ).split(" "),
 );
+// Chrome's "known registry" (AutocompleteInput::Parse, has_known_tld) is the public suffix list's ICANN part.
+// The rest of the list is read once, the first time a name's TLD isn't one of the common ones above (not at launch).
+let registries: Set<string> | undefined;
+const knownTld = (tld: string) => KNOWN_TLDS.has(tld) || (registries ??= new Set(PSL_TLDS.split(/\s+/))).has(tld);
 
 function isLocalHost(host: string): boolean {
   return (
     host === "localhost" ||
+    // A name with no dot is an intranet host: Chrome's https upgrade skips it, and its servers rarely have a certificate.
+    !host.includes(".") ||
     host.startsWith("[") ||
     /^(\d{1,3}\.){3}\d{1,3}$/.test(host) ||
     /\.(local|localhost|test|internal|lan|home\.arpa)$/.test(host)
   );
 }
 
-const HOST = /^(localhost|\[[0-9a-f:.]+\]|(\d{1,3}\.){3}\d{1,3}|([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z][a-z0-9-]*[a-z0-9]|xn--[a-z0-9-]+))\.?(:\d{1,5})?(?=[/?#]|$)/i;
+// Host (a dotted name, a single label, localhost, an IPv4 or a bracketed IPv6 address) and its port, up to the path, query
+// or end. Labels take any non-ASCII character, so IDN hosts (münchen.de, яндекс.рф) are hosts: the engine punycodes them.
+const L = "a-z0-9\\u00a1-\\uffff";
+const LABEL = `[${L}](?:[${L}-]*[${L}])?`;
+const HOST = new RegExp(
+  `^(localhost|\\[[0-9a-f:.]+\\]|(\\d{1,3}\\.){3}\\d{1,3}|(${LABEL}\\.)+([a-z\\u00a1-\\uffff](?:[${L}-]*[${L}])?|xn--[a-z0-9-]+)|${LABEL})\\.?(:\\d{1,5})?(?=[/?#]|$)`,
+  "i",
+);
 
 export function fixupUrl(raw: string): string | null {
   const url = fixup(raw);
@@ -75,14 +89,28 @@ function fixup(raw: string): string | null {
   if (scheme && !KNOWN_SCHEMES.has(scheme) && input.slice(scheme.length + 1).startsWith("//")) return input;
   if (input.startsWith("/") && !input.startsWith("//")) return `file://${input.replace(/\s/g, "%20")}`;
 
+  // Most keystrokes are one plain word (git, react): no dot, port, path or bracket, so no host but localhost.
+  if (!/[.:/?#[]/.test(input)) return input.toLowerCase() === "localhost" ? `http://${input}` : null;
   const host = HOST.exec(input);
   if (!host) return null;
   const name = host[1]!.toLowerCase().replace(/\.$/, "");
-  const tld = name.includes(".") && !/^[\d.]+$/.test(name) && !name.startsWith("[") ? name.slice(name.lastIndexOf(".") + 1) : "";
+  const numeric = /^[\d.]+$/.test(name);
+  // A label of digits is a number or a time (10:30), never a host; Chrome canonicalizes it to an IPv4 address and searches.
+  if (numeric && !name.includes(".")) return null;
+  const dotted = name.includes(".") && !numeric && name.charCodeAt(0) !== 91;
+  const tld = dotted ? name.slice(name.lastIndexOf(".") + 1) : "";
   const rest = input.slice(host[0].length);
-  const explicit = !!host[5] || rest.length > 0;
-  if (tld && !KNOWN_TLDS.has(tld) && !tld.startsWith("xn--") && !explicit) return null;
-  return `${isLocalHost(name) ? "http" : "https"}://${input}`;
+  const special = name === "localhost" || name.charCodeAt(0) === 91 || numeric;
+  const proto = isLocalHost(name) ? "http" : "https";
+  if (special || (dotted && (knownTld(tld) || tld.startsWith("xn--")))) return `${proto}://${input}`;
+  // What Chrome calls a URL when the TLD isn't a registry (AutocompleteInput::Parse): a port, a path ending in "/", or two
+  // of path, query and fragment. One of them alone ("foo.zzzz/x", "foo/bar", "foo?q") is a search, and so is a bare word.
+  if (!host[5] && !rest.includes("/") && !rest.includes("?") && !rest.includes("#")) return null;
+  const path = /^[^?#]*/.exec(rest)![0];
+  const query = /\?[^#]*/.exec(rest)?.[0] ?? "";
+  const fragment = /#.*/.exec(rest)?.[0] ?? "";
+  const parts = (host[5] ? 1 : 0) + (path ? 1 : 0) + (query.length > 1 ? 1 : 0) + (fragment.length > 1 ? 1 : 0);
+  return host[5] || path.endsWith("/") || parts > 1 ? `${proto}://${input}` : null;
 }
 
 export function searchUrlFor(template: string, query: string): string {

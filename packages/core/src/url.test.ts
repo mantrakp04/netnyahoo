@@ -1,6 +1,7 @@
 // Typed text → URL, and the URL checks that protect the user: lookalike hosts, tracking parameters, app URLs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { PSL_TLDS } from "./tlds.ts";
 import { domainToASCII } from "node:url";
 import { cleanUrl } from "./cleanUrl.ts";
 import { displayHost, hostSpoofReason, punycodeEncode } from "./idn.ts";
@@ -28,7 +29,7 @@ test("fixupUrl: ports, IPv6, local names, schemes and file paths", () => {
   assert.equal(fixupUrl("/Users/me/My File.html"), "file:///Users/me/My%20File.html");
   assert.equal(fixupUrl("mailto:hi@example.com"), "mailto:hi@example.com");
   assert.equal(fixupUrl("xn--bcher-kva.example"), null);
-  assert.equal(fixupUrl("bücher.de"), null);
+  assert.equal(fixupUrl("bücher.de"), "https://bücher.de");
   assert.equal(fixupUrl("en.wikipedia.org/wiki/Cat"), "https://en.wikipedia.org/wiki/Cat");
   assert.equal(fixupUrl("github.io"), "https://github.io");
   assert.equal(fixupUrl("example.co.uk"), "https://example.co.uk");
@@ -108,4 +109,78 @@ test("displayed URLs say netnyahoo://, never chrome://", () => {
   assert.deepEqual(breadcrumb("netnyahoo://version/", "About Version"), { host: "netnyahoo://version", trail: ["About Version"] });
   assert.deepEqual(breadcrumb("netnyahoo://history", "History"), { host: "netnyahoo://history", trail: [] });
   assert.deepEqual(breadcrumb("chrome://flags/", "Experiments"), { host: "netnyahoo://flags", trail: ["Experiments"] });
+});
+
+// Chrome's AutocompleteInput::Parse (components/omnibox/browser/autocomplete_input.cc): a host with a port is a URL, a
+// host whose TLD is a known registry is a URL, an unknown TLD needs a port, a path ending in "/", or two of path, query and fragment.
+test("host:port navigates: single-label intranet hosts over http, a number or a time never", () => {
+  assert.equal(fixupUrl("myserver:8080"), "http://myserver:8080");
+  assert.equal(fixupUrl("localhost:3000"), "http://localhost:3000");
+  assert.equal(fixupUrl("devbox:3000/api/health?x=1"), "http://devbox:3000/api/health?x=1");
+  assert.equal(fixupUrl("foo.zzzz:8080"), "https://foo.zzzz:8080");
+  assert.equal(resolveInput("myserver:8080"), "http://myserver:8080");
+  for (const text of ["10:30", "3:2", "8080", "12:30pm", "ratio 3:2", "note: 5", "a:b", "std::vector"]) assert.equal(fixupUrl(text), null, text);
+});
+
+test("IDN hosts navigate, in any script, with or without a path", () => {
+  assert.equal(fixupUrl("münchen.de"), "https://münchen.de");
+  assert.equal(fixupUrl("Яндекс.рф"), "https://Яндекс.рф");
+  assert.equal(fixupUrl("яндекс.рф/search?text=x"), "https://яндекс.рф/search?text=x");
+  assert.equal(fixupUrl("例え.jp"), "https://例え.jp");
+  assert.equal(fixupUrl("bücher.example/x/"), "https://bücher.example/x/");
+  assert.equal(fixupUrl("xn--bcher-kva.de"), "https://xn--bcher-kva.de");
+  assert.equal(fixupUrl("café.fr:8443"), "https://café.fr:8443");
+  // Words with accents and no TLD are searches.
+  assert.equal(fixupUrl("café"), null);
+  assert.equal(fixupUrl("münchen.zzzz"), null);
+  assert.equal(fixupUrl("naïve bayes.com"), null);
+});
+
+test("an unknown TLD searches unless a port, a trailing slash or two of path, query and fragment say URL", () => {
+  assert.equal(fixupUrl("foo.zzzz"), null);
+  assert.equal(fixupUrl("foo.zzzz/x"), null);
+  assert.equal(fixupUrl("foo.zzzz?x=1"), null);
+  assert.equal(fixupUrl("foo.zzzz#top"), null);
+  assert.equal(fixupUrl("foo.zzzz/"), "https://foo.zzzz/");
+  assert.equal(fixupUrl("foo.zzzz/x/"), "https://foo.zzzz/x/");
+  assert.equal(fixupUrl("foo.zzzz/x?y=1"), "https://foo.zzzz/x?y=1");
+  assert.equal(fixupUrl("foo.zzzz/x#y"), "https://foo.zzzz/x#y");
+  assert.equal(fixupUrl("x.y/"), "https://x.y/");
+  assert.equal(fixupUrl("https://foo.zzzz/x"), "https://foo.zzzz/x");
+  assert.equal(fixupUrl("http://foo"), "http://foo");
+  // A single label: the same rules, over http (an intranet name).
+  assert.equal(fixupUrl("foo/bar"), null);
+  assert.equal(fixupUrl("foo/"), "http://foo/");
+  assert.equal(fixupUrl("wiki/Main?x=1"), "http://wiki/Main?x=1");
+  assert.equal(fixupUrl("react"), null);
+  assert.equal(fixupUrl("and/or"), null);
+});
+
+test("a known registry navigates with or without a path (Chrome's public suffix list)", () => {
+  for (const text of ["site.photography/about", "docs.new", "report.zip", "shop.bike", "hello.world", "a.xn--p1ai", "b.中国", "c.рф"]) {
+    assert.ok(fixupUrl(text), text);
+  }
+  for (const text of ["index.html", "node.js", "e.g.", "1.5", "a.b", "c++", "v1.2.3", "file.txt", "README.md.bak", "hi@example.com"]) {
+    assert.equal(fixupUrl(text), null, text);
+  }
+});
+
+// A fuzz over host shapes: whatever Chrome would call URL navigates, whatever has whitespace or a bad host never does.
+test("random hosts: a known TLD or a port navigates, a bare unknown name or a space never does", () => {
+  let seed = 7;
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0), seed % n);
+  const pick = <T,>(list: readonly T[]): T => list[rnd(list.length)]!;
+  const tlds = PSL_TLDS.split(/\s+/).filter((t) => t.length > 1 && t !== "local" && t !== "localhost");
+  const labels = ["a", "foo", "my-site", "x1", "münchen", "яндекс", "例え", "9lives", "a-b-c"];
+  for (let i = 0; i < 3000; i++) {
+    const host = `${pick(labels)}${rnd(3) ? "" : `.${pick(labels)}`}.${pick(tlds)}`;
+    const tail = pick(["", "/", "/x", "/x/y?z=1", ":8080", ":8080/x", "?q=1", "#t"]);
+    const url = fixupUrl(host + tail);
+    assert.ok(url?.endsWith(host + tail), `${host}${tail} → ${url}`);
+    assert.equal(fixupUrl(`${host} ${tail}`.trimEnd() + " x"), null, "a space makes it prose");
+    const unknown = `${pick(labels)}.${pick(["zzzz", "qqqq", "notatld"])}`;
+    const bare = fixupUrl(unknown + pick(["", "/x", "?q=1", "#t"]));
+    assert.equal(bare, null, unknown);
+    assert.ok(fixupUrl(`${unknown}:${1 + rnd(65535)}`), "a port makes it a URL");
+  }
 });
