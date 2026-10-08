@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { DEFAULT_WINDOW_UI } from "../../store/ui";
 
-// The toolbar that tucks away while you read, with tabs across the top: scrolling the page down collapses it to a thin
+// The card's toolbar tucks away while you read, in either tab layout: scrolling the page down collapses it to a thin
 // strip that keeps the site's name; scrolling up, the top of the page, a tab switch, a navigation or a click on the
 // strip brings it back. The direction comes from the page (page_script.js › Scroll direction).
 
@@ -57,7 +57,7 @@ export function setToolbarPeek(tabId: string, on: boolean) {
 }
 
 export type ToolbarModeInput = {
-  // The setting, the layout (tabs on top) and a toolbar to hide (not the sidebar's address bar, Small Yahu or fullscreen).
+  // The setting and a toolbar to hide (not the sidebar's address bar, Small Yahu or fullscreen).
   enabled: boolean;
   // A page with an address: the New Tab page and the app's own pages keep the bar.
   hasPage: boolean;

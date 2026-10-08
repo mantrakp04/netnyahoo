@@ -258,7 +258,7 @@ export function ContentCard() {
               covered={!!fullscreenTab && tabId !== fullscreenTab}
               geometry={geometryFor(rect)}
               toolbar={!addressInSidebar && !small}
-              autoHide={hideWhileScrolling && tabLayout === "top" && !addressInSidebar && !small}
+              autoHide={hideWhileScrolling && !addressInSidebar && !small}
               small={small}
               mounted={mountedIds.has(tabId)}
               warm={warmPanes[tabId]}
@@ -309,7 +309,7 @@ const TabPane = memo(function TabPane({
   covered: boolean;
   geometry: ToolbarGeometry;
   toolbar: boolean;
-  // The toolbar hides while the page scrolls down (tabs on top, components/AutoHideToolbar.tsx).
+  // The toolbar hides while the page scrolls down (components/AutoHideToolbar.tsx).
   autoHide: boolean;
   small: boolean;
   mounted: boolean;

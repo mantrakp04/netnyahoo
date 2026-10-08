@@ -33,7 +33,7 @@ export function TabsPane() {
         {toggle(
           "hideToolbarWhileScrolling",
           "Hide toolbar while scrolling",
-          "With tabs across the top, scrolling down tucks the toolbar into a thin strip with the site's name. Scroll up, or click the strip, to bring it back.",
+          "Scrolling down tucks the toolbar into a thin strip with the site's name. Scroll up, or click the strip, to bring it back.",
         )}
       </Group>
 

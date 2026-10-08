@@ -27,7 +27,7 @@ export type Settings = {
   commandBarPreference: "website" | "search";
 
   tabLayout: "sidebar" | "top";
-  // With tabs on top: the toolbar collapses to a strip while you scroll down (components/AutoHideToolbar.tsx).
+  // The card's toolbar collapses to a strip while you scroll down (components/AutoHideToolbar.tsx).
   hideToolbarWhileScrolling: boolean;
   newTabPosition: "top" | "bottom";
   warnBeforeClosingLastTab: boolean;
