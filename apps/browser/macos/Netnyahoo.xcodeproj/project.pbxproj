@@ -393,7 +393,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Netnyahoo-macOS/Netnyahoo.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 37;
+				CURRENT_PROJECT_VERSION = 38;
 				DEAD_CODE_STRIPPING = NO;
 				DEVELOPMENT_TEAM = U5L5T3NGVV;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -401,7 +401,7 @@
 				INFOPLIST_FILE = "Netnyahoo-macOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.29;
+				MARKETING_VERSION = 0.2.30;
 				NNCORE_STAGE_DIR = "$(OBJROOT)/NNCoreFramework";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -428,7 +428,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Netnyahoo-macOS/Netnyahoo.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 37;
+				CURRENT_PROJECT_VERSION = 38;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = U5L5T3NGVV;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -436,7 +436,7 @@
 				INFOPLIST_FILE = "Netnyahoo-macOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.29;
+				MARKETING_VERSION = 0.2.30;
 				NNCORE_STAGE_DIR = "$(OBJROOT)/NNCoreFramework";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
