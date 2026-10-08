@@ -283,6 +283,13 @@ check(
   !!closed?.closed && !after?.pip && after?.paused === false && after.time !== before,
   closed ? `closed ${closed.closed}, paused ${after?.paused}, ${before?.toFixed(2)} → ${after?.time?.toFixed(2)} s` : "no close click",
 );
+// A click on the window never activates the app (WindowServer's prevents-activation tag): closing it from another app
+// once brought the browser window up over that app.
+check(
+  "a click on the Picture in Picture window doesn't activate the app",
+  closed?.preventsActivation === true && closed?.activations === 0,
+  closed ? `tag ${closed.preventsActivation}, activations ${closed.activations}` : "no close click",
+);
 
 // smoke.sh left Chrome's last-used profile at Work, as quitting with Work's window in front does, and Chrome starts in
 // it. Personal (the app's own profile, Chrome's Default directory) must still be itself: before 0.2.20 Personal's

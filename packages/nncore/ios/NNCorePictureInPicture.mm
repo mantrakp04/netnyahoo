@@ -9,6 +9,12 @@
 #import <objc/runtime.h>
 #import <QuartzCore/QuartzCore.h>
 
+// AppKit's own setter for WindowServer's prevents-activation tag, which a non-activating NSPanel gets at creation.
+@interface NSWindow (NNPreventsActivation)
+- (void)_setPreventsActivation:(BOOL)prevents;
+- (BOOL)_preventsActivation;
+@end
+
 namespace {
 
 constexpr CGFloat kPeek = 28;
@@ -72,6 +78,28 @@ BOOL ScreenAt(CGFloat x, CGFloat y) {
   for (NSScreen *screen in NSScreen.screens)
     if (NSPointInRect(NSMakePoint(x, y), screen.frame)) return YES;
   return NO;
+}
+
+// A click on the mini player doesn't activate the app. WindowServer activates the owner of a clicked window unless the
+// window carries its prevents-activation tag; activated, the app made its next window key as the mini player closed,
+// and the browser window came up over the app the user was in. In an app that isn't active the window doesn't become
+// key either, so the keyboard stays where it was; Chrome's views take the click all the same (acceptsFirstMouse:).
+// Back to Tab activates the app itself (ActivateApp).
+void PreventActivation(NSWindow *window) {
+  if ([window respondsToSelector:@selector(_setPreventsActivation:)]) [window _setPreventsActivation:YES];
+}
+
+BOOL PreventsActivation(NSWindow *window) {
+  return [window respondsToSelector:@selector(_preventsActivation)] && [window _preventsActivation];
+}
+
+// Times Back to Tab activated the app (the button self-test reads it).
+NSInteger gActivations = 0;
+
+void ActivateApp(NSString *why) {
+  gActivations++;
+  if (nncore_host::Background()) return nncore_host::LogActivation([@"activate (skipped in a test instance): " stringByAppendingString:why]);
+  [NSApp activate];
 }
 
 }
@@ -328,6 +356,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 - (void)backToTab {
   NNCoreWebView *view = self.view;
   if (!view) return;
+  ActivateApp(@"Back to Tab (menu)");
   [view emit:@"activateRequest" payload:@{@"reason" : @"pictureInPicture"}];
   [view exitPictureInPictureInFrame:_frameId];
 }
@@ -556,8 +585,10 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 }
 
 // NETNYAHOO_PIP_SELFTEST=close / backToTab: clicks Chrome's own close button (its X, top right) or its back-to-tab
-// button (top left) as AppKit delivers a click, then records whether the window closed. What happens to the video and
-// the tab is for the caller to check (CDP, the store): closing leaves the video playing where it is.
+// button (top left) as AppKit delivers a click (through the event queue, so it's NSApp's current event), then records
+// whether the window closed, whether it carries WindowServer's prevents-activation tag, and how many times the click
+// activated the app (close: never; Back to Tab: once). What happens to the video and the tab is for the caller to
+// check (CDP, the store): closing leaves the video playing where it is.
 - (void)runButtonSelfTest:(NSString *)button {
   NSWindow *window = _window;
   NSString *dir = [NSString stringWithUTF8String:getenv("NETNYAHOO_DATA_DIR") ?: "/tmp"];
@@ -574,10 +605,19 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   // hidden would drag the window instead.
   after(1.5, ^{ [window.contentView mouseMoved:event(NSEventTypeMouseMoved)]; });
   after(2.1, ^{
-    [window sendEvent:event(NSEventTypeLeftMouseDown)];
-    [window sendEvent:event(NSEventTypeLeftMouseUp)];
+    const BOOL prevents = PreventsActivation(window);
+    const NSInteger activations = gActivations;
+    [NSApp postEvent:event(NSEventTypeLeftMouseDown) atStart:NO];
+    [NSApp postEvent:event(NSEventTypeLeftMouseUp) atStart:NO];
     after(1, ^{
-      NSDictionary *result = @{@"button" : button, @"closed" : @(!window.visible), @"point" : NSStringFromPoint(point)};
+      NSDictionary *result = @{
+        @"button" : button,
+        @"closed" : @(!window.visible),
+        @"point" : NSStringFromPoint(point),
+        @"preventsActivation" : @(prevents),
+        @"activations" : @(gActivations - activations),
+        @"appActive" : @(NSApp.isActive),
+      };
       NSLog(@"[pip-selftest] %@", result);
       [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil]
           writeToFile:[dir stringByAppendingPathComponent:@"pip-button-selftest.json"]
@@ -828,15 +868,18 @@ void InstallZoomMonitor() {
 
 bool Attach(NNCoreWebView *view, NSString *host, NSString *frameId) {
   for (NSWindow *window in NSApp.windows) {
-    if (!IsChromeVideoPictureInPicture(window)) continue;
     NNPiPController *controller = [NNPiPController forWindow:window];
-    // Chrome reuses its window for successive PiP videos.
+    // Chrome reuses its window for successive PiP videos, at the level it was left at (normal, without Keep on Top).
+    if (!IsChromeVideoPictureInPicture(window) && !(controller && window.visible)) continue;
+    // Another tab's window fading out as this one opens (no shadow while it fades; TabRequestedActivation).
+    if (!window.hasShadow) continue;
     BOOL fresh = !controller;
     if (fresh) controller = [[NNPiPController alloc] initWithWindow:window];
     controller.view = view;
     controller.host = host;
     [controller setVideoFrame:frameId];
     [controller roundCorners];
+    PreventActivation(window);
     // A hidden test instance shows nothing on the owner's screen (the engine hides it as Chrome opens it).
     if (nncore_host::Background()) {
       window.alphaValue = 0;
@@ -856,6 +899,15 @@ bool Attach(NNCoreWebView *view, NSString *host, NSString *frameId) {
 }
 
 void WatchZoom() { InstallZoomMonitor(); }
+
+// Chrome's Back to Tab, however it was pressed (a click, the keyboard, VoiceOver), hides the window, which starts its
+// fade out (FadeOutNetnyahooPictureInPicture in engine/chromium's pip/: no shadow while it fades), then asks for the
+// tab. A page asking for itself while its video plays there finds the window shown, and activates nothing.
+void TabRequestedActivation(NNCoreWebView *view) {
+  for (NSWindow *window in NSApp.windows)
+    if ([NNPiPController forWindow:window].view == view && window.visible && !window.hasShadow)
+      return ActivateApp(@"Back to Tab (Chrome's button)");
+}
 
 void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool active) {
   if (!active) return;

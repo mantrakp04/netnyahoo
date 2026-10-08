@@ -107,8 +107,9 @@ def build_once(n, config, who):
     else:
         rec["errors"] = "\n".join(l for l in text.splitlines() if "error" in l.lower())[-4000:]
     json.dump(rec, open(f"{BUILDS}/{n:04d}-{config}.json", "w"))
-    # keep the last 4 outputs per config
-    outs = sorted(d for d in os.listdir(OUT) if d.endswith(config)) if os.path.isdir(OUT) else []
+    # keep the last 4 outputs per config, newest by time: the numbering restarts when the build records are cleared,
+    # and by name a new 0001 sorted first and was deleted the moment it was made
+    outs = sorted((d for d in os.listdir(OUT) if d.endswith(config)), key=lambda d: os.path.getmtime(f"{OUT}/{d}")) if os.path.isdir(OUT) else []
     for d in outs[:-4]:
         subprocess.run(["rm", "-rf", f"{OUT}/{d}"])
     return rec

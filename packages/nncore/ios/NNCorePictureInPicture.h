@@ -14,4 +14,8 @@ void WatchZoom();
 
 void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool active);
 
+// `view`'s tab asked to be shown: from Chrome's Back to Tab button on its video's Picture in Picture window, the app is
+// activated (a click on the window no longer does that); a page asking for itself doesn't activate it.
+void TabRequestedActivation(NNCoreWebView *view);
+
 }

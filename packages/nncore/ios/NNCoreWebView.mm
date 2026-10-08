@@ -2136,6 +2136,8 @@ void NNCoreWebViewsSetFieldTiming(BOOL on) {
 }
 
 - (void)tab:(NNCoreTab *)tab requestsActivation:(NSString *)reason {
+  // Any reason: Chrome's Back to Tab asks as a "page", its window having left Picture in Picture by then.
+  nncore_pip::TabRequestedActivation(self);
   [self emit:@"activateRequest" payload:@{@"reason" : reason ?: @"page"}];
 }
 

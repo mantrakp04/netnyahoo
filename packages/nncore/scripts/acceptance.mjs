@@ -3479,17 +3479,49 @@ try {
       const activate = await lastEvent(tab.id, "activateRequest", (p) => p.reason === "pictureInPicture");
       if (!activate) throw new Error("Back to Tab sent no onActivateRequest");
       await until("PiP closed by Back to Tab", async () => lastEvent(tab.id, "pictureInPicture", (p) => !p.active), 5000);
-      // Chrome's own close button.
-      await sleep(500);
-      await open();
-      if ((await cef(`devPictureInPictureAction("close")`)) !== "started") throw new Error("no button self-test");
-      const closed = await until("the close click", async () => (existsSync(button) ? JSON.parse(readFileSync(button, "utf8")) : null), 10000);
+      // Chrome's own buttons, clicked with the user in another app (the app-active seam). The window carries
+      // WindowServer's prevents-activation tag, so a click on it never activates the app (which then made the browser
+      // window key and brought it over the user's app as the window closed): the close button activates nothing and
+      // keys or raises no window of ours; Back to Tab activates the app (once) and shows the tab.
+      const n = await cef(`devWindowNumber(${await browserOf(first.id)})`);
+      const appActive = (on) => cef(`devWindow(${n}, "fakeAppActive:${on ? 1 : 0}")`);
+      const logLines = () => (existsSync(join(data, "activation.log")) ? readFileSync(join(data, "activation.log"), "utf8").split("\n") : []);
+      const clickButton = async (name) => {
+        await sleep(500);
+        rmSync(button, { force: true });
+        await open();
+        if ((await appActive(false)) !== "0") throw new Error("no app-active seam");
+        const from = logLines().length;
+        try {
+          if ((await cef(`devPictureInPictureAction("${name}")`)) !== "started") throw new Error("no button self-test");
+          const clicked = await until(`the ${name} click`, async () => (existsSync(button) ? JSON.parse(readFileSync(button, "utf8")) : null), 10000);
+          await sleep(300);  // activation.log is written off the main thread
+          const raised = logLines().slice(from).filter((l) => /^\S+ \S+ \S+ (makeKey|orderFront)/.test(l) && !l.includes("NativeWidgetMacFramelessNSWindow"));
+          return { ...clicked, raised };
+        } finally {
+          await appActive(true);
+        }
+      };
+      const closed = await clickButton("close");
       const time = async () => (await cdp(t, "Runtime.evaluate", { expression: "({ paused: v.paused, time: v.currentTime, pip: !!document.pictureInPictureElement })", returnByValue: true })).result.value;
       const before = await time();
       await sleep(1000);
       const after = await time();
       if (!closed.closed || after.pip || after.paused || after.time === before.time) throw new Error(`close: ${JSON.stringify({ closed, before, after })}`);
-      return { steps: result.steps.map((x) => x.step), closeButton: closed.point, playing: [before.time.toFixed(1), after.time.toFixed(1)] };
+      if (!closed.preventsActivation || closed.activations !== 0 || closed.appActive || closed.raised.length)
+        throw new Error(`the close click activated or raised something: ${JSON.stringify(closed)}`);
+      const requests = (await eventsOf(tab.id)).filter((x) => x.name === "activateRequest").length;
+      const back = await clickButton("backToTab");
+      const backRequests = (await eventsOf(tab.id)).filter((x) => x.name === "activateRequest").length - requests;
+      if (!back.closed || !back.preventsActivation || back.activations !== 1 || backRequests !== 1)
+        throw new Error(`Chrome's Back to Tab: ${JSON.stringify({ back, backRequests })}`);
+      return {
+        steps: result.steps.map((x) => x.step),
+        closeButton: closed.point,
+        playing: [before.time.toFixed(1), after.time.toFixed(1)],
+        close: { activations: closed.activations, raised: closed.raised.length },
+        backToTab: { activations: back.activations, activateRequests: backRequests },
+      };
     } finally {
       await closeTab(tab.id);
       await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
