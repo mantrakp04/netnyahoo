@@ -47,6 +47,7 @@ export type SuggestOptions = {
   currentTabId?: string;
   currentUrl?: string;
   scope?: SearchScope | null;
+  preventInline?: boolean;
 };
 
 export function displayUrl(url: string): string {
@@ -350,7 +351,8 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
 
   const websiteFirst = preference === "website";
   const oneWord = tokens.length === 1;
-  const completes = websiteFirst && !scope && oneWord;
+  const noInline = options.preventInline || (oneWord && /\s$/.test(raw));
+  const completes = websiteFirst && !scope && oneWord && !noInline;
   const pages = narrowing(pool, q, tokens) ?? pool.list;
   const parsed = parseQuery(q, tokens);
   const matched: Candidate[] = [];
@@ -370,7 +372,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
         const host = hostOfPage(c.text);
         if (host === scope!.host || host.endsWith(`.${scope!.host}`)) onSite.offer(r);
       }
-      if (completes && (!inline || r.s > inline.s) && inlineMatch(c.text, q)) inline = r;
+      if (completes && (!inline || r.s > inline.s) && c.visits > 0 && inlineMatch(c.text, q)) inline = r;
     }
   }
   lastMatches = q.length >= 2 ? { pool, q, tokens, pages: matched } : null;
@@ -405,7 +407,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else if (actionMatches[0]?.exact) first = actionRow(actionMatches[0].action);
   else if (target && completion) first = known(target.url) ?? { kind: "page", url: target.url, title: "", favicon: target.favicon };
   else if (typedUrl) first = known(typedUrl) ?? { kind: "page", url: typedUrl, title: "", favicon: null };
-  else if (websiteFirst && best && best.m >= 40) first = pageSuggestion(best.c, best.tabId);
+  else if (websiteFirst && best && best.m >= 40 && (!noInline || q === best.c.text.shownLower || q === hostPart(best.c.text.shownLower))) first = pageSuggestion(best.c, best.tabId);
   else first = search;
 
   out.push(first);

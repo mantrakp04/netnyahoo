@@ -430,7 +430,10 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
 
   const websiteFirst = preference === "website";
   const oneWord = tokens.length === 1;
-  const completes = websiteFirst && !scope && oneWord && !preventInline;
+  // Chrome's SetAllowedToBeDefault: a word followed by a space never completes (the space isn't part of any address), and a
+  // deletion (preventInline) doesn't either; the search goes first then unless the typed text is the page's host or address.
+  const noInline = preventInline || (oneWord && raw.length !== query.length && /\s$/.test(raw));
+  const completes = websiteFirst && !scope && oneWord && !noInline;
   const from = narrowing(pool, q, tokens);
   const pages = from ? from.pages : pool.list;
   // The same query as last time: its matches and their scores are known.
@@ -470,7 +473,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
       if (!bound && top.floor >= m + base - derank + 7) {
         if (!completes) continue;
         if (inline === null ? false : inline.s >= m + base - derank + 7) continue;
-        if (!c.text.shownLower.startsWith(q)) continue;
+        if (c.visits <= 0 || !c.text.shownLower.startsWith(q)) continue;
       }
       const tabId = c.tabId ?? tabIds.get(key);
       const s = m + (base + (tabId ? 6 : 0)) - derank;
@@ -483,7 +486,8 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
         const host = hostOfPage(c.text);
         if (host === scope!.host || host.endsWith(`.${scope!.host}`)) onSite.offer(r ?? { c, tabId, m, s });
       }
-      if (completes && (!inline || s > inline.s) && inlineMatch(c.text, q)) inline = r ?? { c, tabId, m, s };
+      // Only a page that was visited completes (Chrome's history providers): not a bookmark or a tab that has no history row.
+      if (completes && (!inline || s > inline.s) && c.visits > 0 && inlineMatch(c.text, q)) inline = r ?? { c, tabId, m, s };
     }
   }
   remember(pool, q, tokens, matched, scores);
@@ -518,7 +522,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else if (actionMatches[0]?.exact) first = actionRow(actionMatches[0].action);
   else if (target && completion) first = known(target.url) ?? { kind: "page", url: target.url, title: "", favicon: target.favicon };
   else if (typedUrl) first = known(typedUrl) ?? { kind: "page", url: typedUrl, title: "", favicon: null };
-  else if (websiteFirst && best && best.m >= 40 && (!preventInline || typedIsPage(best.c.text, q))) first = pageSuggestion(best.c, best.tabId);
+  else if (websiteFirst && best && best.m >= 40 && (!noInline || typedIsPage(best.c.text, q))) first = pageSuggestion(best.c, best.tabId);
   else first = search;
 
   out.push(first);

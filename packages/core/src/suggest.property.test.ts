@@ -107,6 +107,7 @@ function compareRun(seed: number, size: number) {
     currentTabId: r.int(3) ? undefined : `t${r.int(Math.max(1, p.tabs.length))}`,
     currentUrl: r.int(3) ? undefined : (p.history[r.int(Math.max(1, p.history.length))]?.url ?? undefined),
     scope,
+    preventInline: r.int(6) === 0,
   };
   // A second profile of the same size, for switching profiles (or windows) mid-typing.
   const other = makeProfile(rng(seed + 100_000), size);
