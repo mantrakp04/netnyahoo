@@ -47,12 +47,15 @@ AccessibilityInfo.addEventListener("reduceMotionChanged", (on) => (reduceMotion 
 // subscribed until it's enabled, and the render that enables it reads them as they are.
 export function useToolbarMode(tabId: string, windowId: string, enabled: boolean): ToolbarMode {
   const scrolledDown = useStoreWhile(useToolbarAutoHide, enabled, (s) => !!s.scrolledDown[tabId]);
-  const peek = useStoreWhile(useToolbarAutoHide, enabled, (s) => !!s.peek[tabId]);
-  const hasPage = useStoreWhile(useBrowser, enabled, (s) => !!s.tabs[tabId]?.url);
-  // Only asked while the bar is down, so a closed panel or find bar elsewhere doesn't re-render every pane.
-  const appNeedsBar = useStoreWhile(useBrowser, enabled, (s) => enabled && scrolledDown && needsBar(s, tabId, windowId));
-  const popover = useStoreWhile(usePages, enabled, (s) => enabled && scrolledDown && !!s.popover[tabId]);
-  const historyMenu = useStoreWhile(useHistoryMenu, enabled, (m) => enabled && scrolledDown && m.menu?.tabId === tabId);
+  // The rest only matter while the page is scrolled down: until then the bar is shown whatever they say, and a tab
+  // switched to (always shown) subscribes to one store, not six.
+  const down = enabled && scrolledDown;
+  const peek = useStoreWhile(useToolbarAutoHide, down, (s) => !!s.peek[tabId]);
+  const hasPage = useStoreWhile(useBrowser, down, (s) => !!s.tabs[tabId]?.url);
+  // So a closed panel or find bar elsewhere doesn't re-render every pane.
+  const appNeedsBar = useStoreWhile(useBrowser, down, (s) => down && needsBar(s, tabId, windowId));
+  const popover = useStoreWhile(usePages, down, (s) => down && !!s.popover[tabId]);
+  const historyMenu = useStoreWhile(useHistoryMenu, down, (m) => down && m.menu?.tabId === tabId);
   return toolbarMode({ enabled, hasPage, scrolledDown, peek, needsBar: appNeedsBar || popover || historyMenu });
 }
 
@@ -206,17 +209,27 @@ export function AutoHideToolbar({
 
   const { bar, fade } = motion;
   const H = layout.toolbarHeight;
-  // The band: the bar's height down to the strip's, its top edge fixed (scaled about its middle, then lifted).
-  const bandScale = bar.interpolate({ inputRange: [0, 1], outputRange: [1, STRIP_HEIGHT / H] });
-  const bandLift = bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM / 2] });
-  const dividerTop = bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM] });
-  const controls = fade.interpolate({ inputRange: [0, 0.2, 0.4, 0.6, 1], outputRange: [1, 0.45, 0.15, 0, 0] });
-  const label = fade.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] });
-  const shrink = [
-    // Toward the top centre: scaled about its middle, then lifted so its top edge stays put, and a little more.
-    { translateY: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -((1 - SHRINK) * H) / 2 - 3] }) },
-    { scale: bar.interpolate({ inputRange: [0, 1], outputRange: [1, SHRINK] }) },
-  ];
+  // Made once: a new interpolation is a new native node, detached and reattached on every render.
+  const { bandScale, bandLift, dividerTop, controls, label, shrink } = useMemo(
+    () => ({
+      // The band: the bar's height down to the strip's, its top edge fixed (scaled about its middle, then lifted).
+      bandScale: bar.interpolate({ inputRange: [0, 1], outputRange: [1, STRIP_HEIGHT / H] }),
+      bandLift: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM / 2] }),
+      dividerTop: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -BAR_ROOM] }),
+      controls: fade.interpolate({ inputRange: [0, 0.2, 0.4, 0.6, 1], outputRange: [1, 0.45, 0.15, 0, 0] }),
+      label: fade.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] }),
+      shrink: [
+        // Toward the top centre: scaled about its middle, then lifted so its top edge stays put, and a little more.
+        { translateY: bar.interpolate({ inputRange: [0, 1], outputRange: [0, -((1 - SHRINK) * H) / 2 - 3] }) },
+        { scale: bar.interpolate({ inputRange: [0, 1], outputRange: [1, SHRINK] }) },
+      ],
+    }),
+    [bar, fade, H],
+  );
+  // The strip comes the first time the bar leaves (it fades in as the controls fade out) and stays for the fade back:
+  // a tab switched to shows its bar, so a switch mounts none of it.
+  const [strip, setStrip] = useState(mode !== "shown");
+  if (!strip && mode !== "shown") setStrip(true);
   const host = url.startsWith("file:") ? "File" : breadcrumb(url).host;
 
   return (
@@ -242,22 +255,24 @@ export function AutoHideToolbar({
       >
         <Toolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused} bare />
       </Animated.View>
-      <Animated.View pointerEvents={collapsed ? "auto" : "none"} style={{ position: "absolute", left: 0, right: 0, top: 0, height: STRIP_HEIGHT, opacity: label }}>
-        <Pressable
-          onPress={() => {
-            clearTimeout(peekTimer.current);
-            revealToolbar(tabId);
-          }}
-          onMouseEnter={() => modeNow.current === "collapsed" && peekLater(true, PEEK_DELAY)}
-          onMouseLeave={() => modeNow.current === "collapsed" && clearTimeout(peekTimer.current)}
-          tooltip="Show Toolbar"
-          style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 }}
-        >
-          <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: "500", color: palette.secondary }}>
-            {host}
-          </Text>
-        </Pressable>
-      </Animated.View>
+      {strip && (
+        <Animated.View pointerEvents={collapsed ? "auto" : "none"} style={{ position: "absolute", left: 0, right: 0, top: 0, height: STRIP_HEIGHT, opacity: label }}>
+          <Pressable
+            onPress={() => {
+              clearTimeout(peekTimer.current);
+              revealToolbar(tabId);
+            }}
+            onMouseEnter={() => modeNow.current === "collapsed" && peekLater(true, PEEK_DELAY)}
+            onMouseLeave={() => modeNow.current === "collapsed" && clearTimeout(peekTimer.current)}
+            tooltip="Show Toolbar"
+            style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 }}
+          >
+            <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: "500", color: palette.secondary }}>
+              {host}
+            </Text>
+          </Pressable>
+        </Animated.View>
+      )}
     </View>
   );
 }
