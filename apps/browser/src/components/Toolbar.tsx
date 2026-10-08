@@ -58,7 +58,8 @@ export function Toolbar({
   const extendColor = useSettings((s) => s.extendWebsiteColor);
   const website = extendColor && tab?.url ? themeColor : null;
   const palette = toolbarPalette(theme, website);
-  const band = useEasedColor(palette.background);
+  // A bare toolbar draws no band: no fade to run (each is a JS-driven animation, a frame callback per frame).
+  const band = useEasedColor(bare ? null : palette.background);
   const history = useHistoryAvailability(tabId);
   const extensionsWidth = useToolbarExtensionsWidth(windowId);
   const dim = useRef(new Animated.Value(focused ? 1 : 0.5)).current;
