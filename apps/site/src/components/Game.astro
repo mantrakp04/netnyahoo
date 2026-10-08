@@ -227,18 +227,18 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       clearTimeout(Number(toast.dataset.t));
       toast.dataset.t = String(setTimeout(() => toast.removeAttribute("data-show"), 2600));
     };
+    // Once he's found, any click repeats the result: most solvers kept clicking a board that had gone quiet.
+    let found = "";
     spot.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (board.hasAttribute("data-solved")) return;
+      if (found) return say(found);
       board.setAttribute("data-solved", "");
       const s = started ? ((performance.now() - started) / 1000).toFixed(1) : null;
-      say(s ? `Found him in ${s} s. He hides better offline.` : "Found him. He hides better offline.");
+      found = s ? `Found him in ${s} s. He hides better offline.` : "Found him. He hides better offline.";
+      say(found);
       track("yahu_found", { seconds: s ? Number(s) : null, misses });
     });
     const lines = ["That’s a donor.", "That’s a lobbyist.", "Close. That’s his friend with the envelope.", "Not him. Keep looking."];
-    board.addEventListener("click", () => {
-      if (board.hasAttribute("data-solved")) return;
-      say(lines[misses++ % lines.length]);
-    });
+    board.addEventListener("click", () => say(found || lines[misses++ % lines.length]));
   }
 </script>
