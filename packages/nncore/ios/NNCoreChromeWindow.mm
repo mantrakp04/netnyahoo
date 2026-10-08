@@ -528,8 +528,154 @@ static const NSTimeInterval kPageDrawWait = 0.4;
 
 @end
 
+// AppKit doesn't show the window during its full-screen transition: an overlay window stands in for it
+// (_NSFullScreenTransitionOverlayWindow), crossfading a picture of the window from before the transition into one from
+// after, and hands the window back once it ends. Those pictures come from the window's own layers, and a page doesn't
+// draw there: Chrome draws it in the GPU process and the window only hosts that (CALayerHost), so a picture of the
+// window shows the app's sidebar and toolbar around the page's bare background colour (an in-process picture of a
+// window, as devSnapshotWindow takes, shows the same). Up to 0.2.30 the page's place stayed that colour, near black,
+// for the whole transition (its whole window on the way in, with the sidebar hidden), and the page popped back in
+// once AppKit returned the window.
+//
+// So the page lends the window a picture of itself (-[NNCoreTab copyPicture:completion:], Chrome's copy of its last
+// frame), an ordinary layer over it from just before the transition starts until the page has drawn its new size
+// after it. It lives inside the page's own view, which sizes every subview to itself (WebContentsViewCocoa) and
+// takes it wherever the page goes; it takes no clicks and says nothing to accessibility.
+static const NSTimeInterval kPageCoverPicture = 0.25;  // How long the page may take to give its picture.
+static const NSTimeInterval kPageCoverLimit = 4;       // A cover never outstays this (a transition AppKit never ends).
+static BOOL gPageCoverOff = NO;                        // Test instances' "pageCover:0": transitions as up to 0.2.30.
+
+@interface NNPageCover : NSView
+@property(readonly, weak) NNCoreTab *tab;
+@end
+
+@implementation NNPageCover {
+  CGImageRef _picture;
+  NSSize _pictured;  // The page's size in its picture.
+}
+
+// Covers over the pages of `tabs` that have a picture to give, in no order (then: on the main thread).
++ (void)coverTabs:(NSArray<NNCoreTab *> *)tabs then:(void (^)(NSArray<NNPageCover *> *covers))then {
+  NSMutableArray<NNPageCover *> *covers = [NSMutableArray array];
+  __block NSUInteger waiting = tabs.count + 1;
+  void (^one)(NNPageCover *) = ^(NNPageCover *cover) {
+    if (cover) [covers addObject:cover];
+    if (--waiting == 0) then(covers);
+  };
+  for (NNCoreTab *tab in tabs) [self coverTab:tab then:one];
+  one(nil);
+}
+
++ (void)coverTab:(NNCoreTab *)tab then:(void (^)(NNPageCover *cover))then {
+  NSView *page = tab.view;
+  if (gPageCoverOff || !page.window || page.isHiddenOrHasHiddenAncestor ||
+      ![tab respondsToSelector:@selector(copyPicture:completion:)])
+    return then(nil);
+  __weak NNCoreTab *weakTab = tab;
+  __weak NSWindow *weakWindow = page.window;
+  __weak NSView *weakHost = page.superview;
+  const NSSize pictured = page.bounds.size;
+  [tab copyPicture:kPageCoverPicture
+        completion:^(CGImageRef picture) {
+          NNCoreTab *t = weakTab;
+          NSView *now = t.view;
+          // Only where it was pictured: a page moved meanwhile (to another view or window) is another window's matter.
+          if (!picture || !now.window || now.window != weakWindow || now.superview != weakHost) return then(nil);
+          NNPageCover *cover = [[NNPageCover alloc] initWithFrame:now.bounds picture:picture];
+          cover->_tab = t;
+          cover->_pictured = pictured;
+          [now addSubview:cover];  // Over the page: Chrome puts each new page view at the bottom.
+          // Its picture in its layer now, not at AppKit's next display: the transition pictures the window right away.
+          [cover displayIfNeeded];
+          cover.layer.contents = (__bridge id)cover->_picture;
+          then(cover);
+        }];
+}
+
+- (instancetype)initWithFrame:(NSRect)frame picture:(CGImageRef)picture {
+  if ((self = [super initWithFrame:frame])) {
+    _picture = CGImageRetain(picture);
+    self.wantsLayer = YES;
+    self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    __weak NNPageCover *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kPageCoverLimit * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      [weakSelf uncover:NO];
+    });
+  }
+  return self;
+}
+
+- (void)dealloc {
+  CGImageRelease(_picture);
+}
+
+- (BOOL)wantsUpdateLayer {
+  return YES;
+}
+
+// Stretched as the page is resized under it: AppKit's own pictures stretch the same way.
+- (void)updateLayer {
+  self.layer.contents = (__bridge id)_picture;
+  self.layer.contentsGravity = kCAGravityResize;
+}
+
+- (NSView *)hitTest:(NSPoint)point {
+  return nil;
+}
+
+- (BOOL)isAccessibilityElement {
+  return NO;
+}
+
+// The window's transition resized the page under its picture: once the page has drawn its new size, a picture of
+// that (AppKit's picture from after the transition, and the window it hands back, then show the page as it is).
+- (void)repicture {
+  NNCoreTab *tab = _tab;
+  NSView *page = tab.view;
+  if (!self.superview || !page) return;
+  __weak NNPageCover *weakSelf = self;
+  const NSSize before = _pictured;
+  [NNPageDrawWait tab:tab
+                draws:^NSInteger(BOOL, BOOL) { return NSEqualSizes(page.bounds.size, before) ? 0 : 1; }
+                 then:^{
+                   NNPageCover *me = weakSelf;
+                   NNCoreTab *t = me.tab;
+                   const NSSize now = t.view.bounds.size;
+                   if (!me.superview || !t || NSEqualSizes(now, before)) return;
+                   [t copyPicture:kPageCoverPicture
+                       completion:^(CGImageRef picture) {
+                         NNPageCover *again = weakSelf;
+                         if (!picture || !again.superview) return;
+                         CGImageRelease(again->_picture);
+                         again->_picture = CGImageRetain(picture);
+                         again->_pictured = now;
+                         again.layer.contents = (__bridge id)again->_picture;
+                       }];
+                 }];
+}
+
+// The page shows through again: a short fade hides a frame's difference between the picture and the page.
+- (void)uncover:(BOOL)fade {
+  if (!self.superview) return;
+  if (!fade) return [self removeFromSuperview];
+  [NSAnimationContext
+      runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.1;
+        self.animator.alphaValue = 0;
+      }
+      completionHandler:^{
+        [self removeFromSuperview];
+      }];
+}
+
+@end
+
 // One per app window.
 @interface NNWindowFullScreen : NSObject
+- (NNCoreTab *)probedTab;  // The page whose full screen the window follows (the one it left, until it has).
+- (BOOL)covered;           // Its picture is over it (NNPageCover).
+- (NSInteger)covers;       // How many pages' pictures are over them.
+- (BOOL)transitioning;
 @end
 
 @implementation NNWindowFullScreen {
@@ -549,7 +695,12 @@ static const NSTimeInterval kPageDrawWait = 0.4;
   NSUInteger _wait;            // Which wait, so the answer to an older one does nothing.
   BOOL _askedWait;             // The current wait has asked.
   BOOL _drew;                  // The page drew it (or can't answer): the transition may start.
-  NSInteger _telling;          // Exits the app hasn't been told of yet, waiting for the page to draw them.
+  NSInteger _telling;          // Changes the app hasn't been told of yet, waiting for the page to draw them in place.
+  // The page's picture through the window's transition (NNPageCover).
+  NSArray<NNPageCover *> *_covers;
+  __weak NNCoreTab *_lastTab;  // The last page in full screen (the test probe's).
+  NSUInteger _coverTurn;  // Which picture is wanted: one that arrives after a change does nothing.
+  BOOL _picturing;        // A picture is on its way; the transition starts once it's in place.
 }
 
 + (instancetype)ofWindow:(NNCoreWindow *)coreWindow create:(BOOL)create {
@@ -605,6 +756,8 @@ static const NSTimeInterval kPageDrawWait = 0.4;
 - (void)windowDid:(NSNotificationName)name {
   if ([name isEqualToString:NSWindowWillCloseNotification]) {
     _closed = YES;
+    for (NNPageCover *cover in _covers) [cover uncover:NO];
+    _covers = nil;
     return;
   }
   const BOOL will = [name isEqualToString:NSWindowWillEnterFullScreenNotification] || [name isEqualToString:NSWindowWillExitFullScreenNotification];
@@ -614,11 +767,14 @@ static const NSTimeInterval kPageDrawWait = 0.4;
     _transitioning = _settling = YES;
     _ours = _asked == (entering ? 1 : -1);
     _asked = 0;
+    // AppKit gives the window its new size now: each picture follows its page there.
+    for (NNPageCover *cover in _covers) [cover repicture];
   }
   if (did) _transitioning = NO;
   if (!_transitioning && [self windowVisible]) _settling = NO;
   [self updateSeen];
   if (!did) return;
+  [self uncoverWhenDrawn];
   const BOOL ours = _ours;
   _ours = NO;
   // After the window's other observers have heard of it.
@@ -656,19 +812,21 @@ static NSMapTable<NNCoreTab *, NSNumber *> *FullScreenChanges() {
   return changes;
 }
 
-// `tell` tells the app's JS, whose layout (sidebar, toolbar) follows. Out of full screen, it does once the page has
-// drawn itself out of it where it is: the full-screen video never shows inside the app's sidebar and toolbar. The
-// change is already counted (-[NNCoreWindowController window:tab:didChangeFullscreen:], in every window).
+// `tell` tells the app's JS, whose layout (sidebar, toolbar) follows, once the page has drawn the change where it is:
+// into full screen, the page lays itself out full screen in its card before the card fills the window (never its
+// windowed layout stretched over the window, as a page takes a few frames to go full screen); out of it, the
+// full-screen video never shows inside the app's sidebar and toolbar. The change is already counted
+// (-[NNCoreWindowController window:tab:didChangeFullscreen:], in every window).
 - (void)tab:(NNCoreTab *)tab fullScreen:(BOOL)fullScreen tell:(void (^)(void))tell {
   const NSUInteger change = [FullScreenChanges() objectForKey:tab].unsignedIntegerValue;
-  // Another page, or the same one again: a wait for the window's transition starts over for it.
+  // Another page, or the same one again: a wait for the window's transition starts over for it, and a picture on its
+  // way for the last one is for nothing.
   _waitingFor = 0;
+  _coverTurn++;
+  _picturing = NO;
   if (fullScreen) {
-    _tab = tab;
-    tell();
-    return [self sync];
-  }
-  if (_tab == tab || !_tab) {
+    _tab = _lastTab = tab;
+  } else if (_tab == tab || !_tab) {
     if (_tab) _leftTab = _tab;
     _tab = nil;
   }
@@ -678,7 +836,10 @@ static NSMapTable<NNCoreTab *, NSNumber *> *FullScreenChanges() {
   // A page Chrome took out (Esc) stays in full screen until its view next changes size (Chrome tells the page with a
   // resize): the app's layout gives it that, at once.
   [NNPageDrawWait tab:tab
-                draws:^NSInteger(BOOL fullScreen, BOOL) { return fullScreen ? -1 : 1; }
+                draws:^NSInteger(BOOL drawnFullScreen, BOOL) {
+                  if (fullScreen) return drawnFullScreen ? 1 : 0;
+                  return drawnFullScreen ? -1 : 1;
+                }
                  then:^{
                    NNWindowFullScreen *me = weakSelf;
                    if (me) me->_telling--;
@@ -703,21 +864,129 @@ static NSMapTable<NNCoreTab *, NSNumber *> *FullScreenChanges() {
     _wait++;
   }
   if (toggle == 1) {
-    // In: the page fills the window in full screen, drawn, then the window grows.
-    if (![self pageDrew:_tab entering:YES]) return;
-    _entered = YES;
-    _asked = 1;
-    ToggleWindowFullScreen(coreWindow);
+    // In: the page drew itself full screen in its card, the app gave it the window and the page drew that, then the
+    // window grows, the page's picture over it.
+    if (_telling > 0 || _picturing || ![self pageDrew:_tab entering:YES]) return;
+    [self coverThenToggle:_tab entering:YES];
   } else if (toggle == -1) {
     // Out: the page drew itself out of full screen, the app laid its sidebar and toolbar out around it and the page
-    // drew that, then the window shrinks.
-    if (_telling > 0 || ![self pageDrew:_leftTab entering:NO]) return;
-    _entered = NO;
-    _asked = -1;
-    _leftTab = nil;
-    ToggleWindowFullScreen(coreWindow);
+    // drew that, then the window shrinks, the page's picture over it.
+    if (_telling > 0 || _picturing || ![self pageDrew:_leftTab entering:NO]) return;
+    [self coverThenToggle:_leftTab entering:NO];
   } else if (!page) {
     _entered = NO;
+  }
+}
+
+// The pages the window shows: on the way in, the full-screen page alone (it covers the rest); on the way out, every
+// page the app lays out again (a split's panes).
+- (NSArray<NNCoreTab *> *)shownTabs:(NNCoreTab *)tab entering:(BOOL)entering {
+  NNCoreWindow *coreWindow = _coreWindow;
+  NSWindow *window = coreWindow.window;
+  NSMutableArray<NNCoreTab *> *tabs = [NSMutableArray array];
+  if (tab) [tabs addObject:tab];
+  if (entering || !coreWindow.activeProfile) return tabs;
+  for (NNCoreTab *other in [coreWindow tabsForProfile:coreWindow.activeProfile]) {
+    NSView *page = other.view;
+    NNCoreWebView *view = [NNCoreTabs viewForTab:other];
+    // Shown: in this window, not hidden, and not a page kept painting unseen (alpha 0).
+    if (other == tab || page.window != window || page.isHiddenOrHasHiddenAncestor || !view || view.alphaValue < 0.5) continue;
+    [tabs addObject:other];
+  }
+  return tabs;
+}
+
+// The window's transition, once the pages' pictures cover them (NNPageCover; without any, at once).
+- (void)coverThenToggle:(NNCoreTab *)tab entering:(BOOL)entering {
+  _picturing = YES;
+  const NSUInteger turn = ++_coverTurn;
+  __weak NNWindowFullScreen *weakSelf = self;
+  [NNPageCover coverTabs:[self shownTabs:tab entering:entering]
+                    then:^(NSArray<NNPageCover *> *covers) {
+                      NNWindowFullScreen *me = weakSelf;
+                      // A change since (its own sync runs): these pictures are for nothing.
+                      if (!me || me->_coverTurn != turn) {
+                        for (NNPageCover *cover in covers) [cover uncover:NO];
+                        return;
+                      }
+                      me->_picturing = NO;
+                      for (NNPageCover *cover in me->_covers) [cover uncover:NO];
+                      me->_covers = covers;
+                      [me toggle:entering];
+                    }];
+}
+
+- (void)toggle:(BOOL)entering {
+  NNCoreWindow *coreWindow = _coreWindow;
+  NSWindow *window = coreWindow.window;
+  // Whatever changed while the pictures came (the window closed, a transition began) leaves the window as it is.
+  const BOOL wanted = window && !_closed && !_transitioning && IsWindowFullScreen(window) != entering &&
+                      (entering ? _tab && !_entered : !_tab && _entered);
+  if (!wanted) {
+    for (NNPageCover *cover in _covers) [cover uncover:NO];
+    _covers = nil;
+    return [self sync];
+  }
+  _entered = entering;
+  _asked = entering ? 1 : -1;
+  if (!entering) _leftTab = nil;
+  // The pictures are in the window's layers before AppKit pictures them.
+  [CATransaction flush];
+  ToggleWindowFullScreen(coreWindow);
+  // AppKit says nothing when it doesn't start a transition: the pages show through rather than stay pictures.
+  NSArray *covers = _covers;
+  if (!covers.count) return;
+  __weak NNWindowFullScreen *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    NNWindowFullScreen *me = weakSelf;
+    if (me && me->_covers == covers && !me->_transitioning) [me uncoverWhenDrawn];
+  });
+}
+
+- (NNCoreTab *)probedTab {
+  return _tab ?: _leftTab ?: _lastTab;
+}
+
+// The pages' pictures still over them, fading out included.
+- (NSInteger)covers {
+  NSInteger covers = 0;
+  NSMutableArray<NSView *> *views = [NSMutableArray arrayWithObject:_coreWindow.window.contentView ?: [NSView new]];
+  while (views.count) {
+    NSView *view = views.lastObject;
+    [views removeLastObject];
+    if ([view isKindOfClass:NNPageCover.class]) covers++;
+    [views addObjectsFromArray:view.subviews];
+  }
+  return covers;
+}
+
+- (BOOL)covered {
+  return self.covers > 0;
+}
+
+- (BOOL)transitioning {
+  return _transitioning;
+}
+
+// After the window's transition: each page shows through once it has drawn the size it has now. A page that can't
+// answer, or doesn't in time (NNPageDrawWait), shows through anyway.
+- (void)uncoverWhenDrawn {
+  NSArray<NNPageCover *> *covers = _covers;
+  _covers = nil;
+  for (NNPageCover *cover in covers) {
+    NNCoreTab *tab = cover.tab;
+    if (!tab) {
+      [cover uncover:NO];
+      continue;
+    }
+    [NNPageDrawWait tab:tab
+                  draws:^NSInteger(BOOL, BOOL) { return 1; }
+                   then:^{
+                     // Chrome puts that frame on screen a frame or two after the page drew it.
+                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.034 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                       [cover uncover:YES];
+                     });
+                   }];
   }
 }
 
@@ -758,6 +1027,8 @@ static NSMapTable<NNCoreTab *, NSNumber *> *FullScreenChanges() {
     @"asked" : @(_asked),
     @"waitingForPage" : @(_waitingFor),
     @"telling" : @(_telling),
+    @"picturing" : @(_picturing),
+    @"covered" : @([self covered]),
     @"transitioning" : @(_transitioning),
     @"ours" : @(_ours),
     @"settling" : @(_settling),
@@ -1401,6 +1672,79 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
 
 }
 
+namespace {
+
+// What an in-process picture of the window (all AppKit shows of it through a full-screen transition: NNPageCover) has
+// in the page's place, now: {t (ms since the probe started), size (the window's), page ([x, y, w, h] from the
+// window's top-left), cover, transitioning, uniform (the share of the page's place in its most common colour: 1 is
+// a bare background), grid (8 × 6 mean colours "rrggbb", rows from the top)}.
+NSDictionary *ProbeFrame(NSWindow *window, NNWindowFullScreen *state, CFTimeInterval start) {
+  NSView *content = window.contentView;
+  CALayer *layer = content.layer;
+  if (!layer) return nil;
+  const CGFloat scale = 0.125;
+  const NSSize size = content.bounds.size;
+  const size_t w = MAX(1, (size_t)ceil(size.width * scale)), h = MAX(1, (size_t)ceil(size.height * scale));
+  NSMutableData *pixels = [NSMutableData dataWithLength:w * h * 4];
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(pixels.mutableBytes, w, h, 8, w * 4, space,
+                                               (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  if (!context) return nil;
+  CGContextScaleCTM(context, scale, scale);
+  if (content.isFlipped || layer.geometryFlipped) {
+    CGContextTranslateCTM(context, 0, size.height);
+    CGContextScaleCTM(context, 1, -1);
+  }
+  [layer renderInContext:context];
+  CGContextRelease(context);
+  NSMutableDictionary *frame = [@{
+    @"t" : @(round((CACurrentMediaTime() - start) * 1000)),
+    @"size" : @[ @(size.width), @(size.height) ],
+    @"cover" : @(state.covered),
+    @"covers" : @(state.covers),
+    @"transitioning" : @(state.transitioning),
+  } mutableCopy];
+  NSView *page = state.probedTab.view;
+  if (!page.window || page.window != window) return frame;
+  // The page's place in the picture's rows (top-down) and columns.
+  const NSRect r = [page convertRect:page.bounds toView:content];
+  const CGFloat top = content.isFlipped ? NSMinY(r) : size.height - NSMaxY(r);
+  frame[@"page"] = @[ @(NSMinX(r)), @(top), @(NSWidth(r)), @(NSHeight(r)) ];
+  const long x0 = lround(NSMinX(r) * scale), y0 = lround(top * scale);
+  const long x1 = MIN((long)w, lround(NSMaxX(r) * scale)), y1 = MIN((long)h, lround((top + NSHeight(r)) * scale));
+  if (x1 - x0 < 8 || y1 - y0 < 6) return frame;
+  const uint8_t *p = (const uint8_t *)pixels.bytes;
+  NSMutableDictionary<NSNumber *, NSNumber *> *counts = [NSMutableDictionary dictionary];
+  double sums[6][8][3] = {};
+  long cells[6][8] = {}, n = 0, most = 0;
+  for (long y = y0; y < y1; y++) {
+    for (long x = x0; x < x1; x++) {
+      const uint8_t *px = p + (y * w + x) * 4;
+      NSNumber *key = @(((px[0] >> 3) << 10) | ((px[1] >> 3) << 5) | (px[2] >> 3));
+      const long c = counts[key].longValue + 1;
+      counts[key] = @(c);
+      most = MAX(most, c);
+      const long gy = (y - y0) * 6 / (y1 - y0), gx = (x - x0) * 8 / (x1 - x0);
+      for (int k = 0; k < 3; k++) sums[gy][gx][k] += px[k];
+      cells[gy][gx]++;
+      n++;
+    }
+  }
+  NSMutableArray *grid = [NSMutableArray array];
+  for (int gy = 0; gy < 6; gy++)
+    for (int gx = 0; gx < 8; gx++) {
+      const long c = MAX(1, cells[gy][gx]);
+      [grid addObject:[NSString stringWithFormat:@"%02x%02x%02x", (int)(sums[gy][gx][0] / c), (int)(sums[gy][gx][1] / c),
+                                                 (int)(sums[gy][gx][2] / c)]];
+    }
+  frame[@"uniform"] = @(round((double)most / n * 1000) / 1000);
+  frame[@"grid"] = grid;
+  return frame;
+}
+
+}  // namespace
+
 @implementation NNChromeWindowHost (Dev)
 
 // "lights": the close button's frame in window coordinates (x,y,w,h, bottom-left origin).
@@ -1415,6 +1759,39 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     if (!nncore_host::Background()) return @"test instances only";
     gActedTransition = MAX(0, [action substringFromIndex:17].doubleValue / 1000);
     return [NSString stringWithFormat:@"%.0f", gActedTransition * 1000];
+  }
+  // "pageCover:<1|0>" (test instances): the page's picture over it through the window's transitions (NNPageCover), or
+  // not, as up to 0.2.30. "fullScreenProbe:<ms>": for <ms>, at every display frame, what AppKit's pictures of the window
+  // would show in the page's place (ProbeFrame); "fullScreenProbe": those frames, as JSON.
+  if ([action hasPrefix:@"pageCover:"]) {
+    if (!nncore_host::Background()) return @"test instances only";
+    gPageCoverOff = ![[action substringFromIndex:10] isEqualToString:@"1"];
+    return @(!gPageCoverOff).stringValue;
+  }
+  if ([action hasPrefix:@"fullScreenProbe"]) {
+    static NSMutableArray *frames;
+    static NSTimer *timer;
+    if ([action isEqualToString:@"fullScreenProbe"]) {
+      NSData *json = [NSJSONSerialization dataWithJSONObject:frames ?: @[] options:0 error:nil];
+      return json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : @"[]";
+    }
+    if (!nncore_host::Background()) return @"test instances only";
+    NNCoreWindow *coreWindow = [NNCoreWindowController forNSWindow:window].coreWindow;
+    NNWindowFullScreen *state = coreWindow ? [NNWindowFullScreen ofWindow:coreWindow create:YES] : nil;
+    if (!state) return @"not an NNCore window";
+    [timer invalidate];
+    frames = [NSMutableArray array];
+    const CFTimeInterval start = CACurrentMediaTime(), until = start + MAX(0, [action substringFromIndex:16].doubleValue) / 1000;
+    __weak NSWindow *weakWindow = window;
+    timer = [NSTimer timerWithTimeInterval:1.0 / 60
+                                   repeats:YES
+                                     block:^(NSTimer *t) {
+                                       NSWindow *w = weakWindow;
+                                       if (!w || CACurrentMediaTime() > until) return [t invalidate];
+                                       if (NSDictionary *frame = ProbeFrame(w, state, start)) [frames addObject:frame];
+                                     }];
+    [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+    return @"started";
   }
   if ([action hasPrefix:@"fakeFullScreenOcclusionMs:"]) {
     if (!nncore_host::Background()) return @"test instances only";

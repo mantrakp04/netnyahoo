@@ -57,7 +57,7 @@ const usesPageA = [
   "private-windows-create", "extension-installed-bubble", "popup-window", "autofill-save-prompts",
   "settings-services", "download-navigation", "page-events", "page-background", "external-app-answer",
   "notifications", "now-playing", "media-state", "auto-picture-in-picture", "pip-window", "page-focus",
-  "fullscreen-tab-switch", "fullscreen-native", "fullscreen-hidden-page", "fullscreen-split-sibling",
+  "fullscreen-tab-switch", "fullscreen-native", "fullscreen-transition-picture", "fullscreen-hidden-page", "fullscreen-split-sibling",
   "fullscreen-pip", "autofill-suggestions", "images", "extension-surfaces", "frozen", "discard",
   "permission-prompt", "popup-blocked", "move-tab-slow-mount", "move-last-tab-slow-mount",
   "move-tab-closed-while-parked", "move-tab-to-window", "title-bar-close", "last-used-profile",
@@ -326,6 +326,18 @@ const server = createServer((req, res) => {
   if (url.pathname === "/red-header")
     return res.end(page("Red header", `<div style="position: fixed; top: 0; left: 0; right: 0; height: 60px; background: rgb(200, 0, 0)"></div><p style="margin-top: 80px">red</p>`));
   if (url.pathname === "/painted") return res.end(page("Painted", "painted", "<style>html, body { background: rgb(60, 60, 60) }</style>"));
+  // Page full screen's two layouts, told apart by colour (fullscreen-transition-picture): in the window a blue masthead,
+  // a red player and an orange title row on YouTube's dark background; in full screen the red player alone. "f" toggles
+  // the player's full screen, as on YouTube.
+  if (url.pathname === "/fs-layout")
+    return res.end(page("FS layout", `<div id="mast"></div><div id="player"></div><div id="title"></div><script>
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "f") document.fullscreenElement ? document.exitFullscreen() : document.getElementById("player").requestFullscreen();
+      });
+    </script>`, `<style>html, body { margin: 0; background: rgb(15, 15, 15) } #mast { height: 56px; background: rgb(30, 60, 200) }
+      #player { margin: 24px; width: 640px; height: 360px; background: rgb(220, 30, 30) }
+      #title { margin: 0 24px; width: 640px; height: 60px; background: rgb(240, 160, 0) }
+      #player:fullscreen { margin: 0; width: 100vw; height: 100vh }</style>`));
   if (url.pathname === "/b") return res.end(page("Page B", "B"));
   if (url.pathname === "/c") return res.end(page("Page C", "C"));
   if (url.pathname === "/d") return res.end(page("Page D", "D"));
@@ -3734,6 +3746,107 @@ try {
       return out;
     } finally {
       await cef(`devWindow(${await cef(`devWindowNumber(${await browserOf(first.id)})`)}, "fakeFullScreenMs:0")`).catch(() => null);
+      await closeTab(tab.id).catch(() => null);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("fullscreen-transition-picture", async () => {
+    // Through the window's full-screen transition AppKit shows only pictures of the window rendered from its own layers,
+    // which hold none of a page's pixels (NNPageCover, NNCoreChromeWindow.mm): the probe renders the window that way at
+    // every frame of an acted transition. In every one the page's place shows the page's picture with the layout it is
+    // going to (the full-screen player on the way in, the windowed layout on the way out), never its bare background or
+    // the layout it left. With the picture off (as up to 0.2.30) the same frames must be bare background, or the probe
+    // proves nothing.
+    const tab = await openTab(`${base}/fs-layout`, "FS layout");
+    const act = async (action) => cef(`devWindow(${await cef(`devWindowNumber(${await browserOf(tab.id)})`)}, ${JSON.stringify(action)})`);
+    try {
+      const t = await pageFor(tab.id, "/fs-layout");
+      const key = async () => {
+        for (const type of ["keyDown", "keyUp"])
+          await cdp(t, "Input.dispatchKeyEvent", { type, key: "f", code: "KeyF", text: type === "keyDown" ? "f" : undefined, windowsVirtualKeyCode: 70, nativeVirtualKeyCode: 3 });
+      };
+      const settled = (what, full) => until(what, async () => {
+        const w = await fsWindow(tab.id);
+        const p = w.pageFullScreen;
+        return w.fullScreen === full && p && !p.transitioning && !p.covered && !p.picturing && !p.telling ? w : null;
+      }, 8000).catch(async (e) => { throw new Error(`${e.message}; window ${JSON.stringify(await fsWindow(tab.id))}`); });
+      // A frame's page place, from its 8 × 6 grid of mean colours: the bare background, the full-screen player (red), the
+      // windowed layout (the blue masthead along the top, the red player) or something else.
+      const rgb = (hex) => [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+      const near = (c, ref, tol) => c.every((v, i) => Math.abs(v - ref[i]) <= tol);
+      const kind = (f) => {
+        if (!f.grid) return "none";
+        const cells = f.grid.map(rgb);
+        // Bare: one dark colour (the page's background, black once it's in full screen: Chrome's gutter).
+        if (f.uniform >= 0.97 && cells.every((c) => Math.max(...c) < 32)) return "bare";
+        if (cells.filter((c) => near(c, [220, 30, 30], 45)).length >= 44) return "full";
+        if (cells.slice(0, 8).some((c) => c[2] > c[0] + 30) && cells.some((c) => c[0] > c[1] + 80)) return "windowed";
+        return "other";
+      };
+      const run = async (cover) => {
+        await act(`pageCover:${cover ? 1 : 0}`);
+        await act("fakeFullScreenMs:800");
+        await act("fullScreenProbe:9000");
+        await key();
+        await settled("the window in full screen", true);
+        await key();
+        await settled("the window out of full screen", false);
+        const frames = JSON.parse(await act("fullScreenProbe"));
+        // The acted transitions' frames, in and out, as AppKit's pictures would show them.
+        const runs = [];
+        for (const f of frames) {
+          if (!f.transitioning) continue;
+          const last = runs.at(-1);
+          if (last && frames.indexOf(f) - last.end === 1) { last.frames.push(f); last.end = frames.indexOf(f); }
+          else runs.push({ frames: [f], end: frames.indexOf(f) });
+        }
+        if (runs.length !== 2) throw new Error(`expected two transitions in the probe, got ${runs.length} (${frames.length} frames)`);
+        const tally = (r, want) => {
+          const kinds = r.frames.map(kind);
+          return { frames: kinds.length, bare: kinds.filter((k) => k === "bare").length, stale: kinds.filter((k) => k !== want && k !== "bare").length,
+            uncovered: r.frames.filter((f) => !f.cover).length, kinds: [...new Set(kinds)],
+            bareAtMs: r.frames.filter((f, i) => kinds[i] === "bare").map((f) => f.t - r.frames[0].t) };
+        };
+        // From the key (the probe starts just before it) to each transition's start, and from its end to the page
+        // showing through again.
+        const keyAt = frames[0]?.t ?? 0;
+        const timing = (r) => {
+          const start = r.frames[0].t, end = r.frames.at(-1).t;
+          const shown = frames.find((f) => f.t > end && !f.cover)?.t;
+          return { startsMs: start - keyAt, lastsMs: end - start, uncoversMs: shown != null ? shown - end : null };
+        };
+        return { in: { ...tally(runs[0], "full"), ...timing(runs[0]) }, out: { ...tally(runs[1], "windowed"), ...timing(runs[1]) } };
+      };
+      const off = await run(false);
+      const on = await run(true);
+      if (off.in.bare < off.in.frames * 0.9 || off.out.bare < off.out.frames * 0.9)
+        throw new Error(`without the page's picture the probe didn't see the bare background: ${JSON.stringify(off)}`);
+      for (const [dir, r] of Object.entries({ in: on.in, out: on.out }))
+        if (r.bare || r.stale || r.uncovered || r.frames < 10) throw new Error(`the way ${dir}: ${JSON.stringify(r)}; all ${JSON.stringify(on)}`);
+      // A split: on the way out both panes come back, and both lend the window their pictures.
+      const other = await openTab(`${base}/fs-layout?pane`, "FS layout");
+      let split;
+      try {
+        if (!(await evalApp(`return nn.store.getState().createSplit(["${tab.id}", "${other.id}"])`))) throw new Error("no split");
+        await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+        await until("the split shown", async () => (await state()).active === tab.id && (await evalApp(`return !!nn.webviews.get("${other.id}")`)), 8000);
+        await sleep(500);
+        await key();
+        await settled("the pane's window in full screen", true);
+        await act("fullScreenProbe:5000");
+        await key();
+        await settled("the split's window out of full screen", false);
+        const frames = JSON.parse(await act("fullScreenProbe")).filter((f) => f.transitioning);
+        split = { frames: frames.length, bothCovered: frames.filter((f) => f.covers >= 2).length };
+        if (frames.length < 10 || split.bothCovered !== frames.length) throw new Error(`a split's way out left a pane without its picture: ${JSON.stringify(split)}`);
+      } finally {
+        await closeTab(other.id);
+      }
+      return { on, off: { in: off.in.kinds, out: off.out.kinds }, split };
+    } finally {
+      await act("pageCover:1").catch(() => null);
+      await act("fakeFullScreenMs:0").catch(() => null);
       await closeTab(tab.id).catch(() => null);
       await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     }

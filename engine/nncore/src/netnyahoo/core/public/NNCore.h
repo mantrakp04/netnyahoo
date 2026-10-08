@@ -611,6 +611,11 @@ NNCORE_EXPORT
 // The id a capture of this tab uses (getDisplayMedia's tab source), as CEF's
 // CefGetMediaCaptureSourceId. nil without a live page.
 @property(readonly, nullable) NSString* mediaCaptureSourceId;
+// The page's picture as it last drew (Chrome's CopyFromSurface of its view, at its pixel size and in
+// its colour space), on the main thread; NULL without one (no live page or frame, or no answer within
+// `timeout` seconds). The page's own pixels live in the GPU process, which in-process pictures of
+// the window (AppKit's full-screen transition) can't show: the host shows this in their place.
+- (void)copyPicture:(NSTimeInterval)timeout completion:(void (^)(CGImageRef _Nullable picture))completion;
 // Chrome's "Stop sharing" for what this page is sharing (a tab, window or screen). NO if it
 // shares nothing.
 - (BOOL)stopCapture;

@@ -154,6 +154,12 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
+#include "third_party/skia/include/core/SkData.h"
+#include "third_party/skia/include/encode/SkICC.h"
+#include "third_party/skia/modules/skcms/skcms.h"
 #include <algorithm>
 #include <optional>
 #import "netnyahoo/core/nncore_internal.h"
@@ -174,6 +180,48 @@ NNCoreEngine* __strong g_engine;
 
 NSString* NS(const std::string& s) {
   return base::SysUTF8ToNSString(s);
+}
+
+// A CGImage of a copied page frame (-[NNCoreTab copyPicture:completion:]): its pixels copied, in
+// its colour space (sRGB if it names none). NULL for an empty or unexpected bitmap.
+CGImageRef CreatePicture(const SkBitmap& bitmap) {
+  if (bitmap.drawsNothing() || bitmap.bytesPerPixel() != 4 ||
+      (bitmap.colorType() != kBGRA_8888_SkColorType &&
+       bitmap.colorType() != kRGBA_8888_SkColorType)) {
+    return nullptr;
+  }
+  const bool opaque = bitmap.alphaType() == kOpaque_SkAlphaType;
+  const CGBitmapInfo info =
+      bitmap.colorType() == kBGRA_8888_SkColorType
+          ? kCGBitmapByteOrder32Little |
+                (opaque ? kCGImageAlphaNoneSkipFirst : kCGImageAlphaPremultipliedFirst)
+          : kCGBitmapByteOrder32Big |
+                (opaque ? kCGImageAlphaNoneSkipLast : kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRef space = nullptr;
+  if (SkColorSpace* sk = bitmap.colorSpace()) {
+    skcms_TransferFunction fn;
+    skcms_Matrix3x3 toXYZD50;
+    if (sk->isNumericalTransferFn(&fn) && sk->toXYZD50(&toXYZD50)) {
+      if (sk_sp<SkData> icc = SkWriteICCProfile(fn, toXYZD50)) {
+        CFDataRef data = CFDataCreate(nullptr, icc->bytes(), icc->size());
+        space = CGColorSpaceCreateWithICCData(data);
+        CFRelease(data);
+      }
+    }
+  }
+  if (!space) {
+    space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  }
+  CFDataRef pixels = CFDataCreate(nullptr, static_cast<const UInt8*>(bitmap.getPixels()),
+                                  bitmap.computeByteSize());
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData(pixels);
+  CGImageRef image = CGImageCreate(bitmap.width(), bitmap.height(), 8, 32, bitmap.rowBytes(),
+                                   space, info, provider, nullptr, false,
+                                   kCGRenderingIntentDefault);
+  CGDataProviderRelease(provider);
+  CFRelease(pixels);
+  CGColorSpaceRelease(space);
+  return image;
 }
 
 NSString* NS(const std::u16string& s) {
@@ -2229,6 +2277,28 @@ std::optional<bool> RunPageCommand(content::WebContents* contents, int command) 
   return NS(content::WebContentsMediaCaptureId(frame->GetProcess()->GetDeprecatedID(),
                                                frame->GetRoutingID())
                 .ToString());
+}
+
+- (void)copyPicture:(NSTimeInterval)timeout completion:(void (^)(CGImageRef))completion {
+  content::RenderWidgetHostView* view =
+      _contents ? _contents->GetRenderWidgetHostView() : nullptr;
+  if (!view || !view->IsSurfaceAvailableForCopy()) {
+    completion(nullptr);
+    return;
+  }
+  // The copy answers on any sequence: the picture goes to the main thread.
+  void (^done)(CGImageRef) = [completion copy];
+  view->CopyFromSurface(
+      gfx::Rect(), gfx::Size(), base::Seconds(timeout),
+      base::BindOnce(^(const content::CopyFromSurfaceResult& result) {
+        CGImageRef image = result.has_value() ? CreatePicture(result->bitmap) : nullptr;
+        content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE, base::BindOnce(^{
+                                                       done(image);
+                                                       if (image) {
+                                                         CGImageRelease(image);
+                                                       }
+                                                     }));
+      }));
 }
 
 - (BOOL)stopCapture {
