@@ -1,30 +1,11 @@
-# The order Netnyahoo's changes go into the CEF/Chromium tree (docs/cef-source-build.md › "The patch series").
+# The order Netnyahoo's changes go into the Chromium tree (docs/cef-source-build.md › "The patch series").
+# CEF's own patches to Chrome aren't here: CEF's patcher applies them in step 2, until the Chromium bump.
 #
-#   cef <patch>       a patch to CEF's own tree (chromium/src/cef), step 2, before CEF's gclient hook
 #   chromium <patch>  a patch to chromium/src, after ungoogled-chromium and domain substitution (step 4)
 #   layer <dir>       our own files, copied in by <dir>/apply.sh (engine/<layer>/src mirrors chromium/src)
 #
 # Lines run top to bottom; a patch is made against the tree as every line above it leaves it.
 # One concern per patch, named for it; a new patch goes where it belongs, not where its name sorts.
-
-cef cef-chrome-tabs.patch
-cef cef-tab-capture.patch
-cef cef-tab-state.patch
-cef cef-ui-surfaces.patch
-cef cef-ui-triggers.patch
-cef cef-idle-pump.patch
-cef cef-window-client.patch
-cef cef-window-keys.patch
-cef cef-window-translucent.patch
-cef cef-window-devtools.patch
-cef cef-devtools-toolbox.patch
-cef cef-media-router-shutdown.patch
-cef cef-media-source.patch
-cef cef-open-url-params.patch
-cef cef-pump-wake.patch
-cef cef-alloy-history.patch
-cef cef-extension-requests.patch
-cef cef-netnyahoo-layer.patch
 
 chromium chromium-autofill-card-touchbar.patch
 chromium chromium-autofill-address-bubble-window.patch

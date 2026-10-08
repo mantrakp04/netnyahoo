@@ -20,7 +20,7 @@ class ChooserController;
 
 namespace nncore {
 
-// The cef::HandleDeviceChooser seam (nn_seams.mm): true if the host took it.
+// The device chooser hook (g_netnyahoo_device_chooser, nn_seams.mm): true if the host took it.
 bool HandleDeviceChooser(content::RenderFrameHost* owner,
                          std::unique_ptr<permissions::ChooserController>* controller,
                          base::OnceClosure* close_closure);

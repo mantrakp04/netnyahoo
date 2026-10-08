@@ -46,6 +46,7 @@
 #include "content/public/browser/render_frame_host.h"
 #include "third_party/blink/public/common/loader/resource_type_util.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
+#include "netnyahoo/core/nn_cef_seams.h"
 #include "netnyahoo/core/nn_desktop_capture.h"
 #include "netnyahoo/core/nn_fake_media.h"
 #include "netnyahoo/core/nn_installed_bubble.h"
@@ -361,7 +362,7 @@ Browser* WindowHost::BrowserFor(Profile* profile) {
   params.window = window;
   params.omit_from_session_restore = true;
   params.should_trigger_session_restore = false;
-  params.cef_params = base::MakeRefCounted<NNCreateParams>(GetWeakPtr());
+  SetHostOfNewBrowser(params, GetWeakPtr());
   Browser* browser = static_cast<Browser*>(CreateBrowserWindow(std::move(params)));
   window->AttachBrowser(browser);
   AddBrowser(browser);
@@ -901,43 +902,6 @@ void WindowHost::QuitCancelled() {
     }
   }
   NotifyCloseCancelled();
-}
-
-// --- NNBrowserDelegate ------------------------------------------------------------------
-
-NNBrowserDelegate::NNBrowserDelegate(Browser* browser,
-                                     base::WeakPtr<WindowHost> host)
-    : browser_(browser), host_(host), is_ours_(!!host) {}
-
-NNBrowserDelegate::~NNBrowserDelegate() = default;
-
-std::unique_ptr<content::WebContents> NNBrowserDelegate::AddWebContents(
-    std::unique_ptr<content::WebContents> new_contents) {
-  return new_contents;
-}
-
-bool NNBrowserDelegate::KeepsWindowWithoutTabs() const {
-  // A profile's Browser stays while its window is open, tabs or not; the host decides.
-  // (Chrome checks the Browser's own close first: UnloadController's
-  // is_attempting_to_close_browser.)
-  return host_ && !host_->closing() && !browser_shutdown::IsTryingToQuit();
-}
-
-bool NNBrowserDelegate::AllowsDockedDevTools() const {
-  return is_ours_;
-}
-
-void NNBrowserDelegate::DevToolsDockChanged(content::WebContents* inspected,
-                                            content::WebContents* devtools) {
-  if (host_) {
-    host_->DevToolsDockChanged(inspected, devtools);
-  }
-}
-
-NNBrowserDelegate* DelegateFor(const BrowserWindowInterface* browser) {
-  // Every Browser's delegate is ours: NNCore defines cef::BrowserDelegate::Create.
-  return browser ? static_cast<NNBrowserDelegate*>(browser->cef_delegate())
-                 : nullptr;
 }
 
 // --- NNWebContentsDelegate --------------------------------------------------------------

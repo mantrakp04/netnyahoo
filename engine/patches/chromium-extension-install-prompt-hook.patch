@@ -1,31 +1,32 @@
 --- a/chrome/browser/extensions/extension_install_prompt.cc
 +++ b/chrome/browser/extensions/extension_install_prompt.cc
-@@ -34,6 +34,11 @@
+@@ -33,6 +33,14 @@
+ #include "ui/base/ui_base_types.h"
  #include "ui/gfx/image/image_skia.h"
  #include "ui/gfx/image/image_skia_rep.h"
- 
-+#include "cef/libcef/features/features.h"
-+#if BUILDFLAG(ENABLE_CEF)
-+#include "cef/libcef/browser/chrome/extension_install_prompt_hook.h"
-+#endif
 +
++// Netnyahoo: NNCore (engine/nncore) may ask with its own install prompt.
++bool (*g_netnyahoo_extension_install_prompt)(
++    Profile* profile,
++    content::WebContents* parent,
++    const extensions::InstallPromptData& prompt,
++    extensions::ExtensionInstallPromptClient::DoneCallback* done_callback) =
++    nullptr;
+ 
  static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
  
- using extensions::Extension;
-@@ -287,7 +292,16 @@
- 
-   // If true, auto confirm is enabled and already handled the result.
+@@ -289,6 +297,14 @@
    if (AutoConfirmPromptIfEnabled())
-+    return;
-+
-+#if BUILDFLAG(ENABLE_CEF)
-+  // The CEF client may show its own install prompt.
-+  if (cef::HandleExtensionInstallPrompt(
+     return;
+ 
++  // Netnyahoo: NNCore may show its own install prompt.
++  if (g_netnyahoo_extension_install_prompt &&
++      g_netnyahoo_extension_install_prompt(
 +          profile_, show_params_->GetParentWebContents(), *prompt_,
 +          &done_callback_)) {
-     return;
++    return;
 +  }
-+#endif
- 
++
    if (show_dialog_callback_.is_null())
      show_dialog_callback_ = GetDefaultShowDialogCallback();
+   // TODO(crbug.com/40625151): Use OnceCallback and eliminate the need for

@@ -1,6 +1,7 @@
 // NNCore's Chromium-side model: the window host that several per-profile Browsers share,
-// the Browser delegate Chrome's hooks call, the WebContentsDelegate that keeps every new
-// tab in our window, and the per-tab bridge that reports a tab's state to the host.
+// the WebContentsDelegate that keeps every new tab in our window, and the per-tab bridge
+// that reports a tab's state to the host. (Each Browser's record, NNBrowserDelegate, is in
+// nn_cef_seams.h.)
 
 #ifndef NETNYAHOO_CORE_NN_BROWSER_H_
 #define NETNYAHOO_CORE_NN_BROWSER_H_
@@ -15,7 +16,6 @@
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
-#include "cef/libcef/browser/chrome/browser_delegate.h"
 #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "components/favicon/core/favicon_driver_observer.h"
@@ -196,63 +196,6 @@ class WindowHost : public TabStripModelObserver,
   base::ObserverList<web_modal::ModalDialogHostObserver> modal_observers_;
   base::WeakPtrFactory<WindowHost> weak_factory_{this};
 };
-
-// Passed to Browser::Create through BrowserWindowCreateParams::cef_params: marks the
-// Browser as one of ours and names its window.
-class NNCreateParams : public cef::BrowserDelegate::CreateParams {
- public:
-  explicit NNCreateParams(base::WeakPtr<WindowHost> host)
-      : host(std::move(host)) {}
-  base::WeakPtr<WindowHost> host;
-
- private:
-  ~NNCreateParams() override = default;
-};
-
-// Every Browser gets one (Chrome's hooks call cef::BrowserDelegate::Create for each).
-// Browsers Chrome makes on its own (an undocked DevTools window, chrome.windows.create)
-// have no host and keep Chrome's behaviour.
-class NNBrowserDelegate : public cef::BrowserDelegate {
- public:
-  NNBrowserDelegate(Browser* browser, base::WeakPtr<WindowHost> host);
-  ~NNBrowserDelegate() override;
-
-  WindowHost* host() const { return host_.get(); }
-  bool is_ours() const { return is_ours_; }
-  // A Browser Chrome made itself that the host took into one of its windows (before
-  // Chrome sets up the Browser's WebContentsDelegate).
-  void AdoptIntoHost(base::WeakPtr<WindowHost> host) {
-    host_ = std::move(host);
-    is_ours_ = true;
-  }
-
-  // cef::BrowserDelegate:
-  std::unique_ptr<content::WebContents> AddWebContents(
-      std::unique_ptr<content::WebContents> new_contents) override;
-  void OnWebContentsCreated(content::WebContents* new_contents) override {}
-  void OnPopupWebContentsCreated(
-      content::WebContents* source_contents,
-      const content::GlobalRenderFrameHostId& opener_id,
-      const std::string& frame_name,
-      const GURL& target_url,
-      content::WebContents* new_contents) override {}
-  void SetAsDelegate(content::WebContents* web_contents,
-                     bool set_delegate) override {}
-  void UpdateDraggableRegions(
-      const std::vector<blink::mojom::DraggableRegionPtr>& regions,
-      content::WebContents* contents) override {}
-  bool KeepsWindowWithoutTabs() const override;
-  bool AllowsDockedDevTools() const override;
-  void DevToolsDockChanged(content::WebContents* inspected,
-                           content::WebContents* devtools) override;
-
- private:
-  raw_ptr<Browser> browser_;
-  base::WeakPtr<WindowHost> host_;
-  bool is_ours_;
-};
-
-NNBrowserDelegate* DelegateFor(const BrowserWindowInterface* browser);
 
 // The host is being told of a tab-strip change (inside Chrome's change): tab-strip changes it
 // asks for now must wait for the next turn.

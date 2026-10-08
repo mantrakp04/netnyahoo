@@ -19,7 +19,7 @@ class MediaRouterUI;
 
 namespace nncore {
 
-// The cef::WantsCastDialog / HandleCastDialog seams (nn_seams.mm).
+// The Cast dialog hooks (g_netnyahoo_wants_cast_dialog / g_netnyahoo_cast_dialog, nn_seams.mm).
 bool WantsCastDialog(content::WebContents* initiator);
 bool HandleCastDialog(content::WebContents* initiator, media_router::MediaRouterUI* ui);
 // Chrome's Cast dialog for a tab (as its toolbar button).

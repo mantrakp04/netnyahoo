@@ -84,7 +84,7 @@ theme.ts and App.tsx, take small additive edits only, as the agent brief says). 
 its own files (Findings 1).
 
 **R1 · Tab state on Chrome** (engine + store) — **done 2026-09-25** (`docs/migration-status.md` › "R1"; CEF hooks
-in `engine/patches/cef-tab-state.patch`).
+then in `cef-tab-state.patch`, removed 2026-10-08; NNCore's `nn_tab_restore.cc` now).
 - Reopen Closed Tab and Duplicate keep the back/forward list: `IDC_RESTORE_TAB` / `IDC_DUPLICATE_TAB` (or
   TabRestoreService) on the Chrome tab, adopted into our snapshot's place, pin and group (§2, 2 ❌).
 - Sleeping tabs through Chrome's own discard, so history survives and `chrome.tabs` lists them as
@@ -101,7 +101,8 @@ in `engine/patches/cef-tab-state.patch`).
 **R2 · Chrome surfaces still missing from our UI** — done 2026-09-25 (instance r2; ledger "R2 · Chrome surfaces")
 except extension-provided search engines (§7) and the optional PiP stash, which weren't in its scope (both done
 since, in the polish pass). Chrome's
-surfaces come to the app through our CEF build's `CEF_NN_CHROME_UI` (docs/cef-source-build.md).
+surfaces came to the app through our CEF build's `CEF_NN_CHROME_UI`, and now through NNCore's hooks
+(docs/cef-source-build.md › "Our hooks in Chrome's code").
 - "Share this tab instead" bar while a page is capturing (§18).
 - Web Bluetooth chooser and a Cast entry: route Chrome's chooser / cast dialog to our UI, as WP4 did for
   passwords and permissions (§18, 2 ❌; for Cast, first check that discovery works in the ungoogled build).

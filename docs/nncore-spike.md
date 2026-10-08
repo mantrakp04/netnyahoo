@@ -48,9 +48,11 @@ How it fits together:
   - Popups and new windows are rewritten into tabs of our `Browser`.
   - The host gets `didInsertTab:opener:disposition:` with the original disposition. Nothing is adopted and nothing
     is replayed.
-- **The CEF seams.** With CEF in the tree, `//chrome` calls `cef::` hooks (`cef::BrowserDelegate::Create`, the
-  password-bubble and install-prompt hooks…). `nn_seams.mm` defines all 16 symbols. Our Browsers get our delegate
-  (docked DevTools, keep-without-tabs, the password prompt); everything else keeps Chrome's behaviour.
+- **The CEF seams.** With CEF's patches in the tree, `//chrome` calls a few `cef::` seams (`cef::BrowserDelegate::Create`,
+  the WebContentsDelegate factory…), which `nn_cef_seams.mm` defines: our Browsers get our delegate, everything else
+  keeps Chrome's behaviour. Our own hooks (the password bubble, the install prompt, choosers, docked DevTools,
+  keep-without-tabs…) are `g_netnyahoo_*` pointers in Chrome's files that `nn_seams.mm` sets as the browser starts
+  (2026-10-08; before that they borrowed CEF's namespace through our `cef-*.patch`).
 - **Our UI where Chrome's needs its toolbar.**
   - The action popup is Chrome's `ExtensionViewHost` in an `NSPanel` attached to our window.
   - The password save prompt reaches the host through the existing bubble hook.
@@ -64,7 +66,7 @@ The hooks in Chrome's code (`apply.sh`; the CEF build still builds, checked with
 | `chrome/BUILD.gn`: `chrome_dll` depends on `//netnyahoo/core` | 1 | No | Stays |
 | `chrome/app/chrome_main.cc`: `nncore::NNMainDelegate` instead of `ChromeMainDelegate` | 4 | No | Stays |
 | `browser_window_features.cc`: two CEF-added `CHECK(browser_view)` return early instead | 11 | Yes, same behaviour for CEF | Gone (the CEF code they guard goes) |
-| `read_anything_side_panel_controller.cc`: `CHECK_IS_TEST()` skipped for a Browser with a delegate (no side panel UI) | 5 | Yes, same behaviour for CEF | Replaced by our own `SidePanelUI` |
+| `read_anything_side_panel_controller.cc`: `CHECK_IS_TEST()` skipped for a Browser with a delegate (no side panel UI; since 2026-10-08, while NNCore's `g_netnyahoo_viewless_browsers` is set) | 5 | Yes, same behaviour for CEF | Replaced by our own `SidePanelUI` |
 
 ## Acceptance
 

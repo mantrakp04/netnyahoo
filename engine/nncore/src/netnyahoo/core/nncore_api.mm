@@ -90,6 +90,7 @@
 #include "extensions/common/extension.h"
 #include "netnyahoo/core/nn_autofill_prompt.h"
 #include "netnyahoo/core/nn_browser.h"
+#include "netnyahoo/core/nn_cef_seams.h"
 #include "netnyahoo/core/nn_extension_view.h"
 #include "netnyahoo/core/nn_installed_bubble.h"
 #include "netnyahoo/core/nn_lifetime.h"

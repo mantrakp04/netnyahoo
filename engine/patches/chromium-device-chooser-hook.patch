@@ -1,29 +1,28 @@
-diff --git a/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc b/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc
 --- a/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc
 +++ b/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc
-@@ -32,6 +32,11 @@
- #include "ui/views/controls/table/table_view_observer.h"
- #include "ui/views/layout/fill_layout.h"
- #include "ui/views/widget/widget.h"
-+
-+#include "cef/libcef/features/features.h"
-+#if BUILDFLAG(ENABLE_CEF)
-+#include "cef/libcef/browser/chrome/chrome_ui_hooks.h"
-+#endif
+@@ -221,6 +221,12 @@
  
- #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
- #include "chrome/browser/ui/views/extensions/chooser_dialog_view.h"
-@@ -275,6 +280,13 @@
+ BEGIN_METADATA(ChooserBubbleUiViewDelegate)
+ END_METADATA
++
++// Netnyahoo: NNCore (engine/nncore) shows its own chooser for the tabs it hosts.
++bool (*g_netnyahoo_device_chooser)(
++    content::RenderFrameHost* owner,
++    std::unique_ptr<permissions::ChooserController>* controller,
++    base::OnceClosure* close_closure) = nullptr;
+ 
+ namespace chrome {
+ 
+@@ -275,6 +281,12 @@
  base::OnceClosure ShowDeviceChooserDialog(
      content::RenderFrameHost* owner,
      std::unique_ptr<permissions::ChooserController> controller) {
-+#if BUILDFLAG(ENABLE_CEF)
-+  // The CEF client may show its own chooser.
-+  base::OnceClosure cef_close_closure;
-+  if (cef::HandleDeviceChooser(owner, &controller, &cef_close_closure)) {
-+    return cef_close_closure;
++  // Netnyahoo: NNCore may show its own chooser.
++  base::OnceClosure netnyahoo_close_closure;
++  if (g_netnyahoo_device_chooser &&
++      g_netnyahoo_device_chooser(owner, &controller, &netnyahoo_close_closure)) {
++    return netnyahoo_close_closure;
 +  }
-+#endif
    auto* contents = content::WebContents::FromRenderFrameHost(owner);
  
  #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)

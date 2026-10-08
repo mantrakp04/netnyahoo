@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Netnyahoo's changes to the CEF/Chromium tree, in the order `series` gives.
+"""Netnyahoo's changes to the Chromium tree, in the order `series` gives.
 
-  series.py apply [--phase cef|chromium|layer]   apply to the tree; skips what is already applied
+  series.py apply [--phase cef|chromium]         apply to the tree; skips what is already applied
   series.py check [--keep DIR]                   apply the whole series to a scratch copy of the base and
                                                  compare the result with the tree, byte for byte
   series.py capture-base [--phase cef|chromium]  record the files the series touches as they are now (run
-                                                 just before applying that phase to a fresh or rebased tree)
+                                                 just before applying the series to a fresh or rebased tree)
   series.py materialize --until NAME DIR         the touched files as the series leaves them after NAME (to
                                                  remake a patch: edit there, diff against --until the line above)
   series.py files                                every path the series touches, by step
 
 The base is the tree as CEF's own patches, ungoogled-chromium and domain substitution leave it, before any line of
-`series`: ~/chromium-build/series-base (NN_SERIES_BASE), one file per touched path, relative to chromium/src (CEF's
-files under cef/). `check` exits 0 when every step applies strictly (git apply: no fuzz) and the result equals the
+`series`: ~/chromium-build/series-base (NN_SERIES_BASE), one file per touched path, relative to chromium/src.
+`check` exits 0 when every step applies strictly (git apply: no fuzz) and the result equals the
 tree; 1 with a report otherwise. It writes nothing outside its scratch directory.
 
 Environment: CHROMIUM_SRC (default ~/chromium-build/chromium_git/chromium/src), NN_SERIES_BASE.
@@ -44,14 +44,9 @@ class Step:
     def patch(self):
         return os.path.join(HERE, self.name)
 
-    @property
-    def root(self):
-        """Where the step's paths are relative to, inside a tree."""
-        return "cef" if self.kind == "cef" else ""
-
     def created(self):
         """Paths (relative to chromium/src) the step's patch creates: they aren't in the tree before it."""
-        if self.kind not in ("cef", "chromium"):
+        if self.kind != "chromium":
             return set()
         out, new = set(), False
         for line in open(self.patch, encoding="utf-8", errors="surrogateescape"):
@@ -59,17 +54,17 @@ class Step:
                 new = line.strip() == "--- /dev/null"
             m = re.match(r"^\+\+\+ (?:b/)?(\S+)", line)
             if m and new:
-                out.add(os.path.join(self.root, m.group(1)))
+                out.add(m.group(1))
         return out
 
     def paths(self):
         """(path relative to chromium/src, is_dir) for everything the step writes."""
-        if self.kind in ("cef", "chromium"):
+        if self.kind == "chromium":
             out = []
             for line in open(self.patch, encoding="utf-8", errors="surrogateescape"):
                 m = re.match(r"^\+\+\+ (?:b/)?(\S+)", line)
                 if m and m.group(1) != "/dev/null":
-                    out.append((os.path.join(self.root, m.group(1)), False))
+                    out.append((m.group(1), False))
             return dedupe(out)
         return layer_paths(os.path.join(REPO, self.name))
 
@@ -107,8 +102,8 @@ def read_series():
             continue
         kind, _, name = line.partition(" ")
         name = name.strip()
-        if kind not in ("cef", "chromium", "layer") or not name:
-            sys.exit(f"series:{n}: expected `cef|chromium|layer <name>`: {raw.rstrip()}")
+        if kind not in ("chromium", "layer") or not name:
+            sys.exit(f"series:{n}: expected `chromium|layer <name>`: {raw.rstrip()}")
         step = Step(kind, name, n)
         if kind != "layer" and not os.path.isfile(step.patch):
             sys.exit(f"series:{n}: no such patch {name}")
@@ -136,7 +131,7 @@ def apply_step(step, tree, strict=True):
         env = dict(os.environ, CHROMIUM_SRC=tree)
         p = run([os.path.join(REPO, step.name, "apply.sh")], REPO, env)
         return None if p.returncode == 0 else (p.stderr or p.stdout).strip()
-    cwd = os.path.join(tree, step.root)
+    cwd = tree
     p = run(["git", "apply", "--whitespace=nowarn", step.patch], cwd)
     if p.returncode == 0:
         return None
@@ -155,14 +150,15 @@ def is_applied(step, tree):
     if step.kind == "layer":
         p = run([os.path.join(REPO, step.name, "apply.sh"), "--check"], REPO, dict(os.environ, CHROMIUM_SRC=tree))
         return p.returncode == 0
-    cwd = os.path.join(tree, step.root)
+    cwd = tree
     return run(["git", "apply", "--check", "-R", step.patch], cwd).returncode == 0 or \
         run(["patch", "-p1", "--dry-run", "-R", "-s", "-f", "-i", step.patch], cwd).returncode == 0
 
 
 def phase_of(step):
-    """Step 2 applies CEF's tree; step 4 (after ungoogled and domain substitution) the rest."""
-    return "cef" if step.kind == "cef" else "chromium"
+    """Step 4 applies the whole series, after ungoogled and domain substitution. Step 2 (CEF's checkout) still
+    asks for the `cef` phase, which has no lines since our CEF patches went."""
+    return "chromium"
 
 
 def touched(steps):
@@ -189,8 +185,7 @@ def copy_path(src_root, dst_root, path, is_dir, missing_ok=True):
 def base_from_git(path, out):
     """A touched file the base doesn't have (a hook added after the base was captured): the checkout's own
     git HEAD, right when nothing upstream (CEF's patches, ungoogled, domain substitution) changes it."""
-    repo, rel = (os.path.join(SRC, "cef"), path[4:]) if path.startswith("cef/") else (SRC, path)
-    p = subprocess.run(["git", "show", f"HEAD:{rel}"], cwd=repo, capture_output=True)
+    p = subprocess.run(["git", "show", f"HEAD:{path}"], cwd=SRC, capture_output=True)
     if p.returncode:
         return False
     os.makedirs(os.path.dirname(os.path.join(out, path)), exist_ok=True)

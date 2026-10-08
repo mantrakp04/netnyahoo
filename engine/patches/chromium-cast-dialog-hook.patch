@@ -1,43 +1,42 @@
-diff --git a/chrome/browser/ui/views/media_router/media_router_dialog_controller_views.cc b/chrome/browser/ui/views/media_router/media_router_dialog_controller_views.cc
 --- a/chrome/browser/ui/views/media_router/media_router_dialog_controller_views.cc
 +++ b/chrome/browser/ui/views/media_router/media_router_dialog_controller_views.cc
-@@ -27,6 +27,11 @@
- #include "content/public/browser/web_contents.h"
- #include "ui/views/bubble/bubble_anchor.h"
+@@ -29,6 +29,13 @@
  
-+#include "cef/libcef/features/features.h"
-+#if BUILDFLAG(ENABLE_CEF)
-+#include "cef/libcef/browser/chrome/chrome_ui_hooks.h"
-+#endif
-+
  using content::WebContents;
  
++// Netnyahoo: NNCore (engine/nncore) shows its own Cast dialog for the tabs it
++// hosts.
++bool (*g_netnyahoo_wants_cast_dialog)(content::WebContents* initiator) =
++    nullptr;
++bool (*g_netnyahoo_cast_dialog)(content::WebContents* initiator,
++                                media_router::MediaRouterUI* ui) = nullptr;
++
  namespace media_router {
-@@ -48,6 +53,14 @@
+ 
+ namespace {
+@@ -48,6 +55,13 @@
  
  bool MediaRouterDialogControllerViews::ShowMediaRouterDialogForPresentation(
      std::unique_ptr<StartPresentationContext> context) {
-+#if BUILDFLAG(ENABLE_CEF)
-+  // The CEF client's own Cast dialog takes Presentation API requests too
++  // Netnyahoo: NNCore's own Cast dialog takes Presentation API requests too
 +  // (CreateMediaRouterDialog with the start presentation context).
-+  if (cef::WantsCastDialog(initiator())) {
++  if (g_netnyahoo_wants_cast_dialog &&
++      g_netnyahoo_wants_cast_dialog(initiator())) {
 +    return MediaRouterDialogController::ShowMediaRouterDialogForPresentation(
 +        std::move(context));
 +  }
-+#endif
  #if BUILDFLAG(IS_CHROMEOS)
    ShowGlobalMediaControlsDialog(std::move(context));
  #else
-@@ -66,6 +79,12 @@
+@@ -66,6 +80,11 @@
        Profile::FromBrowserContext(initiator()->GetBrowserContext());
  
    InitializeMediaRouterUI();
-+#if BUILDFLAG(ENABLE_CEF)
-+  // The CEF client may show its own Cast dialog, driven by |ui_|.
-+  if (cef::HandleCastDialog(initiator(), ui_.get())) {
++  // Netnyahoo: NNCore may show its own Cast dialog, driven by |ui_|.
++  if (g_netnyahoo_cast_dialog &&
++      g_netnyahoo_cast_dialog(initiator(), ui_.get())) {
 +    return;
 +  }
-+#endif
    BrowserWindowInterface* browser =
        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(initiator());
  

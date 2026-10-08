@@ -2,8 +2,8 @@
 #
 # //chrome/browser/netnyahoo: Netnyahoo's own code in the Chromium tree. Plain
 # Chromium code over Chrome's services, exported as plain C (public/nn_engine.h)
-# and linked by both engines: CEF's libcef_static and NNCore's //chrome:chrome_dll
-# (hooks in engine/chromium/apply.sh). The repo copy is engine/chromium/src;
+# and linked into NNCore's //chrome:chrome_dll (chromium-netnyahoo-layer.patch;
+# engine/chromium/apply.sh copies it in). The repo copy is engine/chromium/src;
 # never edit the tree's copy.
 #
 # One source_set: add your nn_<domain>.{h,cc} to `sources` (sorted) and the
@@ -133,9 +133,7 @@ source_set("netnyahoo") {
 }
 
 # Chrome's framework exports only what its lists name; NNCore's framework also
-# exports every nn_* call. CEF's framework exports default-visibility symbols
-# already, and an exports list there would hide CEF's own API, so only
-# //chrome:chrome_dll depends on this.
+# exports every nn_* call (//chrome:chrome_dll depends on this).
 config("exports_config") {
   ldflags = [ "-Wl,-exported_symbols_list," +
               rebase_path("nn_engine.exports", root_build_dir) ]

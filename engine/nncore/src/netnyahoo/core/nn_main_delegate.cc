@@ -34,6 +34,7 @@
 #include "netnyahoo/core/nn_context_menu.h"
 #include "netnyahoo/core/nn_navigation_hold.h"
 #include "netnyahoo/core/nn_page_channel.h"
+#include "netnyahoo/core/nn_seams.h"
 #include "netnyahoo/core/nn_strings.h"
 #include "content/public/browser/web_contents_view_delegate.h"
 #include "netnyahoo/core/renderer/nn_content_renderer_client.h"
@@ -246,6 +247,8 @@ void NNMainDelegate::PreSandboxStartup() {
   }
   if (process_type.empty()) {
     InstallAppOverrides();
+    // Our hooks in Chrome's code, before anything could call them.
+    InstallChromeHooks();
     // Client hints and navigator.userAgentData say "Google Chrome", as Chrome's and Arc's and
     // Dia's do (the user agent string already does): Meet's automatic Picture in Picture, among
     // others, is offered only there (engine/nncore/apply.sh's hook).

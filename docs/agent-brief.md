@@ -70,7 +70,8 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 - New engine code goes in `//chrome/browser/netnyahoo` (`engine/chromium/src`) or `//netnyahoo/core`
   (`engine/nncore/src`), never straight into the tree (`docs/cef-source-build.md` › "Our own code in the tree").
   `engine/patches/series` is the apply order of our patches to Chromium; `engine/patches/series.py check` proves the
-  series reproduces the tree. CEF's own patches (`cef-*.patch`) stay in the tree until the next Chromium bump.
+  series reproduces the tree. Hooks in Chrome's code are `g_netnyahoo_*` pointers NNCore sets (`nn_seams.mm`); CEF's
+  own patches to Chrome stay in the tree until the next Chromium bump, and `nn_cef_seams.{h,mm}` fills their seams.
 
 ### NNCore code map
 Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/nncore/ios`, JS in `apps/browser/src`.

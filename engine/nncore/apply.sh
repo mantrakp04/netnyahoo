@@ -5,7 +5,7 @@
 # Browser Chrome makes itself, HistoryTabHelper asking NNCore which tabs are history,
 # declarativeNetRequest telling it which rules matched a tab's requests and when an extension's
 # rulesets are in force, and four
-# CHECKs made tolerant of Browsers without a BrowserView (CEF's and Chrome's behaviour unchanged).
+# CHECKs made tolerant of Browsers without a BrowserView (Chrome's behaviour unchanged).
 # Idempotent. Never touches
 # args.gn; the next autoninja re-runs gn by itself.
 #
@@ -66,7 +66,7 @@ print("hooked //chrome:chrome_dll")
 PY
 
 # ChromeMain (chrome/app/chrome_main.cc, compiled only into Chrome's framework, never by
-# CEF) makes NNCore's delegate, a ChromeMainDelegate, for every process.
+# CEF's libcef) makes NNCore's delegate, a ChromeMainDelegate, for every process.
 python3 - "$src/chrome/app/chrome_main.cc" <<'PY'
 import sys
 path = sys.argv[1]
@@ -89,8 +89,8 @@ print("hooked ChromeMain")
 PY
 
 # Two CEF-added functions in Chrome's BrowserWindowFeatures CHECK that every Browser has a
-# BrowserView; ours don't. Without one they now do nothing (CEF's Browsers always have one,
-# so CEF behaves as before).
+# BrowserView; ours don't. Without one they now do nothing. (CEF's own code: this hook goes
+# with CEF's patches at the Chromium bump; stock Chrome has neither function.)
 python3 - "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" <<'PY'
 import sys
 path = sys.argv[1]
@@ -128,6 +128,7 @@ PY
 
 # Reading mode's side panel controller CHECKs that only tests have a Browser without a side
 # panel UI. A viewless Browser has none (until NNCore implements SidePanelUI, as Dia does).
+# g_netnyahoo_viewless_browsers (defined with the toast hook below) says NNCore runs the process.
 python3 - "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" <<'PY'
 import sys
 path = sys.argv[1]
@@ -138,19 +139,21 @@ old = """    if (!webui_browser::IsWebUIBrowserEnabled()) {
       CHECK_IS_TEST();
     }"""
 new = """    // Netnyahoo: NNCore's Browsers have no BrowserView, so no side panel UI.
-    // (Every Browser has a delegate under NNCore; CEF's always have a side panel.)
     if (!webui_browser::IsWebUIBrowserEnabled() &&
-        !browser_window_interface->cef_delegate()) {
+        !g_netnyahoo_viewless_browsers) {
       CHECK_IS_TEST();
     }"""
-assert s.count(old) == 1
-open(path, "w").write(s.replace(old, new))
+inc_old = '#include "ui/base/metadata/metadata_types.h"\n'
+inc_new = inc_old + ("\n// Netnyahoo: NNCore (engine/nncore); defined in toast_controller.cc.\n"
+                     "extern bool g_netnyahoo_viewless_browsers;\n")
+assert s.count(old) == 1 and s.count(inc_old) == 1
+open(path, "w").write(s.replace(old, new).replace(inc_old, inc_new))
 print("hooked ReadAnythingSidePanelController")
 PY
 
 # Chrome's toasts ("Image copied", "Link copied") anchor to a BrowserView, and without an anchor
 # ToastController CHECKs that it's a test: right-click > Copy Image aborted the app. A viewless
-# Browser shows none.
+# Browser shows none. NNCore sets g_netnyahoo_viewless_browsers at launch.
 python3 - "$src/chrome/browser/ui/toasts/toast_controller.cc" <<'PY'
 import sys
 path = sys.argv[1]
@@ -161,10 +164,8 @@ old = """    if (!webui_browser::IsWebUIBrowserEnabled()) {
       CHECK_IS_TEST();
     }"""
 new = """    // Netnyahoo: NNCore's Browsers have no BrowserView to anchor a toast to.
-    // (Every Browser has a delegate under NNCore; CEF's always have a view.)
     if (!webui_browser::IsWebUIBrowserEnabled() &&
-        !(browser_window_interface_ &&
-          browser_window_interface_->cef_delegate())) {
+        !(browser_window_interface_ && g_netnyahoo_viewless_browsers)) {
       CHECK_IS_TEST();
     }"""
 assert s.count(old) == 1
@@ -183,9 +184,13 @@ if "Netnyahoo: NNCore shows no toast" in s:
     sys.exit(0)
 old = """bool ToastController::MaybeShowToast(ToastParams params) {
   if (!CanShowToast(params.toast_id)) {"""
-new = """bool ToastController::MaybeShowToast(ToastParams params) {
+new = """// Netnyahoo: NNCore (engine/nncore) runs this process: its Browsers may have no
+// BrowserView (reading mode's side panel controller reads it too).
+bool g_netnyahoo_viewless_browsers = false;
+
+bool ToastController::MaybeShowToast(ToastParams params) {
   // Netnyahoo: NNCore shows no toast without an anchor, before any state is set.
-  if (browser_window_interface_ && browser_window_interface_->cef_delegate()) {
+  if (browser_window_interface_ && g_netnyahoo_viewless_browsers) {
     const ToastSpecification* spec =
         toast_registry_->GetToastSpecification(params.toast_id);
     if (!spec || !GetAnchorView(spec->is_global_scope())) {
@@ -201,8 +206,7 @@ PY
 
 # A Browser Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools,
 # document Picture in Picture) asks NNCore for its window before Chrome builds a BrowserView:
-# NNCore may host it in one of the app's windows. The factory is only ever set by NNCore, so
-# CEF (which compiles this file too) behaves as before.
+# NNCore may host it in one of the app's windows. The factory is only ever set by NNCore.
 python3 - "$src/chrome/browser/ui/browser.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -267,7 +271,7 @@ PY2
 # entries (BrowserAutofillManager), saved passwords (PasswordAutofillManager, the manual
 # fallback), so the host hears of all of them (tab:didShowAutofillSuggestions:); also when its
 # search bar couldn't take focus in an app that isn't active (Chrome then doesn't count it
-# shown, though it is on screen). Only NNCore sets the hook, so CEF behaves as before.
+# shown, though it is on screen). Only NNCore sets the hook.
 python3 - "$src/chrome/browser/ui/autofill/autofill_popup_controller_impl.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -320,7 +324,7 @@ PY2
 # base: with NNCore's translucent page background (the host's pageBackgroundColor), every
 # navigation that swapped views after the last page reported its background lost it. With the
 # hook set, the opacity follows the colours the embedder set, as SetBackgroundColor's does.
-# Only NNCore sets the hook, so CEF behaves as before.
+# Only NNCore sets the hook.
 python3 - "$src/content/browser/renderer_host/render_widget_host_view_base.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -360,7 +364,7 @@ PY2
 # Chrome's "Open <app>?" dialog for a link to another app (mailto: aside, which Chrome opens
 # unasked) asks NNCore first, before the Mac's "no app for this scheme" check: for the host's
 # tabs the host shows its own (and launches through Chrome on "open"). Only NNCore sets the
-# hook, so CEF behaves as before.
+# hook.
 python3 - "$src/chrome/browser/external_protocol/external_protocol_handler.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -399,7 +403,7 @@ PY2
 
 # HistoryTabHelper asks NNCore whether a tab's navigations are history: the host's own pages
 # (the content blocker's hidden extension page, extension popups and side panels) never are,
-# as CEF's Alloy browsers never were. Only NNCore sets the hook, so CEF behaves as before.
+# as CEF's Alloy browsers never were. Only NNCore sets the hook.
 python3 - "$src/chrome/browser/history/history_tab_helper.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -431,7 +435,7 @@ PY2
 # declarativeNetRequest's ActionTracker tells NNCore of each rule an extension's ruleset applied
 # to a tab's request (block, redirect…), as it counts them for the action's badge: the host's
 # blocked count follows what was stopped, redirects to a stand-in included. Only NNCore sets
-# the hook, so CEF behaves as before.
+# the hook.
 python3 - "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -468,7 +472,7 @@ PY2
 # Chrome skipped them all as "checksum not found" and the content blocker had no rules in a new
 # profile until its service worker turned its lists on again. Now they're indexed on that first
 # load (as Chrome indexes a ruleset enabled after install) and their checksums kept. Only NNCore
-# loads component extensions with rulesets and sets the hook, so CEF behaves as before.
+# loads component extensions with rulesets and sets the hook.
 python3 - "$src/extensions/browser/api/declarative_net_request/rules_monitor_service.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -548,22 +552,21 @@ s = open(path).read()
 if "Netnyahoo: NNCore" in s:
     sys.exit(0)
 old_inc = '#include "components/tabs/public/tab_interface.h"\n'
-new_inc = old_inc + ('\n#include "cef/libcef/features/features.h"\n'
-                     '#if BUILDFLAG(ENABLE_CEF)\n'
-                     '#include "cef/libcef/browser/chrome/hidden_from_extensions.h"  // nogncheck\n'
-                     '#endif\n')
+new_inc = old_inc + ("\n// Netnyahoo: NNCore (engine/nncore); defined in\n"
+                     "// browser_extension_window_controller.cc.\n"
+                     "extern bool (*g_netnyahoo_hidden_from_extensions)(\n"
+                     "    const BrowserWindowInterface* browser);\n")
 old = """  if (restrict_to_normal_browsers &&
       browser.GetType() != BrowserWindowInterface::TYPE_NORMAL) {
     return false;
   }
 """
 new = old + """
-#if BUILDFLAG(ENABLE_CEF)
   // Netnyahoo: NNCore. The host's own hidden pages are no extension's window.
-  if (cef::IsHiddenFromExtensions(&browser)) {
+  if (g_netnyahoo_hidden_from_extensions &&
+      g_netnyahoo_hidden_from_extensions(&browser)) {
     return false;
   }
-#endif
 """
 assert s.count(old_inc) == 1 and s.count(old) == 1
 s = s.replace(old_inc, new_inc).replace(old, new)
@@ -637,7 +640,7 @@ PY2
 # Client hints and navigator.userAgentData name the browser by its product name, which a
 # Chromium-branded build leaves out ("Chromium" and the GREASE brand only). Meet and other sites
 # gate features on a "Google Chrome" brand, which Chrome-based browsers (Arc, Dia) report. With
-# the hook set, the brand list is Chrome's. Only NNCore sets the hook, so CEF behaves as before.
+# the hook set, the brand list is Chrome's. Only NNCore sets the hook.
 python3 - "$src/components/embedder_support/user_agent_utils.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -928,8 +931,7 @@ PY2
 # chrome.action.openPopup() (and browserAction.openPopup) asks NNCore first: its Browsers have no
 # toolbar, so Chrome refused every call ("Browser window has no toolbar"). The host shows the
 # popup in its own panel and Chrome answers the extension once the page has loaded (1Password
-# reopens its popup this way once its Mac app unlocks). Only NNCore sets the hook, so CEF
-# behaves as before.
+# reopens its popup this way once its Mac app unlocks). Only NNCore sets the hook.
 python3 - "$src/chrome/browser/extensions/api/extension_action/extension_action_api.cc" <<'PY2'
 import sys
 path = sys.argv[1]

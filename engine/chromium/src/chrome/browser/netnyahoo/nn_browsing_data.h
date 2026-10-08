@@ -11,7 +11,7 @@
 //       downloads:    the download list (the files stay)
 //       formData:     autofill and autocomplete entries
 //       siteSettings: every site's content settings
-//   CEF's ClearBrowsingData (cef-tab-state.patch) takes the first four.
+//   CEF's ClearBrowsingData took the first four.
 
 #ifndef CHROME_BROWSER_NETNYAHOO_NN_BROWSING_DATA_H_
 #define CHROME_BROWSER_NETNYAHOO_NN_BROWSING_DATA_H_
