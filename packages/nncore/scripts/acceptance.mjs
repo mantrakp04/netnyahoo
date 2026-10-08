@@ -326,6 +326,7 @@ const server = createServer((req, res) => {
   if (url.pathname === "/red-header")
     return res.end(page("Red header", `<div style="position: fixed; top: 0; left: 0; right: 0; height: 60px; background: rgb(200, 0, 0)"></div><p style="margin-top: 80px">red</p>`));
   if (url.pathname === "/painted") return res.end(page("Painted", "painted", "<style>html, body { background: rgb(60, 60, 60) }</style>"));
+  if (url.pathname === "/scheme-dark") return res.end(page("Dark scheme", "dark scheme", `<meta name="color-scheme" content="dark">`));
   // Page full screen's two layouts, told apart by colour (fullscreen-transition-picture): in the window a blue masthead,
   // a red player and an orange title row on YouTube's dark background; in full screen the red player alone. "f" toggles
   // the player's full screen, as on YouTube.
@@ -3193,58 +3194,47 @@ try {
   });
 
   await check("page-background", async () => {
-    // The page's base background (pageBackgroundColor) is transparent (53ed19ca): a page that paints none shows the
-    // app's card once, drawn by ContentCard, so a 1×1 screenshot of the page is clear, and stays clear after a reload
-    // (a new document's view once took over an opaque base); a page that paints its own background covers it.
+    // A page that paints no background gets Chrome's canvas, as in Chrome and Dia: white, or Chrome's dark canvas when
+    // its color-scheme is dark. The tab's base background was transparent (53ed19ca to 0.2.30), which showed the app's
+    // card through such pages: dark text on the dark card (workspace.google.com). The same after a reload (a new
+    // document) and after an opaque page (a new document's view once kept the last page's gray); a page that paints
+    // its own background covers it.
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     await until("A shown", async () => (await state()).active === first.id);
     const pixel = async (t) => {
       const shot = await cdp(t, "Page.captureScreenshot", { format: "png", clip: { x: 600, y: 400, width: 1, height: 1, scale: 1 } });
       return firstPixel(shot.data);
     };
-    const transparent = await pixel(await pageFor(first.id, `${base}/a`));
-    // Again after a reload (a new document; the base background is the tab's, not the document's).
+    const visit = async (path, title) => {
+      await evalApp(`nn.store.getState().navigate("${first.id}", "${base}${path}", { userInitiated: true }); return true`);
+      await until(`the ${title} page`, async () => (await state()).tabs.find((t) => t.id === first.id && t.title === title && !t.loading), 10000);
+      await sleep(500);
+      return pixel(await pageFor(first.id, `${base}${path}`));
+    };
+    const plain = await pixel(await pageFor(first.id, `${base}/a`));
     await evalApp(`return nn.webviews.get("${first.id}").reload()`);
     await sleep(1000);
     await until("A reloaded", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading), 10000);
     await sleep(500);
     const reloaded = await pixel(await pageFor(first.id, `${base}/a`));
-    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/painted", { userInitiated: true }); return true`);
-    let painted;
+    let painted, darkScheme;
     try {
-      await until("the painted page", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Painted" && !t.loading), 10000);
-      await sleep(500);
-      painted = await pixel(await pageFor(first.id, `${base}/painted`));
+      painted = await visit("/painted", "Painted");
+      darkScheme = await visit("/scheme-dark", "Dark scheme");
     } finally {
       await backToA();
     }
-    // Navigated to from the painted page: the new document's view doesn't keep the last page's opaque gray.
     await sleep(500);
     const after = await pixel(await pageFor(first.id, `${base}/a`));
     const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 3);
-    if (transparent[3] !== 0 || reloaded[3] !== 0 || after[3] !== 0) {
-      // Whether a base background reaches the screenshot at all: DevTools' own override, then cleared again.
-      const t = await pageFor(first.id, `${base}/a`);
-      const ws = new WebSocket(t.webSocketDebuggerUrl);
-      await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
-      let seq = 0;
-      const send = (method, params = {}) => new Promise((r) => {
-        const id = ++seq;
-        ws.addEventListener("message", function on(m) { const msg = JSON.parse(m.data); if (msg.id === id) { ws.removeEventListener("message", on); r(msg.result ?? msg); } });
-        ws.send(JSON.stringify({ id, method, params }));
-      });
-      const shot = async () => firstPixel((await send("Page.captureScreenshot", { format: "png", clip: { x: 600, y: 400, width: 1, height: 1, scale: 1 } })).data);
-      await send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 255, g: 0, b: 0, a: 0.5 } });
-      const overridden = await shot();
-      await send("Emulation.setDefaultBackgroundColorOverride", {});
-      const cleared = await shot();
-      const dark = (await send("Runtime.evaluate", { expression: "matchMedia('(prefers-color-scheme: dark)').matches", returnByValue: true })).result?.value;
-      ws.close();
-      throw new Error(`the transparent page shows ${JSON.stringify(transparent)} (after a reload ${JSON.stringify(reloaded)}, after the painted page ${JSON.stringify(after)}), not a clear base (DevTools' override ${JSON.stringify(overridden)}, cleared ${JSON.stringify(cleared)}, page dark ${dark}, painted ${JSON.stringify(painted)})`);
-    }
-    // A neutral gray: the screenshot is in the display's color space, where sRGB grays keep their values.
+    const white = [255, 255, 255, 255];
+    const result = { plainPage: plain, reloaded, paintedPage: painted, darkSchemePage: darkScheme, afterPainted: after };
+    if (!near(plain, white) || !near(reloaded, white) || !near(after, white))
+      throw new Error(`a page with no background isn't on Chrome's white canvas: ${JSON.stringify(result)}`);
+    // Neutral grays: the screenshot is in the display's color space, where sRGB grays keep their values.
+    if (!near(darkScheme, [18, 18, 18, 255])) throw new Error(`the color-scheme: dark page isn't on Chrome's dark canvas: ${JSON.stringify(result)}`);
     if (!near(painted, [60, 60, 60, 255])) throw new Error(`the painted page shows ${JSON.stringify(painted)}`);
-    return { transparentPage: transparent, reloaded, paintedPage: painted, afterPainted: after };
+    return result;
   });
 
   await check("external-app-answer", async () => {

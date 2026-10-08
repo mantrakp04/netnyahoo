@@ -481,9 +481,9 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
       visible={visible}
       warm={warm}
       autoPictureInPicture={autoPictureInPicture}
-      // The card under the page (ContentCard's background) is drawn once, by the app: a page without a background of its
-      // own shows it, as on CEF. The page drawing it again darkened every transparent page.
-      pageBackgroundColor="transparent"
+      // No pageBackgroundColor: a page that paints no background gets Chrome's canvas (white, or dark when its
+      // color-scheme says so), as in Chrome and Dia. A transparent base showed the app's card through it instead, so a
+      // light page's dark text sat on the dark card (workspace.google.com, 0.2.30).
       onReady={(browserId) => {
         setBrowserId(tabId, browserId);
         noteReady(tabId);
