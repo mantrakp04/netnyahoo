@@ -1,5 +1,5 @@
 import { setTrafficLightsCenter, Surface } from "@netnyahoo/shell";
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { switchOn } from "../../lib/killSwitches";
@@ -209,6 +209,15 @@ function SidebarDock({
   if (!open) strip.current = true;
   // Dia's panel fades as it slides; Arc's only slides.
   const fade = peeking && !arc;
+  // The panel's fill and shadow show only while peeking, through one animated opacity for good: a prop the native
+  // driver let go of goes back to its default on the native side (1), not to the plain 0 given instead, which left the
+  // fill and its shadow under the docked sidebar once Dia's fading peek had been out.
+  const panelOn = useRef(new Animated.Value(0)).current;
+  useLayoutEffect(() => panelOn.setValue(peeking ? 1 : 0), [panelOn, peeking]);
+  const panelOpacity = useMemo(
+    () => (arc ? panelOn : Animated.multiply(panelOn, peek.slide)),
+    [arc, panelOn, peek.slide],
+  );
   const peekStyle = {
     opacity: fade ? peek.slide : 1,
     transform: [{ translateX: peeking ? peekIn : 0 }],
@@ -247,7 +256,7 @@ function SidebarDock({
         {panel.current && (
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, peekStyle, { opacity: fade ? peek.slide : peeking ? 1 : 0 }]}
+            style={[StyleSheet.absoluteFill, peekStyle, { opacity: panelOpacity }]}
           >
             <Surface
               fill={hex(theme.windowTint[0])}
