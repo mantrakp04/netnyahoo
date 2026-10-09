@@ -1,2 +1,3 @@
 # Prebuilt engines (scripts/fetch-engine.sh): engine/'s git tree, the release whose assets have NNCore-<tree:12>.tar.xz,
 # the archive's SHA-256. The release skill adds a line after publishing a release whose engine/ changed.
+33518f5a1e906c7e5ae90b5ead9072581331a9ac	0.2.31	676044c88d93b9c05a5376500a35957e048c8027781f5922c3e4bad97fbb6c4e
