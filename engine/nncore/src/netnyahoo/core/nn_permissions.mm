@@ -15,7 +15,6 @@
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_request_manager.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/permission_bubble/permission_prompt.h"
 #include "chrome/browser/permissions/system/system_permission_settings.h"
 #include "components/permissions/embedded_permission_prompt_flow_model.h"
 #include "components/permissions/permission_prompt.h"
@@ -36,6 +35,15 @@ extern bool (*g_netnyahoo_file_system_restore_prompt)(
     const FileSystemAccessPermissionRequestManager::RequestData& request,
     base::OnceCallback<void(permissions::PermissionAction)>& callback,
     content::WebContents* web_contents);
+
+// Chrome's permission prompt factory (engine/nncore/apply.sh, permission_prompt_factory.cc):
+// a prompt, or null with `default_handling` false for none at all; null with it true is
+// Chrome's own.
+extern std::unique_ptr<permissions::PermissionPrompt> (
+    *g_netnyahoo_create_permission_prompt)(
+    content::WebContents* web_contents,
+    permissions::PermissionPrompt::Delegate* delegate,
+    bool* default_handling);
 
 namespace nncore {
 
@@ -478,7 +486,7 @@ bool AskHostToRestoreFiles(
 void InstallPermissionPrompts() {
   MaybeInstallTestSystemPermissions();
   InstallFakeMediaDevices();
-  SetCreatePermissionPromptFunction(&CreatePrompt);
+  g_netnyahoo_create_permission_prompt = &CreatePrompt;
   g_netnyahoo_file_system_restore_prompt = &AskHostToRestoreFiles;
 }
 

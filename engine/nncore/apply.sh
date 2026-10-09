@@ -4,9 +4,11 @@
 # our layer), ChromeMain making NNCore's main delegate, Browser asking NNCore for the window of a
 # Browser Chrome makes itself, HistoryTabHelper asking NNCore which tabs are history,
 # declarativeNetRequest telling it which rules matched a tab's requests and when an extension's
-# rulesets are in force, and four
-# CHECKs made tolerant of Browsers without a BrowserView (Chrome's behaviour unchanged).
-# Idempotent. Never touches
+# rulesets are in force, CHECKs made tolerant of Browsers without a BrowserView, and the hooks
+# that took over from CEF's seams when CEF left the tree (docs/engine-build.md › hooks H1-H6:
+# the custom window, the WebContentsDelegate, permission prompts, context menus, the ResourceBundle
+# delegate, and g_netnyahoo_embedder for what Chrome leaves to its embedder). Chrome's behaviour is
+# unchanged while NNCore sets none of them. Idempotent. Never touches
 # args.gn; the next autoninja re-runs gn by itself.
 #
 #   engine/nncore/apply.sh            copy + hook
@@ -27,7 +29,18 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/sad_tab_controller.cc" &&
     grep -q 'g_netnyahoo_external_protocol_dialog(' "$src/chrome/browser/external_protocol/external_protocol_handler.cc" &&
     grep -q 'nncore::NNMainDelegate' "$src/chrome/app/chrome_main.cc" &&
-    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
+    grep -q 'g_netnyahoo_create_web_contents_delegate(' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
+    grep -q "Netnyahoo: NNCore's own window" "$src/chrome/browser/ui/browser.cc" &&
+    grep -q 'g_netnyahoo_create_permission_prompt(' "$src/chrome/browser/ui/views/permissions/permission_prompt_factory.cc" &&
+    grep -q 'g_netnyahoo_context_menu_show)(RenderViewContextMenu\* menu) = nullptr' "$src/chrome/browser/renderer_context_menu/render_view_context_menu.cc" &&
+    grep -q 'g_netnyahoo_context_menu_show(this)' "$src/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm" &&
+    grep -q 'g_netnyahoo_context_menu_show(this)' "$src/chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_remote_cocoa.mm" &&
+    grep -q 'g_netnyahoo_context_menu_show(this)' "$src/chrome/browser/ui/views/renderer_context_menu/render_view_context_menu_views.cc" &&
+    grep -q 'g_netnyahoo_resource_bundle_delegate,' "$src/chrome/app/chrome_main_delegate.cc" &&
+    grep -q 'if (!g_netnyahoo_embedder)' "$src/chrome/app/chrome_main_delegate.cc" &&
+    grep -q 'g_netnyahoo_embedder &&' "$src/chrome/browser/chrome_browser_main.cc" &&
+    grep -q 'if (!g_netnyahoo_embedder)' "$src/chrome/browser/chrome_browser_main_mac.mm" &&
+    grep -q 'if (!g_netnyahoo_embedder)' "$src/chrome/browser/chrome_content_browser_client.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
     grep -q 'Netnyahoo: NNCore shows no toast' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
@@ -65,8 +78,8 @@ open(path, "w").write(s[:at] + hook + s[at:])
 print("hooked //chrome:chrome_dll")
 PY
 
-# ChromeMain (chrome/app/chrome_main.cc, compiled only into Chrome's framework, never by
-# CEF's libcef) makes NNCore's delegate, a ChromeMainDelegate, for every process.
+# ChromeMain (chrome/app/chrome_main.cc, compiled into Chrome's framework) makes NNCore's
+# delegate, a ChromeMainDelegate, for every process.
 python3 - "$src/chrome/app/chrome_main.cc" <<'PY'
 import sys
 path = sys.argv[1]
@@ -88,42 +101,54 @@ open(path, "w").write(s)
 print("hooked ChromeMain")
 PY
 
-# Two CEF-added functions in Chrome's BrowserWindowFeatures CHECK that every Browser has a
-# BrowserView; ours don't. Without one they now do nothing. (CEF's own code: this hook goes
-# with CEF's patches at the Chromium bump; stock Chrome has neither function.)
+# NNCore makes the WebContentsDelegate of its own Browsers (NNWebContentsDelegate: every new tab
+# and window stays in the host's window); a Browser Chrome keeps gets Chrome's. NNCore answers
+# from the Browser's window (one of its own, nn_browser_window.h), and only NNCore sets the hook.
 python3 - "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" <<'PY'
 import sys
 path = sys.argv[1]
 s = open(path).read()
-if "Netnyahoo: NNCore" in s:
+if "g_netnyahoo_create_web_contents_delegate" in s:
     sys.exit(0)
-old1 = """void BrowserWindowFeatures::InitPostTabModelConstruction(
-    BrowserWindowInterface* interface) {
-  auto* browser_view = BrowserView::GetBrowserViewForBrowser(interface);
-  CHECK(browser_view);
+at = "BrowserWindowFeatures::BrowserWindowFeatures() = default;\n"
+decl = """// Netnyahoo: NNCore (engine/nncore) makes the WebContentsDelegate of the Browsers it hosts.
+std::unique_ptr<BrowserWebContentsDelegate> (
+    *g_netnyahoo_create_web_contents_delegate)(
+    BrowserWindowInterface* browser,
+    ExclusiveAccessManager& exclusive_access_manager,
+    chrome::BrowserCommandController& command_controller,
+    UnloadController& unload_controller,
+    web_app::AppBrowserController* app_browser_controller,
+    BrowserWindow& window,
+    DesktopBrowserWindowCapabilities& capabilities,
+    BrowserUiController& browser_ui_controller) = nullptr;
+
 """
-new1 = """void BrowserWindowFeatures::InitPostTabModelConstruction(
-    BrowserWindowInterface* interface) {
-  auto* browser_view = BrowserView::GetBrowserViewForBrowser(interface);
-  // Netnyahoo: NNCore's Browsers have no BrowserView (engine/nncore).
-  if (!browser_view) {
-    return;
+old = """  browser_web_contents_delegate_ = std::make_unique<BrowserWebContentsDelegate>(
+      browser, *exclusive_access_manager_, *browser_command_controller_,
+      *unload_controller_, app_browser_controller_.get(),
+      *BrowserWindow::FromBrowser(browser),
+      *desktop_browser_window_capabilities_, *browser_ui_controller_);
+"""
+new = """  // Netnyahoo: NNCore
+  if (g_netnyahoo_create_web_contents_delegate) {
+    browser_web_contents_delegate_ = g_netnyahoo_create_web_contents_delegate(
+        browser, *exclusive_access_manager_, *browser_command_controller_,
+        *unload_controller_, app_browser_controller_.get(),
+        *BrowserWindow::FromBrowser(browser),
+        *desktop_browser_window_capabilities_, *browser_ui_controller_);
+  }
+  if (!browser_web_contents_delegate_) {
+    browser_web_contents_delegate_ = std::make_unique<BrowserWebContentsDelegate>(
+        browser, *exclusive_access_manager_, *browser_command_controller_,
+        *unload_controller_, app_browser_controller_.get(),
+        *BrowserWindow::FromBrowser(browser),
+        *desktop_browser_window_capabilities_, *browser_ui_controller_);
   }
 """
-old2 = """  auto* browser_view = BrowserView::GetBrowserViewForBrowser(interface);
-  CHECK(browser_view);
-
-  if (auto cef_delegate = browser_view->browser()->cef_delegate()) {
-    cef_delegate->OnWebContentsCreated(target_contents);
-  }"""
-new2 = """  // Netnyahoo: NNCore's Browsers have no BrowserView (engine/nncore).
-  if (auto cef_delegate = interface->cef_delegate()) {
-    cef_delegate->OnWebContentsCreated(target_contents);
-  }"""
-assert old1 in s and old2 in s
-s = s.replace(old1, new1).replace(old2, new2)
-open(path, "w").write(s)
-print("hooked BrowserWindowFeatures")
+assert s.count(at) == 1 and s.count(old) == 1
+open(path, "w").write(s.replace(at, decl + at).replace(old, new))
+print("hooked BrowserWindowFeatures' WebContentsDelegate")
 PY
 
 # Reading mode's side panel controller CHECKs that only tests have a Browser without a side
@@ -206,7 +231,9 @@ PY
 
 # A Browser Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools,
 # document Picture in Picture) asks NNCore for its window before Chrome builds a BrowserView:
-# NNCore may host it in one of the app's windows. The factory is only ever set by NNCore.
+# NNCore may host it in one of the app's windows. And a Browser NNCore makes takes the window NNCore
+# made for it (BrowserWindowCreateParams::window), which Chrome otherwise allows only in tests. The
+# factory is only ever set by NNCore, as it starts, before any Browser.
 python3 - "$src/chrome/browser/ui/browser.cc" <<'PY2'
 import sys
 path = sys.argv[1]
@@ -218,6 +245,9 @@ decl = ("// Netnyahoo: NNCore (engine/nncore) supplies the window of a Browser i
         "BrowserWindow* (*g_netnyahoo_browser_window_factory)(Browser*) = nullptr;\n\n")
 old = """  features_->Init(this);
 
+  if (custom_window) {
+    CHECK_IS_TEST() << "BrowserWindowCreateParams::window is a test-only param";
+  }
   window_ =
       custom_window
           ? std::unique_ptr<BrowserWindow, BrowserWindowDeleter>(custom_window)
@@ -226,6 +256,10 @@ old = """  features_->Init(this);
 """
 new = """  features_->Init(this);
 
+  // Netnyahoo: NNCore's own window for a Browser it makes (tests only, otherwise).
+  if (custom_window && !g_netnyahoo_browser_window_factory) {
+    CHECK_IS_TEST() << "BrowserWindowCreateParams::window is a test-only param";
+  }
   // Netnyahoo: NNCore may host a Browser Chrome makes itself.
   BrowserWindow* const hosted_window =
       !custom_window && g_netnyahoo_browser_window_factory
@@ -243,6 +277,295 @@ s = s.replace(old_ctor, decl + old_ctor).replace(old, new)
 open(path, "w").write(s)
 print("hooked Browser window creation")
 PY2
+
+# Chrome's ChromeMainDelegate and main parts leave to an embedder what CEF's build compiled out
+# under ENABLE_CEF (CEF's chrome_runtime.patch), now at run time: g_netnyahoo_embedder, which
+# NNMainDelegate sets in every process. NNCore does these itself (nn_main_delegate.cc) or wants
+# them off: --user-data-dir and the component paths, the startup metrics' core system profile, the
+# sampling profiler, Chrome's first run and initial prefs, --make-default-browser,
+# StartupBrowserCreator and the main RunLoop it makes, AppController and Chrome's main menu, the
+# about: -> chrome: URL handler, and the crash reporter (crash keys, ChromeCrashReporterClient,
+# crashpad: crashes stay with macOS's own reports). And Chrome's strings load through NNCore's
+# ResourceBundle delegate (g_netnyahoo_resource_bundle_delegate), in every process.
+python3 - "$src/chrome/app/chrome_main_delegate.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_embedder" in s:
+    sys.exit(0)
+def gate(s, start, end, why):
+    i = s.index(start)
+    j = s.index(end, i) + len(end)
+    body = "".join(("  " + l if l.strip() and not l.startswith("#") else l)
+                   for l in s[i:j].splitlines(True))
+    return s[:i] + "  // Netnyahoo: NNCore " + why + "\n  if (!g_netnyahoo_embedder) {\n" + body + "  }\n" + s[j:]
+decl_at = """#if BUILDFLAG(IS_ANDROID)
+ChromeMainDelegate::ChromeMainDelegate()
+    : ChromeMainDelegate(StartupTimestamps{}) {}
+#endif
+"""
+decl = """// Netnyahoo: NNCore (engine/nncore) embeds Chrome: it does some of Chrome's startup itself.
+bool g_netnyahoo_embedder = false;
+// Netnyahoo: NNCore's ResourceBundle delegate (its product strings).
+ui::ResourceBundle::Delegate* g_netnyahoo_resource_bundle_delegate = nullptr;
+
+"""
+assert s.count(decl_at) == 1
+s = s.replace(decl_at, decl + decl_at)
+old = """  std::string actual_locale = LoadLocalState(
+      chrome_feature_list_creator, invoked_in_browser->is_running_test);
+"""
+new = """  std::string actual_locale = LoadLocalState(
+      chrome_feature_list_creator,
+      g_netnyahoo_resource_bundle_delegate,  // Netnyahoo: NNCore
+      invoked_in_browser->is_running_test);
+"""
+assert s.count(old) == 1
+s = s.replace(old, new)
+old = """            locale, nullptr, ui::ResourceBundle::LOAD_COMMON_RESOURCES);
+"""
+new = """            locale, g_netnyahoo_resource_bundle_delegate,  // Netnyahoo: NNCore
+            ui::ResourceBundle::LOAD_COMMON_RESOURCES);
+"""
+assert s.count(old) == 1
+s = s.replace(old, new)
+old = """  bool record = true;
+#if BUILDFLAG(IS_ANDROID)
+  record =
+      base::FeatureList::IsEnabled(chrome::android::kUmaBackgroundSessions);
+#endif
+"""
+new = """  // Netnyahoo: NNCore records no core system profile.
+  bool record = !g_netnyahoo_embedder;
+#if BUILDFLAG(IS_ANDROID)
+  record =
+      base::FeatureList::IsEnabled(chrome::android::kUmaBackgroundSessions);
+#endif
+"""
+assert s.count(old) == 1
+s = s.replace(old, new)
+old = """  // Start the sampling profiler as early as possible - namely, once the thread
+  // pool has been created.
+  sampling_profiler_ = std::make_unique<MainThreadStackSamplingProfiler>();
+"""
+new = """  // Start the sampling profiler as early as possible - namely, once the thread
+  // pool has been created.
+  // Netnyahoo: NNCore starts it itself.
+  if (!g_netnyahoo_embedder) {
+    sampling_profiler_ = std::make_unique<MainThreadStackSamplingProfiler>();
+  }
+"""
+assert s.count(old) == 1
+s = s.replace(old, new)
+start1 = "  crash_reporter::InitializeCrashKeys();\n"
+end1 = "#endif  // !defined(BUILDING_CHROME_RENDERER)\n"
+assert s.count(start1) == 1
+s = gate(s, start1, end1, "has no crash reporter, and sets up its data dir itself.")
+start2 = "#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)\n  // Zygote needs to call InitCrashReporter() in RunZygote().\n"
+end2 = "  crash_keys::SetCrashKeysFromCommandLine(command_line);\n"
+assert s.count(start2) == 1 and s.count(end2) == 1
+s = gate(s, start2, end2, "has no crash reporter.")
+open(path, "w").write(s)
+print("hooked ChromeMainDelegate (embedder, ResourceBundle delegate)")
+PY2
+
+python3 - "$src/chrome/browser/chrome_browser_main.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_embedder" in s:
+    sys.exit(0)
+ns = "\nnamespace {\n"
+decl = ("\n// Netnyahoo: NNCore (engine/nncore) embeds Chrome; defined in chrome_main_delegate.cc.\n"
+        "extern bool g_netnyahoo_embedder;\n")
+i = s.index(ns)
+s = s[:i] + decl + s[i:]
+# Initial preferences: an embedder's Chrome makes an empty MasterPrefs and reads none.
+start = """  std::unique_ptr<installer::InitialPreferences> installer_initial_prefs =
+      startup_data_->chrome_feature_list_creator()->TakeInitialPrefs();
+"""
+end = """#if BUILDFLAG(IS_MAC)
+  if (!master_prefs_->confirm_to_quit) {
+    local_state->SetBoolean(prefs::kConfirmToQuitEnabled,
+                            master_prefs_->confirm_to_quit);
+  }
+#endif
+"""
+assert s.count(start) == 1 and s.count(end) == 1
+i = s.index(start); j = s.index(end, i) + len(end)
+body = "".join(("  " + l if l.strip() and not l.startswith("#") else l)
+               for l in s[i:j].splitlines(True))
+s = s[:i] + "  // Netnyahoo: NNCore has no first run.\n  if (!g_netnyahoo_embedder) {\n" + body + "  }\n" + s[j:]
+reps = [
+("""  if (first_run::IsChromeFirstRun()) {
+    if (!base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kApp) &&""",
+"""  // Netnyahoo: NNCore has no first run.
+  if (!g_netnyahoo_embedder && first_run::IsChromeFirstRun()) {
+    if (!base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kApp) &&"""),
+("""  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kMakeDefaultBrowser)) {""",
+"""  // Netnyahoo: NNCore
+  if (!g_netnyahoo_embedder &&
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kMakeDefaultBrowser)) {"""),
+("""  // on preferences.
+  if (first_run::IsChromeFirstRun()) {""",
+"""  // on preferences.
+  // Netnyahoo: NNCore has no first run.
+  if (!g_netnyahoo_embedder && first_run::IsChromeFirstRun()) {"""),
+("""  // This step is costly.
+  if (browser_creator_->Start(*base::CommandLine::ForCurrentProcess(),
+                              base::FilePath(), profile_info,
+                              last_opened_profiles)) {""",
+"""  // This step is costly.
+  // Netnyahoo: NNCore opens its own windows and runs the main loop itself.
+  if (!g_netnyahoo_embedder &&
+      browser_creator_->Start(*base::CommandLine::ForCurrentProcess(),
+                              base::FilePath(), profile_info,
+                              last_opened_profiles)) {"""),
+]
+for old, new in reps:
+    assert s.count(old) == 1, old
+    s = s.replace(old, new)
+open(path, "w").write(s)
+print("hooked ChromeBrowserMainParts (embedder)")
+PY2
+
+python3 - "$src/chrome/browser/chrome_browser_main_mac.mm" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_embedder" in s:
+    sys.exit(0)
+ns = "\nnamespace {\n"
+decl = ("\n// Netnyahoo: NNCore (engine/nncore) embeds Chrome; defined in chrome_main_delegate.cc.\n"
+        "extern bool g_netnyahoo_embedder;\n")
+i = s.index(ns)
+s = s[:i] + decl + s[i:]
+start = "  // Create the app delegate by requesting the shared AppController.\n"
+end = "  [app_controller mainMenuCreated];\n"
+assert s.count(start) == 1 and s.count(end) == 1
+i = s.index(start); j = s.index(end, i) + len(end)
+body = "".join(("  " + l if l.strip() else l) for l in s[i:j].splitlines(True))
+s = s[:i] + ("  // Netnyahoo: NNCore's app has its own NSApp delegate and main menu.\n"
+             "  if (!g_netnyahoo_embedder) {\n") + body + "  }\n" + s[j:]
+old = "  [AppController.sharedController didEndMainMessageLoop];\n"
+new = ("  // Netnyahoo: NNCore\n  if (!g_netnyahoo_embedder) {\n"
+       "    [AppController.sharedController didEndMainMessageLoop];\n  }\n")
+assert s.count(old) == 1
+s = s.replace(old, new)
+open(path, "w").write(s)
+print("hooked ChromeBrowserMainPartsMac (embedder)")
+PY2
+
+python3 - "$src/chrome/browser/chrome_content_browser_client.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_embedder" in s:
+    sys.exit(0)
+ns = "\nnamespace {\n"
+decl = ("\n// Netnyahoo: NNCore (engine/nncore) embeds Chrome; defined in chrome_main_delegate.cc.\n"
+        "extern bool g_netnyahoo_embedder;\n")
+i = s.index(ns)
+s = s[:i] + decl + s[i:]
+old = """  // chrome: & friends.
+  handler->AddHandlerPair(&ChromeContentBrowserClient::HandleWebUI,
+                          &ChromeContentBrowserClient::HandleWebUIReverse);
+"""
+new = """  // chrome: & friends.
+  // Netnyahoo: NNCore maps its own URLs (as CEF's build did).
+  if (!g_netnyahoo_embedder) {
+    handler->AddHandlerPair(&ChromeContentBrowserClient::HandleWebUI,
+                            &ChromeContentBrowserClient::HandleWebUIReverse);
+  }
+"""
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+print("hooked ChromeContentBrowserClient's URL handlers (embedder)")
+PY2
+
+# Chrome's permission prompts ask NNCore first: the host's tabs show the host's own prompt
+# (nn_permissions.mm). NNCore returns a prompt, or null with `default_handling` false for none, or
+# null with it true for Chrome's bubble. Only NNCore sets the hook.
+python3 - "$src/chrome/browser/ui/views/permissions/permission_prompt_factory.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_create_permission_prompt" in s:
+    sys.exit(0)
+at = """}  // namespace
+
+bool ShouldShowPermissionPromptEvenIfOmniboxEditedOrEmpty(
+"""
+decl = """}  // namespace
+
+// Netnyahoo: NNCore (engine/nncore) shows the prompts of the tabs it hosts.
+std::unique_ptr<permissions::PermissionPrompt> (
+    *g_netnyahoo_create_permission_prompt)(
+    content::WebContents* web_contents,
+    permissions::PermissionPrompt::Delegate* delegate,
+    bool* default_handling) = nullptr;
+
+bool ShouldShowPermissionPromptEvenIfOmniboxEditedOrEmpty(
+"""
+old = """std::unique_ptr<permissions::PermissionPrompt> CreatePermissionPrompt(
+    content::WebContents* web_contents,
+    permissions::PermissionPrompt::Delegate* delegate) {
+"""
+new = old + """  // Netnyahoo: NNCore
+  if (g_netnyahoo_create_permission_prompt) {
+    bool default_handling = true;
+    auto prompt = g_netnyahoo_create_permission_prompt(web_contents, delegate,
+                                                       &default_handling);
+    if (prompt) {
+      return prompt;
+    }
+    if (!default_handling) {
+      return nullptr;
+    }
+  }
+"""
+assert s.count(at) == 1 and s.count(old) == 1
+open(path, "w").write(s.replace(at, decl).replace(old, new))
+print("hooked the permission prompt factory")
+PY2
+
+# Chrome's context menus ask NNCore before showing: a background (test) instance's menu goes to
+# the host instead of the screen (nn_context_menu.mm). Only NNCore sets the hook.
+python3 - "$src/chrome/browser/renderer_context_menu/render_view_context_menu.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_context_menu_show" in s:
+    sys.exit(0)
+ns = "\nnamespace {\n"
+decl = ("\n// Netnyahoo: NNCore (engine/nncore) may show a context menu itself: true if it did.\n"
+        "bool (*g_netnyahoo_context_menu_show)(RenderViewContextMenu* menu) = nullptr;\n")
+i = s.index(ns)
+open(path, "w").write(s[:i] + decl + s[i:])
+print("hooked RenderViewContextMenu")
+PY2
+for f in cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm:RenderViewContextMenuMacCocoa \
+         cocoa/renderer_context_menu/render_view_context_menu_mac_remote_cocoa.mm:RenderViewContextMenuMacRemoteCocoa \
+         views/renderer_context_menu/render_view_context_menu_views.cc:RenderViewContextMenuViews; do
+python3 - "$src/chrome/browser/ui/${f%%:*}" "${f##*:}" <<'PY2'
+import sys
+path, cls = sys.argv[1], sys.argv[2]
+s = open(path).read()
+if "g_netnyahoo_context_menu_show" in s:
+    sys.exit(0)
+old = "void %s::Show() {\n" % cls
+new = ("// Netnyahoo: NNCore (engine/nncore); defined in render_view_context_menu.cc.\n"
+       "extern bool (*g_netnyahoo_context_menu_show)(RenderViewContextMenu* menu);\n\n"
+       + old + "  // Netnyahoo: NNCore\n"
+       "  if (g_netnyahoo_context_menu_show && g_netnyahoo_context_menu_show(this)) {\n"
+       "    return;\n  }\n\n")
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+print("hooked " + cls + "::Show")
+PY2
+done
 
 # A renderer crash shows Chrome's sad tab in the tab's ContentsWebView, found through the
 # Browser's BrowserView; NNCore's Browsers have none (the host shows its own, from

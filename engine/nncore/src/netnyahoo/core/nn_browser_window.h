@@ -23,6 +23,7 @@
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 
+class BrowserWindowInterface;
 class DevtoolsUIController;
 
 namespace nncore {
@@ -206,6 +207,19 @@ class NNBrowserWindow : public BrowserWindow, public ExclusiveAccessContext {
   // Called once Browser::Create has returned with this window.
   void AttachBrowser(Browser* browser);
   Browser* browser() const { return browser_; }
+  WindowHost* host() const { return host_.get(); }
+  base::WeakPtr<WindowHost> host_weak() const { return host_; }
+
+  // `window` if it is one of NNCore's, else null (no RTTI, so no dynamic_cast).
+  static NNBrowserWindow* FromWindow(const BrowserWindow* window);
+  // NNCore's record of which Browsers are its own, and their host: from the moment `browser` gets
+  // this window (`Register`, while Chrome constructs it) until its NNWebContentsDelegate goes in
+  // ~Browser (`Forget`), after the window: Chrome's teardown of a Browser still finds it ours.
+  // A Browser Chrome made itself and kept is never in it.
+  void Register(const BrowserWindowInterface* browser);
+  static bool IsOurs(const BrowserWindowInterface* browser);
+  static WindowHost* HostOf(const BrowserWindowInterface* browser);
+  static void Forget(const BrowserWindowInterface* browser);
 
   // ui::BaseWindow:
   bool IsActive() const override;

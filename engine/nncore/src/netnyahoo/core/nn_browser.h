@@ -1,7 +1,7 @@
 // NNCore's Chromium-side model: the window host that several per-profile Browsers share,
 // the WebContentsDelegate that keeps every new tab in our window, and the per-tab bridge
-// that reports a tab's state to the host. (Each Browser's record, NNBrowserDelegate, is in
-// nn_cef_seams.h.)
+// that reports a tab's state to the host. (Which Browsers are ours: NNBrowserWindow's record,
+// nn_browser_window.h.)
 
 #ifndef NETNYAHOO_CORE_NN_BROWSER_H_
 #define NETNYAHOO_CORE_NN_BROWSER_H_
@@ -289,6 +289,8 @@ class NNWebContentsDelegate : public BrowserWebContentsDelegate {
 
  private:
   base::WeakPtr<WindowHost> host_;
+  // Ours (NNBrowserWindow's record) while this delegate lives.
+  raw_ptr<const BrowserWindowInterface> ours_;
 };
 
 // Per tab: owns the ObjC NNCoreTab and reports the page's state to it.

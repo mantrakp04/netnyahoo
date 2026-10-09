@@ -32,6 +32,9 @@
 #import "netnyahoo/core/nncore_internal.h"
 #include "ui/events/event_constants.h"
 
+// Chrome's context menus ask NNCore first (engine/nncore/apply.sh, the Mac menus' Show()).
+extern bool (*g_netnyahoo_context_menu_show)(RenderViewContextMenu* menu);
+
 namespace nncore {
 
 namespace {
@@ -354,8 +357,7 @@ void InstallContextMenuShowHandler() {
   if (!getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_CONTEXT_MENU_LOG")) {
     return;
   }
-  RenderViewContextMenu::RegisterMenuShowHandlerCallback(
-      base::BindRepeating([](RenderViewContextMenu* menu) {
+  g_netnyahoo_context_menu_show = +[](RenderViewContextMenu* menu) {
         auto live = LiveMenus().find(menu);
         if (live == LiveMenus().end()) {
           return false;
@@ -414,7 +416,7 @@ void InstallContextMenuShowHandler() {
           owner->ActivatedAt(index, flags.intValue);
         }
         return true;
-      }));
+      };
 }
 
 }  // namespace nncore

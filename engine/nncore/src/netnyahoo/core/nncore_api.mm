@@ -90,7 +90,7 @@
 #include "extensions/common/extension.h"
 #include "netnyahoo/core/nn_autofill_prompt.h"
 #include "netnyahoo/core/nn_browser.h"
-#include "netnyahoo/core/nn_cef_seams.h"
+#include "netnyahoo/core/nn_browser_window.h"
 #include "netnyahoo/core/nn_extension_view.h"
 #include "netnyahoo/core/nn_installed_bubble.h"
 #include "netnyahoo/core/nn_lifetime.h"
@@ -511,11 +511,10 @@ const char* BrowserTypeName(BrowserWindowInterface::Type type) {
 // A Browser Chrome makes itself (chrome.windows.create, an incognito window from a Chrome
 // command, undocked DevTools, document PiP): the host may hold it in one of its windows.
 BrowserWindow* WindowForChromeBrowser(Browser* browser) {
-  nncore::NNBrowserDelegate* delegate = nncore::DelegateFor(browser);
   // A document picture-in-picture window is always Chrome's own: Chrome reaches into its
   // PictureInPictureBrowserFrameView (content_settings::UpdateLocationBarUiForWebContents
   // on every commit), which a window of ours doesn't have.
-  if (!delegate || delegate->is_ours() ||
+  if (nncore::NNBrowserWindow::IsOurs(browser) ||
       browser->GetType() == BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE ||
       ![g_delegate respondsToSelector:@selector
                    (engineWindowForNewBrowserOfProfile:type:)]) {

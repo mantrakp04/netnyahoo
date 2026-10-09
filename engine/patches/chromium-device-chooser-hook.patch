@@ -1,6 +1,6 @@
 --- a/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc
 +++ b/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc
-@@ -221,6 +221,12 @@
+@@ -222,6 +222,12 @@
  
  BEGIN_METADATA(ChooserBubbleUiViewDelegate)
  END_METADATA
@@ -13,7 +13,7 @@
  
  namespace chrome {
  
-@@ -275,6 +281,12 @@
+@@ -322,6 +328,12 @@
  base::OnceClosure ShowDeviceChooserDialog(
      content::RenderFrameHost* owner,
      std::unique_ptr<permissions::ChooserController> controller) {
@@ -23,6 +23,6 @@
 +      g_netnyahoo_device_chooser(owner, &controller, &netnyahoo_close_closure)) {
 +    return netnyahoo_close_closure;
 +  }
+   content::WeakDocumentPtr weak_document = owner->GetWeakDocumentPtr();
    auto* contents = content::WebContents::FromRenderFrameHost(owner);
  
- #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)

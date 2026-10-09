@@ -15,7 +15,8 @@ class WebContents;
 
 namespace nncore {
 
-// Installs NNCore's prompt factory (Chrome's SetCreatePermissionPromptFunction).
+// Installs NNCore's prompt factory (the g_netnyahoo_create_permission_prompt hook in Chrome's
+// permission_prompt_factory.cc, engine/nncore/apply.sh).
 void InstallPermissionPrompts();
 
 // "accept" | "deny" | "dismiss"; `remember` keeps the decision for the site (a

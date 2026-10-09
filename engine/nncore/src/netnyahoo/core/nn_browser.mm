@@ -46,7 +46,6 @@
 #include "content/public/browser/render_frame_host.h"
 #include "third_party/blink/public/common/loader/resource_type_util.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
-#include "netnyahoo/core/nn_cef_seams.h"
 #include "netnyahoo/core/nn_desktop_capture.h"
 #include "netnyahoo/core/nn_fake_media.h"
 #include "netnyahoo/core/nn_installed_bubble.h"
@@ -159,8 +158,7 @@ WindowHost* WindowHost::ForNSWindow(NSWindow* window) {
 
 // static
 WindowHost* WindowHost::ForBrowser(const BrowserWindowInterface* browser) {
-  NNBrowserDelegate* delegate = DelegateFor(browser);
-  return delegate ? delegate->host() : nullptr;
+  return NNBrowserWindow::HostOf(browser);
 }
 
 WindowHost::WindowHost(NNCoreWindow* owner, const gfx::Rect& bounds)
@@ -362,7 +360,6 @@ Browser* WindowHost::BrowserFor(Profile* profile) {
   params.window = window;
   params.omit_from_session_restore = true;
   params.should_trigger_session_restore = false;
-  SetHostOfNewBrowser(params, GetWeakPtr());
   Browser* browser = static_cast<Browser*>(CreateBrowserWindow(std::move(params)));
   window->AttachBrowser(browser);
   AddBrowser(browser);
@@ -371,12 +368,12 @@ Browser* WindowHost::BrowserFor(Profile* profile) {
 
 BrowserWindow* WindowHost::HostChromeBrowser(Browser* browser) {
   Profile* profile = browser->GetProfile();
-  NNBrowserDelegate* delegate = DelegateFor(browser);
-  if (!delegate || delegate->is_ours() || close_state_ != CloseState::kOpen ||
+  if (NNBrowserWindow::IsOurs(browser) || close_state_ != CloseState::kOpen ||
       widget_close_allowed_ || ExistingBrowserFor(profile)) {
     return nullptr;
   }
-  delegate->AdoptIntoHost(GetWeakPtr());
+  // Ours from here (AttachBrowser records it), before Chrome asks for its
+  // WebContentsDelegate.
   auto* window = new NNBrowserWindow(GetWeakPtr());
   window->AttachBrowser(browser);
   AddBrowser(browser);
@@ -924,9 +921,13 @@ NNWebContentsDelegate::NNWebContentsDelegate(
                                  window,
                                  capabilities,
                                  browser_ui_controller),
-      host_(std::move(host)) {}
+      host_(std::move(host)),
+      ours_(browser) {}
 
-NNWebContentsDelegate::~NNWebContentsDelegate() = default;
+NNWebContentsDelegate::~NNWebContentsDelegate() {
+  // ~Browser tears this down with its features, after its window: the Browser is no longer ours.
+  NNBrowserWindow::Forget(ours_);
+}
 
 namespace {
 bool IsWindowDisposition(WindowOpenDisposition d) {

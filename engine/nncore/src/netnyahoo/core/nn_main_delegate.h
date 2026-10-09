@@ -3,9 +3,10 @@
 // process it gives Chrome a content client whose main parts run Chromium's own message
 // loop for the app, the way Chrome does, and tell the host when the engine is up.
 //
-// While CEF shares the tree, its patches move a few things out of Chrome (CEF does them
-// itself): the sampling profiler, honouring --user-data-dir, the main run loop and the
-// AppController that keeps the app alive with no windows. We put back what we need here.
+// As an embedder (g_netnyahoo_embedder, engine/nncore/apply.sh) Chrome leaves a few things
+// to us, as it did for CEF: the sampling profiler, honouring --user-data-dir, the main run
+// loop, the AppController that keeps the app alive with no windows, crash reporting (off:
+// crashes go to macOS's own reports). We put back what we need here.
 
 #ifndef NETNYAHOO_CORE_NN_MAIN_DELEGATE_H_
 #define NETNYAHOO_CORE_NN_MAIN_DELEGATE_H_
@@ -28,9 +29,6 @@ class NNMainDelegate : public ChromeMainDelegate {
   void CreateThreadPool(std::string_view name) override;
   content::ContentBrowserClient* CreateContentBrowserClient() override;
   content::ContentRendererClient* CreateContentRendererClient() override;
-  // Chrome's strings say Netnyahoo (nn_strings.h). A CEF-added virtual: after CEF, a
-  // two-line hook where ChromeMainDelegate initialises the ResourceBundle.
-  ui::ResourceBundle::Delegate* GetResourceBundleDelegate() override;
 };
 
 // The browser process's lifetime, for the ObjC API.

@@ -4,8 +4,8 @@
 // chrome://settings/content show), with the type names and values of the JS
 // (packages/cef/src/siteSettings.ts) and CEF's semantics
 // (packages/cef/ios/NNSiteSettings.mm): a site is its http(s) origin, and a
-// setting is stored with Chrome's default scope for the type, so both engines
-// read the same profile prefs.
+// setting is stored with Chrome's default scope for the type, so CEF-era
+// profiles read the same.
 //
 //   nn_site_settings_get     {origin} -> {settings: {<type>: {value,
 //       isDefault}}}: value "allow"|"block"|"ask"|"default" (the effective

@@ -1,3 +1,6 @@
+Autofill's address bubbles (and the save-card bubble) show in a Browser without a BrowserView: NNCore's have
+their own BrowserWindow. Includes CEF's chrome_autofill_bubble_3796 (no window: no bubble, instead of a CHECK
+or a null dereference), folded in when CEF left the tree.
 --- a/chrome/browser/ui/autofill/address_bubbles_controller.cc
 +++ b/chrome/browser/ui/autofill/address_bubbles_controller.cc
 @@ -29,6 +29,7 @@
@@ -8,7 +11,7 @@
  #include "chrome/browser/ui/desktop_to_mobile_promos/ios_promos_utils.h"
  #include "chrome/browser/ui/views/frame/browser_view.h"
  #include "chrome/grit/theme_resources.h"
-@@ -49,14 +50,24 @@
+@@ -49,17 +50,31 @@
  
  namespace {
  
@@ -29,29 +32,99 @@
      content::WebContents* web_contents,
      bool shown_by_user_gesture,
      base::WeakPtr<AddressBubbleControllerDelegate> delegate) {
--  auto browser_window =
--      BrowserWindow::FindBrowserWindowWithWebContents(web_contents);
 +  auto browser_window = FindBubbleWindow(web_contents);
-   if (!browser_window) {
-     return nullptr;
-   }
-@@ -74,8 +85,7 @@
++  if (!browser_window) {
++    return nullptr;
++  }
+   auto controller = std::make_unique<SaveAddressBubbleController>(
+       delegate, web_contents, profile, save_address_bubble_type);
+ 
+-  return BrowserWindow::FindBrowserWindowWithWebContents(web_contents)
+-      ->GetAutofillBubbleHandler()
++  return browser_window->GetAutofillBubbleHandler()
+       ->ShowSaveAddressProfileBubble(web_contents, std::move(controller),
+                                      shown_by_user_gesture);
+ }
+@@ -70,10 +85,13 @@
      content::WebContents* web_contents,
      bool shown_by_user_gesture,
      base::WeakPtr<AddressBubbleControllerDelegate> delegate) {
--  auto browser_window =
--      BrowserWindow::FindBrowserWindowWithWebContents(web_contents);
 +  auto browser_window = FindBubbleWindow(web_contents);
-   if (!browser_window) {
-     return nullptr;
-   }
-@@ -89,8 +99,7 @@
++  if (!browser_window) {
++    return nullptr;
++  }
+   auto update_controller = std::make_unique<UpdateAddressBubbleController>(
+       delegate, web_contents, profile, original_profile);
+-  return BrowserWindow::FindBrowserWindowWithWebContents(web_contents)
+-      ->GetAutofillBubbleHandler()
++  return browser_window->GetAutofillBubbleHandler()
+       ->ShowUpdateAddressProfileBubble(
+           web_contents, std::move(update_controller), shown_by_user_gesture);
+ }
+@@ -81,11 +99,14 @@
  #if BUILDFLAG(ENABLE_DICE_SUPPORT)
  AutofillBubbleBase* ShowSignInPromo(content::WebContents* web_contents,
                                      const AutofillProfile& autofill_profile) {
--  auto browser_window =
--      BrowserWindow::FindBrowserWindowWithWebContents(web_contents);
 +  auto browser_window = FindBubbleWindow(web_contents);
-   if (!browser_window) {
-     return nullptr;
++  if (!browser_window) {
++    return nullptr;
++  }
+   // TODO(crbug.com/381390420): Expose the `AutofillBubbleHandler` in
+   // `BrowserWindowInterface` and use that instead.
+-  return BrowserWindow::FindBrowserWindowWithWebContents(web_contents)
+-      ->GetAutofillBubbleHandler()
+-      ->ShowAddressSignInPromo(web_contents, autofill_profile);
++  return browser_window->GetAutofillBubbleHandler()->ShowAddressSignInPromo(
++      web_contents, autofill_profile);
+ }
+ #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+ 
+@@ -243,8 +264,6 @@
+ 
+   SetBubbleView(*show_bubble_view_callback_.Run(
+       web_contents(), shown_by_user_gesture_, GetWeakPtr()));
+-
+-  CHECK(bubble_view());
+ }
+ 
+ BubbleType AddressBubblesController::GetBubbleType() const {
+@@ -311,10 +330,13 @@
+ }
+ 
+ void AddressBubblesController::MaybeShowIOSDektopAddressPromo() {
++  auto browser_window =
++      BrowserWindow::FindBrowserWindowWithWebContents(web_contents());
++  if (!browser_window) {
++    return;
++  }
+   BrowserWindowInterface* browser =
+-      BrowserWindow::FindBrowserWindowWithWebContents(web_contents())
+-          ->AsBrowserView()
+-          ->browser();
++      browser_window->AsBrowserView()->browser();
+ 
+   // Verify if user is eligible for iOS promo, and attempt showing if they are.
+   ios_promos_utils::VerifyIOSPromoEligibility(
+--- a/chrome/browser/ui/autofill/payments/save_card_bubble_controller_impl.cc
++++ b/chrome/browser/ui/autofill/payments/save_card_bubble_controller_impl.cc
+@@ -823,7 +823,9 @@
+   tabs::TabInterface* tab = tabs::TabInterface::GetFromContents(web_contents());
+   CHECK(tab);
+   BrowserWindowInterface* browser = tab->GetBrowserWindowInterface();
+-  CHECK(browser);
++  if (!browser) {
++    return nullptr;
++  }
+   return AutofillBubbleHandler::Get(browser->GetUnownedUserDataHost());
+ }
+ 
+@@ -833,6 +835,9 @@
    }
+ 
+   AutofillBubbleHandler* autofill_bubble_handler = GetAutofillBubbleHandler();
++  if (!autofill_bubble_handler) {
++    return;
++  }
+   if (current_bubble_type_ == PaymentsBubbleType::kUploadComplete) {
+     SetBubbleView(*autofill_bubble_handler->ShowSaveCardConfirmationBubble(
+         web_contents(), this));

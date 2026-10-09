@@ -3,8 +3,8 @@
 // side panels, hidden windows, windows without tabs, docked DevTools) and the flag the
 // reading mode and toast hooks read (engine/patches, engine/nncore/apply.sh). Chrome keeps its
 // own behaviour while a hook is unset; NNCore sets them all once, as the browser process starts
-// (NNMainDelegate::PreSandboxStartup).
-// CEF's own seams are in nn_cef_seams.mm.
+// (NNMainDelegate::PreSandboxStartup). Among them, the WebContentsDelegate of NNCore's Browsers
+// (apply.sh's InitPostWindowConstruction hook).
 
 #include "netnyahoo/core/nn_seams.h"
 
@@ -21,7 +21,7 @@
 #include "extensions/common/extension_id.h"
 #include "netnyahoo/core/nn_browser.h"
 #include "netnyahoo/core/nn_cast_dialog.h"
-#include "netnyahoo/core/nn_cef_seams.h"
+#include "netnyahoo/core/nn_browser_window.h"
 #include "netnyahoo/core/nn_device_chooser.h"
 
 class Profile;
@@ -65,13 +65,22 @@ extern bool (*g_netnyahoo_hidden_from_extensions)(
 extern bool (*g_netnyahoo_keeps_window_without_tabs)(
     const BrowserWindowInterface* browser);
 // chromium-window-docked-devtools.patch
-extern bool (*g_netnyahoo_allows_docked_devtools)(
-    const BrowserWindowInterface* browser);
 extern void (*g_netnyahoo_devtools_dock_changed)(BrowserWindowInterface* browser,
                                                  content::WebContents* inspected,
                                                  content::WebContents* devtools);
 // apply.sh's toast and reading mode hooks
 extern bool g_netnyahoo_viewless_browsers;
+// apply.sh's BrowserWindowFeatures::InitPostWindowConstruction hook
+extern std::unique_ptr<BrowserWebContentsDelegate> (
+    *g_netnyahoo_create_web_contents_delegate)(
+    BrowserWindowInterface* browser,
+    ExclusiveAccessManager& exclusive_access_manager,
+    chrome::BrowserCommandController& command_controller,
+    UnloadController& unload_controller,
+    web_app::AppBrowserController* app_browser_controller,
+    BrowserWindow& window,
+    DesktopBrowserWindowCapabilities& capabilities,
+    BrowserUiController& browser_ui_controller);
 
 namespace nncore {
 
@@ -118,10 +127,26 @@ bool KeepsWindowWithoutTabs(const BrowserWindowInterface* browser) {
   return host && !host->closing() && !browser_shutdown::IsTryingToQuit();
 }
 
-bool AllowsDockedDevTools(const BrowserWindowInterface* browser) {
-  // The host shows docked DevTools next to the page (devToolsDidChangeForTab:).
-  NNBrowserDelegate* delegate = DelegateFor(browser);
-  return delegate && delegate->is_ours();
+std::unique_ptr<BrowserWebContentsDelegate> CreateWebContentsDelegate(
+    BrowserWindowInterface* browser,
+    ExclusiveAccessManager& exclusive_access_manager,
+    chrome::BrowserCommandController& command_controller,
+    UnloadController& unload_controller,
+    web_app::AppBrowserController* app_browser_controller,
+    BrowserWindow& window,
+    DesktopBrowserWindowCapabilities& capabilities,
+    BrowserUiController& browser_ui_controller) {
+  // One of NNCore's Browsers: its window is ours, made for it (WindowHost::BrowserFor) or by
+  // the window factory hook (HostChromeBrowser). It is recorded as ours from here on.
+  NNBrowserWindow* ours = NNBrowserWindow::FromWindow(&window);
+  if (!ours) {
+    return nullptr;  // Chrome's own
+  }
+  ours->Register(browser);
+  return std::make_unique<NNWebContentsDelegate>(
+      browser, exclusive_access_manager, command_controller, unload_controller,
+      app_browser_controller, window, capabilities, browser_ui_controller,
+      ours->host_weak());
 }
 
 void DevToolsDockChanged(BrowserWindowInterface* browser,
@@ -145,8 +170,8 @@ void InstallChromeHooks() {
   g_netnyahoo_extension_side_panel = &HandleExtensionSidePanel;
   g_netnyahoo_hidden_from_extensions = &IsHiddenFromExtensions;
   g_netnyahoo_keeps_window_without_tabs = &KeepsWindowWithoutTabs;
-  g_netnyahoo_allows_docked_devtools = &AllowsDockedDevTools;
   g_netnyahoo_devtools_dock_changed = &DevToolsDockChanged;
+  g_netnyahoo_create_web_contents_delegate = &CreateWebContentsDelegate;
   g_netnyahoo_viewless_browsers = true;
 }
 

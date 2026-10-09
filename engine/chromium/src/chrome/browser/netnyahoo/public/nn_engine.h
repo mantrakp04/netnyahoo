@@ -1,10 +1,9 @@
 // Copyright 2026 Netnyahoo. Apache-2.0.
 //
 // The plain C surface of //chrome/browser/netnyahoo: Netnyahoo's own code in
-// the Chromium tree, calling Chrome's services directly. Both engines link it
-// (CEF's framework and NNCore's Chrome framework) and export these symbols;
-// the app looks them up with dlsym on the engine framework, so nothing here
-// goes through CEF's translated API.
+// the Chromium tree, calling Chrome's services directly. Chrome's framework
+// (NNCore) links it and exports these symbols; the app looks them up with
+// dlsym on the engine framework.
 //
 // This header is plain C with no Chromium includes: the app includes it from
 // the repo (engine/chromium/src).

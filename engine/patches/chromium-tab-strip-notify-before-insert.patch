@@ -4,8 +4,8 @@
  
  void TabStripModel::NotifyTabChanged(tabs::TabInterface* tab,
                                       TabChangeType change_type) {
-+  // CEF makes the Browser a new tab's WebContentsDelegate before the tab is
-+  // inserted; observers expect tabs that are in the model.
++  // An embedder may make the Browser a new tab's WebContentsDelegate before
++  // the tab is inserted; observers expect tabs that are in the model.
 +  if (GetIndexOfTab(tab) == kNoTab) {
 +    return;
 +  }

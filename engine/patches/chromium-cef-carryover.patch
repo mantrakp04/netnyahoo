@@ -1,0 +1,381 @@
+CEF's patches to Chrome whose behaviour NNCore relies on, kept when CEF left the tree (2026-10-09). From
+CEF 8037's cef/patch/patches (BSD-3-Clause, Chromium Embedded Framework Authors), unchanged but for the
+Windows-only parts and comments:
+- chrome_browser_browser (only these parts): BrowserManagerService::DeleteBrowser reads what it needs before
+  the Browser goes, since that can release the last reference to a private profile and destroy the service
+  itself (private profiles released with their last Browser); and the tab strip API's colour provider
+  tolerates a strip without an active tab (NNCore keeps Browsers with empty strips) instead of a CHECK.
+- mac_keyboard_conversion_1467329: a key with no DOM key mapping is DomKey::NONE, not a fatal NOTREACHED.
+- mac_platform_style_bubble_893292: bubbles near a screen edge are placed as the shipped builds placed them.
+- screen_1443650 (ui/display/screen.cc): DIP <-> screen rects round instead of enclosing (the geometry the
+  Dia measurements were taken on).
+- mac_print_preview_modal: print preview's Save as PDF dialog keeps its file dialog policy, and a window with
+  a sheet stays resizable.
+- mac_chrome_locale_3623: the Mac UI locale comes from Local State, as on other platforms; LoadLocalState takes
+  the ResourceBundle delegate (engine/nncore/apply.sh passes NNCore's).
+- chrome_browser_extensions_background: browser_tests builds without background mode (gn gen asserts
+  otherwise; the build keeps enable_background_mode=false, as CEF's build had it).
+--- a/chrome/browser/ui/browser_manager_service.cc
++++ b/chrome/browser/ui/browser_manager_service.cc
+@@ -141,20 +141,28 @@
+   //
+   // TODO(crbug.com/40159237): Use ScopedProfileKeepAlive for Incognito too,
+   // instead of separate logic for Incognito and regular profiles.
+-  target_browser_and_subscriptions->browser.reset();
+-  if (browsers_and_subscriptions_.empty() && profile_->IsIncognitoProfile() &&
+-      !profile_->IsSystemProfile()) {
++  // Capture state from `this` before destroying the Browser. The destruction
++  // chain may release the last reference keeping the Profile alive (e.g. an
++  // embedder releasing a private profile with its last Browser), which triggers keyed
++  // service shutdown and destroys `this`. Do not access members after the
++  // reset below.
++  const bool is_last_browser = browsers_and_subscriptions_.empty();
++  base::WeakPtr<Profile> weak_profile = profile_->GetWeakPtr();
++  target_browser_and_subscriptions.reset();
++  if (is_last_browser && weak_profile &&
++      weak_profile->IsIncognitoProfile() &&
++      !weak_profile->IsSystemProfile()) {
+ #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
+     // The Printing Background Manager holds onto preview dialog WebContents
+     // whose corresponding print jobs have not yet fully spooled. Make sure
+     // these get destroyed before tearing down the incognito profile so that
+     // their RenderFrameHosts can exit in time - see crbug.com/41235373
+     g_browser_process->background_printing_manager()
+-        ->DeletePreviewContentsForBrowserContext(&profile_.get());
++        ->DeletePreviewContentsForBrowserContext(weak_profile.get());
+ #endif
+     // An incognito profile is no longer needed, this indirectly frees
+     // its cache and cookies once it gets destroyed at the appropriate time.
+-    ProfileDestroyer::DestroyOTRProfileWhenAppropriate(&profile_.get());
++    ProfileDestroyer::DestroyOTRProfileWhenAppropriate(weak_profile.get());
+   }
+ 
+   // If we're exiting, send out the APP_TERMINATING notification to allow other
+--- a/ui/events/keycodes/keyboard_code_conversion_mac.mm
++++ b/ui/events/keycodes/keyboard_code_conversion_mac.mm
+@@ -892,7 +892,7 @@
+       return DomKeyFromKeyCode(event.keyCode);
+     }
+     default:
+-      NOTREACHED();
++      return ui::DomKey::NONE;
+   }
+ }
+ 
+--- a/chrome/browser/ui/views/profiles/profile_menu_view_base.cc
++++ b/chrome/browser/ui/views/profiles/profile_menu_view_base.cc
+@@ -840,8 +840,8 @@
+           ->GetDisplayNearestPoint(anchor_rect.CenterPoint())
+           .work_area();
+   int available_space = screen_space.bottom() - anchor_rect.bottom();
+-#if BUILDFLAG(IS_WIN)
+-  // On Windows the bubble can also be show to the top of the anchor.
++#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
++  // On Windows and macOS the bubble can also be show to the top of the anchor.
+   available_space =
+       std::max(available_space, anchor_rect.y() - screen_space.y());
+ #endif
+--- a/ui/views/style/platform_style.h
++++ b/ui/views/style/platform_style.h
+@@ -84,7 +84,7 @@
+   // Default setting at bubble creation time for whether arrow will be adjusted
+   // for bubbles going off-screen to bring more bubble area into view. Linux
+   // clips bubble windows that extend outside their parent window bounds.
+-  static constexpr bool kAdjustBubbleIfOffscreen = !BUILDFLAG(IS_LINUX);
++  static constexpr bool kAdjustBubbleIfOffscreen = BUILDFLAG(IS_WIN);
+ 
+   // Default focus behavior on the platform.
+   static constexpr View::FocusBehavior kDefaultFocusBehavior =
+--- a/ui/display/screen.cc
++++ b/ui/display/screen.cc
+@@ -104,13 +104,13 @@
+ gfx::Rect Screen::ScreenToDIPRectInWindow(gfx::NativeWindow window,
+                                           const gfx::Rect& screen_rect) const {
+   float scale = GetDisplayNearestWindow(window).device_scale_factor();
+-  return ScaleToEnclosingRect(screen_rect, 1.0f / scale);
++  return ScaleToRoundedRect(screen_rect, 1.0f / scale);
+ }
+ 
+ gfx::Rect Screen::DIPToScreenRectInWindow(gfx::NativeWindow window,
+                                           const gfx::Rect& dip_rect) const {
+   float scale = GetDisplayNearestWindow(window).device_scale_factor();
+-  return ScaleToEnclosingRect(dip_rect, scale);
++  return ScaleToRoundedRect(dip_rect, scale);
+ }
+ 
+ bool Screen::GetDisplayWithDisplayId(int64_t display_id,
+--- a/chrome/browser/ui/webui/print_preview/pdf_printer_handler.cc
++++ b/chrome/browser/ui/webui/print_preview/pdf_printer_handler.cc
+@@ -530,8 +530,10 @@
+   }
+ #endif
+ 
+-  select_file_dialog_ =
+-      ui::SelectFileDialog::Create(this, nullptr /*policy already checked*/);
++  // Preserve the source contents so the file dialog is associated with
++  // the print initiator, even when the preview owns a separate native window.
++  select_file_dialog_ = ui::SelectFileDialog::Create(
++      this, std::make_unique<ChromeSelectFilePolicy>(preview_web_contents_));
+   select_file_dialog_->SelectFile(
+       ui::SelectFileDialog::SELECT_SAVEAS_FILE, std::u16string(), path,
+       &file_type_info, 0, kPdfExtension,
+--- a/components/remote_cocoa/app_shim/native_widget_mac_nswindow.mm
++++ b/components/remote_cocoa/app_shim/native_widget_mac_nswindow.mm
+@@ -771,6 +771,12 @@
+     // window, swallow the event to prevent the web contents from processing it
+     // (and potentially triggering new dialogs).
+     if (is_blocked_by_modal && child_modal_window) {
++      // Let AppKit handle native resize edges, even when they overlap the
++      // blocked web contents view.
++      if ([self _resizeDirectionForMouseLocation:event.locationInWindow] != -1) {
++        [super sendEvent:event];
++        return;
++      }
+       if (![child_modal_window isKeyWindow]) {
+         [child_modal_window makeKeyWindow];
+       }
+--- a/components/remote_cocoa/app_shim/native_widget_ns_window_bridge.h
++++ b/components/remote_cocoa/app_shim/native_widget_ns_window_bridge.h
+@@ -388,6 +388,10 @@
+ 
+  private:
+   friend class views::test::BridgedNativeWidgetTestApi;
++
++  // Restore child-modal activation after AppKit finishes resizing the parent,
++  // provided focus still belongs to this window and application.
++  void RestoreChildModalFocusAfterResize();
+ 
+   // Attach child windows, if the window is visible (see comment inline).
+   void OrderChildren();
+--- a/components/remote_cocoa/app_shim/native_widget_ns_window_bridge.mm
++++ b/components/remote_cocoa/app_shim/native_widget_ns_window_bridge.mm
+@@ -1485,7 +1485,51 @@
+ }
+ 
+ void NativeWidgetNSWindowBridge::OnWindowDidEndLiveResize() {
++  auto weak_this = factory_.GetWeakPtr();
+   host_->OnWindowDidEndLiveResize();
++
++  // Defer until AppKit has finished its resize handling. The host notification
++  // or subsequent tasks may close the window or change focus.
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE,
++      base::BindOnce(
++          &NativeWidgetNSWindowBridge::RestoreChildModalFocusAfterResize,
++          weak_this));
++}
++
++void NativeWidgetNSWindowBridge::RestoreChildModalFocusAfterResize() {
++  if (!NSApp.active || NSApp.keyWindow != window_ || !window_.visible ||
++      window_.inLiveResize) {
++    return;
++  }
++
++  auto* modal = this;
++  while (true) {
++    // Native sheets (including file dialogs) manage their own activation.
++    if (modal->window_.attachedSheet) {
++      return;
++    }
++    const auto& children = modal->child_windows_;
++    auto it = std::find_if(children.rbegin(), children.rend(), [](auto* child) {
++      return child->modal_type_ != ui::mojom::ModalType::kNone &&
++             child->window_.visible;
++    });
++    if (it == children.rend()) {
++      break;
++    }
++    modal = *it;
++    if (modal->modal_type_ != ui::mojom::ModalType::kChild) {
++      return;
++    }
++  }
++
++  if (modal != this) {
++    // Making the dialog key restores its saved responder/focused view instead
++    // of resetting focus to the dialog's initially focused control.
++    // Retain the window across activation callbacks that may close its bridge.
++    NSWindow* modal_window = modal->window_;
++    [modal_window makeKeyWindow];
++  }
+ }
+ 
+ void NativeWidgetNSWindowBridge::OnVisibilityChanged() {
+--- a/chrome/browser/chrome_resource_bundle_helper.cc
++++ b/chrome/browser/chrome_resource_bundle_helper.cc
+@@ -61,8 +61,10 @@
+ 
+ // Initializes the shared instance of ResourceBundle and returns the application
+ // locale. An empty |actual_locale| value indicates failure.
+-std::string InitResourceBundleAndDetermineLocale(PrefService* local_state,
+-                                                 bool is_running_tests) {
++std::string InitResourceBundleAndDetermineLocale(
++    PrefService* local_state,
++    ui::ResourceBundle::Delegate* resource_bundle_delegate,
++    bool is_running_tests) {
+ #if BUILDFLAG(IS_ANDROID)
+   // In order for DetectAndSetLoadNonWebViewLocalePaks() to work ResourceBundle
+   // must not have been created yet.
+@@ -70,23 +72,16 @@
+   ui::DetectAndSetLoadNonWebViewLocalePaks();
+ #endif
+ 
+-  std::string preferred_locale;
+-#if BUILDFLAG(IS_MAC)
+-  // TODO(markusheintz): Read preference pref::kApplicationLocale in order
+-  // to enforce the application locale.
+-  // Tests always get en-US.
+-  preferred_locale = is_running_tests ? "en-US" : std::string();
+-#else
+-  preferred_locale =
++  std::string preferred_locale =
+       local_state->GetString(language::prefs::kApplicationLocale);
+-#endif
+ 
+   TRACE_EVENT0("startup",
+                "ChromeBrowserMainParts::InitResourceBundleAndDetermineLocale");
+   // On a POSIX OS other than ChromeOS, the parameter that is passed to the
+   // method InitSharedInstance is ignored.
+   std::string actual_locale = ui::ResourceBundle::InitSharedInstanceWithLocale(
+-      preferred_locale, nullptr, ui::ResourceBundle::LOAD_COMMON_RESOURCES);
++      preferred_locale, resource_bundle_delegate,
++      ui::ResourceBundle::LOAD_COMMON_RESOURCES);
+   CHECK(!actual_locale.empty())
+       << "Locale could not be found for " << preferred_locale;
+ 
+@@ -119,6 +114,7 @@
+ 
+ std::string LoadLocalState(
+     ChromeFeatureListCreator* chrome_feature_list_creator,
++    ui::ResourceBundle::Delegate* resource_bundle_delegate,
+     bool is_running_tests) {
+   base::FilePath user_data_dir;
+   if (!base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir))
+@@ -131,5 +127,6 @@
+           base::CommandLine::ForCurrentProcess()));
+ 
+   return InitResourceBundleAndDetermineLocale(
+-      chrome_feature_list_creator->local_state(), is_running_tests);
++      chrome_feature_list_creator->local_state(), resource_bundle_delegate,
++      is_running_tests);
+ }
+--- a/chrome/browser/chrome_resource_bundle_helper.h
++++ b/chrome/browser/chrome_resource_bundle_helper.h
+@@ -7,12 +7,15 @@
+ 
+ #include <string>
+ 
++#include "ui/base/resource/resource_bundle.h"
++
+ class ChromeFeatureListCreator;
+ 
+ // Loads the local state, and returns the application locale. An empty return
+ // value indicates the ResouceBundle couldn't be loaded.
+ std::string LoadLocalState(
+     ChromeFeatureListCreator* chrome_feature_list_creator,
++    ui::ResourceBundle::Delegate* resource_bundle_delegate,
+     bool is_running_tests);
+ 
+ #endif  // CHROME_BROWSER_CHROME_RESOURCE_BUNDLE_HELPER_H_
+--- a/components/language/core/browser/locale_util.cc
++++ b/components/language/core/browser/locale_util.cc
+@@ -17,11 +17,11 @@
+   // LoadLocaleResources(), which is how the global locale is set.
+   // TODO(asvitkine): We should try to refactor things so that the logic is not
+   // duplicated in multiple files.
+-#if !BUILDFLAG(IS_APPLE)
++
+   // The pref isn't always registered in unit tests.
+   if (local_state->HasPrefPath(prefs::kApplicationLocale))
+     preferred_locale = local_state->GetString(prefs::kApplicationLocale);
+-#endif
++
+   // Note: The call below is necessary even if |preferred_locale| is empty, as
+   // it will get the locale that should be used potentially from other sources,
+   // depending on the platform (e.g. the OS locale on Mac).
+--- a/ui/base/l10n/l10n_util.cc
++++ b/ui/base/l10n/l10n_util.cc
+@@ -159,25 +159,7 @@
+       });
+ }
+ 
+-#if BUILDFLAG(IS_APPLE)
+-std::string GetApplicationLocaleInternalMac(std::string_view pref_locale) {
+-  // Use any override (Cocoa for the browser), otherwise use the preference
+-  // passed to the function.
+-  std::string app_locale = l10n_util::GetLocaleOverride();
+-  if (app_locale.empty())
+-    app_locale = pref_locale;
+-
+-  // The above should handle all of the cases Chrome normally hits, but for some
+-  // unit tests, fallback is needed too.
+-  if (app_locale.empty())
+-    app_locale = "en-US";
+-
+-  return app_locale;
+-}
+-#endif
+-
+-#if !BUILDFLAG(IS_APPLE)
+-std::string GetApplicationLocaleInternalNonMac(std::string_view pref_locale) {
++std::string GetApplicationLocaleInternal(std::string_view pref_locale) {
+   std::vector<std::optional<LanguageTag>> candidates;
+   // The `prefered_tag` is separated from the other candidates.
+   std::optional<LanguageTag> prefered_tag = std::nullopt;
+@@ -279,15 +261,6 @@
+ 
+   // Fallback to "en-US"
+   return IsResourceBundleLocale(GetKnownLanguageTag("en-US")) ? "en-US" : "";
+-}
+-#endif  // !BUILDFLAG(IS_APPLE)
+-
+-std::string GetApplicationLocaleInternal(std::string_view pref_locale) {
+-#if BUILDFLAG(IS_APPLE)
+-  return GetApplicationLocaleInternalMac(pref_locale);
+-#else
+-  return GetApplicationLocaleInternalNonMac(pref_locale);
+-#endif
+ }
+ 
+ std::string GetApplicationLocale(std::string_view pref_locale,
+--- a/chrome/browser/extensions/BUILD.gn
++++ b/chrome/browser/extensions/BUILD.gn
+@@ -3165,10 +3165,10 @@
+ 
+     if (!is_chromeos) {
+       # Chrome OS doesn't use background mode or download bubbles.
+-      deps += [
+-        "//chrome/browser/background/extensions",
+-        "//chrome/browser/download/bubble",
+-      ]
++      if (enable_background_mode) {
++        deps += [ "//chrome/browser/background/extensions" ]
++      }
++      deps += [ "//chrome/browser/download/bubble" ]
+     }
+ 
+     if (enable_background_mode) {
+--- a/chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl/tab_strip_model_adapter_impl.cc
++++ b/chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl/tab_strip_model_adapter_impl.cc
+@@ -13,6 +13,8 @@
+ #include "components/tab_groups/tab_group_visual_data.h"
+ #include "components/tabs/public/split_tab_collection.h"
+ #include "components/tabs/public/tab_collection.h"
++#include "ui/color/color_provider_manager.h"
++#include "ui/native_theme/native_theme.h"
+ #include "components/tabs/public/tab_group.h"
+ #include "components/tabs/public/tab_group_tab_collection.h"
+ #include "components/tabs/public/tab_interface.h"
+@@ -68,7 +70,11 @@
+ const ui::ColorProvider& TabStripModelAdapterImpl::GetColorProvider() const {
+   content::WebContents* active_contents =
+       tab_strip_model_->GetActiveWebContents();
+-  CHECK(active_contents);
++  if (!active_contents) {
++    return *ui::ColorProviderManager::Get().GetColorProviderFor(
++        ui::NativeTheme::GetInstanceForNativeUi()->GetColorProviderKey(
++            /*custom_theme=*/nullptr));
++  }
+   return active_contents->GetColorProvider();
+ }
+ 

@@ -113,31 +113,3 @@
    // Set is_attempting_to_close_browser_ here, so that extensions, etc, do not
    // attempt to add tabs to the browser before it closes.
    is_attempting_to_close_browser_ = true;
---- a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
-+++ b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
-@@ -19,6 +19,7 @@
- #include "chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.h"
- #include "chrome/browser/ui/views/frame/multi_contents_view.h"
- #include "chrome/browser/ui/web_applications/app_browser_controller.h"
-+#include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
- #include "components/web_modal/web_contents_modal_dialog_host.h"
- #include "ui/views/view.h"
- #include "ui/views/widget/widget.h"
-@@ -148,6 +149,17 @@
-   if (browser) {
-     switch (browser->GetType()) {
-       case BrowserWindowInterface::Type::TYPE_NORMAL:
-+#if BUILDFLAG(ENABLE_CEF)
-+        // Netnyahoo: a normal browser that shows no tab strip (a CEF client's
-+        // own window, CefBrowserSettings.client_window) lays out like a popup;
-+        // the tabbed layout expects the tabbed toolbar.
-+        if (browser->cef_delegate() &&
-+            !WindowFeatureController::From(browser)->SupportsWindowFeature(
-+                WindowFeatureController::WindowFeature::kFeatureTabStrip)) {
-+          return std::make_unique<BrowserViewPopupLayoutImpl>(
-+              std::move(delegate), std::move(views));
-+        }
-+#endif
-         return std::make_unique<BrowserViewTabbedLayoutImpl>(
-             std::move(delegate), std::move(views));
-       case BrowserWindowInterface::Type::TYPE_APP:

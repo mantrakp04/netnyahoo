@@ -42,6 +42,10 @@
 
 // The user agent brand hook (engine/nncore/apply.sh).
 extern const char* g_netnyahoo_user_agent_brand;
+// ChromeMainDelegate's hooks (engine/nncore/apply.sh): Chrome leaves to its embedder what CEF's
+// build compiled out, and loads its strings through our ResourceBundle delegate.
+extern bool g_netnyahoo_embedder;
+extern ui::ResourceBundle::Delegate* g_netnyahoo_resource_bundle_delegate;
 
 namespace nncore {
 
@@ -84,8 +88,8 @@ class NNBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
   }
 };
 
-// Chrome's main parts, plus the one thing CEF took out: Chrome running its main loop.
-// (CEF bypasses StartupBrowserCreator and runs a loop of its own.)
+// Chrome's main parts, plus the one thing an embedder's Chrome leaves out: running its main
+// loop (it skips StartupBrowserCreator, which would make the loop, under g_netnyahoo_embedder).
 class NNBrowserMainParts : public content::BrowserMainParts {
  public:
   explicit NNBrowserMainParts(std::unique_ptr<content::BrowserMainParts> chrome)
@@ -167,14 +171,14 @@ class NNContentBrowserClient : public ChromeContentBrowserClient {
     return delay ? delay : std::optional<base::TimeDelta>(base::Milliseconds(500));
   }
 
-  bool ConfigureNetworkContextParams(
+  void ConfigureNetworkContextParams(
       content::BrowserContext* context,
       bool in_memory,
       const base::FilePath& relative_partition_path,
       network::mojom::NetworkContextParams* network_context_params,
       cert_verifier::mojom::CertVerifierCreationParams*
           cert_verifier_creation_params) override {
-    const bool result = ChromeContentBrowserClient::ConfigureNetworkContextParams(
+    ChromeContentBrowserClient::ConfigureNetworkContextParams(
         context, in_memory, relative_partition_path, network_context_params,
         cert_verifier_creation_params);
     // Session cookies outlive a restart, as they did on CEF (which set
@@ -186,7 +190,6 @@ class NNContentBrowserClient : public ChromeContentBrowserClient {
       network_context_params->restore_old_session_cookies = true;
       network_context_params->persist_session_cookies = true;
     }
-    return result;
   }
 
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
@@ -210,7 +213,12 @@ void ReleaseAppKeepAlive() {
 }
 
 NNMainDelegate::NNMainDelegate(const StartupTimestamps& timestamps)
-    : ChromeMainDelegate(timestamps) {}
+    : ChromeMainDelegate(timestamps) {
+  // Every process (ChromeMain makes this delegate in each), before Chrome reads them.
+  g_netnyahoo_embedder = true;
+  // Chrome's strings say Netnyahoo (nn_strings.h).
+  g_netnyahoo_resource_bundle_delegate = ProductStrings();
+}
 
 NNMainDelegate::~NNMainDelegate() = default;
 
@@ -261,10 +269,6 @@ void NNMainDelegate::CreateThreadPool(std::string_view name) {
   ChromeMainDelegate::CreateThreadPool(name);
   // Started as early as Chrome starts it: once the thread pool exists.
   sampling_profiler_ = std::make_unique<MainThreadStackSamplingProfiler>();
-}
-
-ui::ResourceBundle::Delegate* NNMainDelegate::GetResourceBundleDelegate() {
-  return ProductStrings();
 }
 
 content::ContentRendererClient* NNMainDelegate::CreateContentRendererClient() {

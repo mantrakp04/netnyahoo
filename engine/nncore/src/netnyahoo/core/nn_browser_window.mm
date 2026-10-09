@@ -2,7 +2,11 @@
 
 #import <AppKit/AppKit.h>
 
+#include <map>
+#include <set>
+
 #include "base/functional/bind.h"
+#include "base/no_destructor.h"
 #include "base/task/single_thread_task_runner.h"
 
 #include "chrome/browser/devtools/devtools_ui_controller.h"
@@ -224,10 +228,58 @@ autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
 
 // --- NNBrowserWindow --------------------------------------------------------------------
 
+namespace {
+
+// Every live NNBrowserWindow.
+std::set<const BrowserWindow*>& LiveWindows() {
+  static base::NoDestructor<std::set<const BrowserWindow*>> windows;
+  return *windows;
+}
+// NNCore's Browsers and their hosts (nn_browser_window.h, Register).
+std::map<const BrowserWindowInterface*, base::WeakPtr<WindowHost>>& Records() {
+  static base::NoDestructor<
+      std::map<const BrowserWindowInterface*, base::WeakPtr<WindowHost>>>
+      records;
+  return *records;
+}
+
+}  // namespace
+
+// static
+NNBrowserWindow* NNBrowserWindow::FromWindow(const BrowserWindow* window) {
+  if (!window || !LiveWindows().contains(window)) {
+    return nullptr;
+  }
+  return static_cast<NNBrowserWindow*>(const_cast<BrowserWindow*>(window));
+}
+
+void NNBrowserWindow::Register(const BrowserWindowInterface* browser) {
+  Records()[browser] = host_;
+}
+
+// static
+bool NNBrowserWindow::IsOurs(const BrowserWindowInterface* browser) {
+  return browser && Records().contains(browser);
+}
+
+// static
+WindowHost* NNBrowserWindow::HostOf(const BrowserWindowInterface* browser) {
+  auto it = browser ? Records().find(browser) : Records().end();
+  return it == Records().end() ? nullptr : it->second.get();
+}
+
+// static
+void NNBrowserWindow::Forget(const BrowserWindowInterface* browser) {
+  Records().erase(browser);
+}
+
 NNBrowserWindow::NNBrowserWindow(base::WeakPtr<WindowHost> host)
-    : host_(std::move(host)), location_bar_(std::make_unique<NNLocationBar>()) {}
+    : host_(std::move(host)), location_bar_(std::make_unique<NNLocationBar>()) {
+  LiveWindows().insert(this);
+}
 
 NNBrowserWindow::~NNBrowserWindow() {
+  LiveWindows().erase(this);
   // BrowserWindow implementations tear these down before the window goes (as
   // BrowserView does): they hold references into it.
   devtools_ui_controller_.reset();
@@ -242,6 +294,7 @@ NNBrowserWindow::~NNBrowserWindow() {
 
 void NNBrowserWindow::AttachBrowser(Browser* browser) {
   browser_ = browser;
+  Register(browser);
   autofill_bubble_handler_registration_.emplace(
       browser->GetUnownedUserDataHost(), autofill_bubble_handler_);
   location_bar_->set_browser(browser);

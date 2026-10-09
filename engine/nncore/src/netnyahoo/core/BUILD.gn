@@ -25,8 +25,6 @@ source_set("core") {
     "nn_browser_window.mm",
     "nn_cast_dialog.h",
     "nn_cast_dialog.mm",
-    "nn_cef_seams.h",
-    "nn_cef_seams.mm",
     "nn_context_menu.h",
     "nn_context_menu.mm",
     "nn_desktop_capture.h",
@@ -83,7 +81,6 @@ source_set("core") {
 
   deps = [
     "//base",
-    "//cef/libcef/features:buildflags",
     "//chrome/app:command_ids",
     "//chrome/app:generated_resources",
     "//chrome/browser",

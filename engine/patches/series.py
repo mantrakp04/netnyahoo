@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Netnyahoo's changes to the Chromium tree, in the order `series` gives.
 
-  series.py apply [--phase cef|chromium]         apply to the tree; skips what is already applied
+  series.py apply [--phase chromium]             apply to the tree; skips what is already applied
   series.py check [--keep DIR]                   apply the whole series to a scratch copy of the base and
                                                  compare the result with the tree, byte for byte
-  series.py capture-base [--phase cef|chromium]  record the files the series touches as they are now (run
+  series.py capture-base [--phase chromium]      record the files the series touches as they are now (run
                                                  just before applying the series to a fresh or rebased tree)
   series.py materialize --until NAME DIR         the touched files as the series leaves them after NAME (to
                                                  remake a patch: edit there, diff against --until the line above)
   series.py files                                every path the series touches, by step
 
-The base is the tree as CEF's own patches, ungoogled-chromium and domain substitution leave it, before any line of
+The base is the tree as ungoogled-chromium and domain substitution leave it, before any line of
 `series`: ~/chromium-build/series-base (NN_SERIES_BASE), one file per touched path, relative to chromium/src.
 `check` exits 0 when every step applies strictly (git apply: no fuzz) and the result equals the
 tree; 1 with a report otherwise. It writes nothing outside its scratch directory.
@@ -156,8 +156,7 @@ def is_applied(step, tree):
 
 
 def phase_of(step):
-    """Step 4 applies the whole series, after ungoogled and domain substitution. Step 2 (CEF's checkout) still
-    asks for the `cef` phase, which has no lines since our CEF patches went."""
+    """Every line is step 4's: the whole series goes in after ungoogled and domain substitution."""
     return "chromium"
 
 
@@ -184,7 +183,7 @@ def copy_path(src_root, dst_root, path, is_dir, missing_ok=True):
 
 def base_from_git(path, out):
     """A touched file the base doesn't have (a hook added after the base was captured): the checkout's own
-    git HEAD, right when nothing upstream (CEF's patches, ungoogled, domain substitution) changes it."""
+    git HEAD, right when nothing upstream (ungoogled, domain substitution) changes it."""
     p = subprocess.run(["git", "show", f"HEAD:{path}"], cwd=SRC, capture_output=True)
     if p.returncode:
         return False
@@ -214,9 +213,8 @@ def cmd_apply(args):
         if error:
             sys.exit(f"error: {step} does not apply:\n{error}")
         print(f"applied {step}")
-    if args.phase != "cef":
-        # The offline page chromium-neterror-yahu.patch names is generated, not patched in.
-        run([os.path.join(HERE, "build", "yahu-resource.sh")], HERE, check=True)
+    # The offline page chromium-neterror-yahu.patch names is generated, not patched in.
+    run([os.path.join(HERE, "build", "yahu-resource.sh")], HERE, check=True)
 
 
 def cmd_capture_base(args):
@@ -311,12 +309,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("apply")
-    p.add_argument("--phase", choices=["cef", "chromium"])
+    p.add_argument("--phase", choices=["chromium"])
     p = sub.add_parser("check")
     p.add_argument("--keep", metavar="DIR", help="scratch directory to keep")
     p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("capture-base")
-    p.add_argument("--phase", choices=["cef", "chromium"])
+    p.add_argument("--phase", choices=["chromium"])
     p.add_argument("--force", action="store_true", help="replace files already captured")
     p = sub.add_parser("materialize")
     p.add_argument("--until", required=True)
