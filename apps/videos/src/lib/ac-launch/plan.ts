@@ -224,7 +224,7 @@ const endShot = (at: number, beats: number, lockup: number, button: number): Sho
     T("end-download", "DOWNLOAD", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
     T("end-url", "NETNYAHOO.COM", lockup + 1, "slam", 190, [80, 630, 1080, 210], [60, 650, 880, 160], { color: P.blue }),
     T("end-fine", "OPEN SOURCE · APPLE SILICON · MACOS 14+", lockup + 2, "label", 30, [86, 960, 1076, 50], [64, 1446, 880, 34], { portSize: 26 }),
-    T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 820, 880, 110], { portSize: 40, portText: "GITHUB.COM/MANTRAKP04/\nARCADIA" }),
+    T("end-source", "GITHUB.COM/MANTRAKP04/ARCADIA", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 820, 880, 110], { portSize: 40, portText: "GITHUB.COM/MANTRAKP04/\nARCADIA" }),
   ],
 });
 
