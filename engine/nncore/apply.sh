@@ -41,6 +41,7 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'g_netnyahoo_embedder &&' "$src/chrome/browser/chrome_browser_main.cc" &&
     grep -q 'if (!g_netnyahoo_embedder)' "$src/chrome/browser/chrome_browser_main_mac.mm" &&
     grep -q 'if (!g_netnyahoo_embedder)' "$src/chrome/browser/chrome_content_browser_client.cc" &&
+    grep -q 'Netnyahoo: NNCore reads no platform policy' "$src/chrome/browser/policy/chrome_browser_policy_connector.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
     grep -q 'Netnyahoo: NNCore shows no toast' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
@@ -537,6 +538,37 @@ new = """  // chrome: & friends.
 assert s.count(old) == 1
 open(path, "w").write(s.replace(old, new))
 print("hooked ChromeContentBrowserClient's URL handlers (embedder)")
+PY2
+
+# No platform policy provider for an embedder's Chrome, as on CEF (whose chrome_browser_policy patch made
+# CreatePlatformProvider return none unless the embedder named a policy id, which NNCore never did). The
+# macOS one's first load runs on the main thread before BrowserMain and waits for /usr/bin/profiles
+# (base::IsManagedDevice): 0.2.31 launched 10-20 ms later for it, and it read every Chrome policy key
+# from the app's managed preferences, which no NNCore build had done.
+python3 - "$src/chrome/browser/policy/chrome_browser_policy_connector.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "Netnyahoo: NNCore reads no platform policy" in s:
+    sys.exit(0)
+ns = "\nnamespace policy {\n"
+decl = ("\n// Netnyahoo: NNCore (engine/nncore) embeds Chrome; defined in chrome_main_delegate.cc.\n"
+        "extern bool g_netnyahoo_embedder;\n")
+assert s.count(ns) == 1
+s = s.replace(ns, decl + ns)
+old = """ChromeBrowserPolicyConnector::CreatePlatformProvider() {
+#if BUILDFLAG(IS_WIN)
+"""
+new = """ChromeBrowserPolicyConnector::CreatePlatformProvider() {
+  // Netnyahoo: NNCore reads no platform policy (as CEF's build, which made none without a policy id).
+  if (g_netnyahoo_embedder) {
+    return nullptr;
+  }
+#if BUILDFLAG(IS_WIN)
+"""
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+print("hooked ChromeBrowserPolicyConnector's platform provider (embedder)")
 PY2
 
 # Chrome's permission prompts ask NNCore first: the host's tabs show the host's own prompt
