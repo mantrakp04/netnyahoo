@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ACFeedbackEmail</key>
+	<string></string>
+	<key>ACFeedbackURL</key>
+	<string>https://github.com/mantrakp04/netnyahoo/issues/new?body=%s</string>
+	<key>ACReleaseNotesURL</key>
+	<string>https://netnyahoo.com/release-notes</string>
+	<key>ACVideoTourURL</key>
+	<string></string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -67,14 +75,6 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-	<key>ACFeedbackEmail</key>
-	<string></string>
-	<key>ACFeedbackURL</key>
-	<string>https://github.com/mantrakp04/netnyahoo/issues/new?body=%s</string>
-	<key>ACReleaseNotesURL</key>
-	<string>https://netnyahoo.com/release-notes</string>
-	<key>ACVideoTourURL</key>
-	<string></string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
