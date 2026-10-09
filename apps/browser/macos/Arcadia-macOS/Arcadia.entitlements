@@ -32,6 +32,12 @@
 		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).webauthn</string>
 		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).unexportable-keys</string>
 		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).secure-payment-confirmation</string>
+		<!-- LEGACY NAMES: the same groups under the app's former bundle id. Chrome reads only the groups above, so the
+		     migration (packages/sync/ios/Core/LegacyMigration.swift) moves the passkeys and keys an older build saved
+		     out of these; moving needs both. The Developer ID profile grants U5L5T3NGVV.*. -->
+		<string>$(AppIdentifierPrefix)com.netnyahoo.browser.webauthn</string>
+		<string>$(AppIdentifierPrefix)com.netnyahoo.browser.unexportable-keys</string>
+		<string>$(AppIdentifierPrefix)com.netnyahoo.browser.secure-payment-confirmation</string>
 	</array>
 </dict>
 </plist>

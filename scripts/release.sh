@@ -324,7 +324,17 @@ if [ "$notarize" = 1 ]; then
 fi
 
 echo "==> Package"
-ditto -c -k --keepParent "$app" "$zip"
+# Sparkle's update archive. Sparkle (2.9.6 SUInstaller.m) finds the new app in it only under the installed bundle's
+# file name, its display name or its bundle id; copies installed before the rename match none of Arcadia's, so the
+# archive's top folder keeps the old file name (it installs over that copy's own path, and the bundle id matches
+# for copies installed since). The name lives in the legacy file.
+legacy_app="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyMigration.swift")"
+[[ "$legacy_app" == *.app ]] || die "can't read the legacy app name from LegacyMigration.swift"
+update_dir="$dist/update"
+rm -rf "$update_dir" && mkdir -p "$update_dir"
+ditto "$app" "$update_dir/$legacy_app"
+ditto -c -k --keepParent "$update_dir/$legacy_app" "$zip"
+rm -rf "$update_dir"
 staging="$dist/dmg"
 mkdir -p "$staging"
 ditto "$app" "$staging/Arcadia.app"

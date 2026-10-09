@@ -89,9 +89,11 @@ if [ -z "${SMOKE_APP:-}" ]; then
     ok=0
     [ -n "$signature" ] && "$work/ed25519" verify "$zip" "$signature" "$(info "$app" SUPublicEDKey)" && [ "$length" = "$(stat -f %z "$zip")" ] && ok=1
     check "the appcast's EdDSA signature of the zip verifies with the app's SUPublicEDKey" $ok "length ${length:-none}"
+    # Its top folder has the installed copies' file name (release.sh), whatever it is.
     mkdir -p "$work/zip" && ditto -x -k "$zip" "$work/zip"
-    [ -n "$(cdhash "$app")" ] && [ "$(cdhash "$work/zip/Arcadia.app")" = "$(cdhash "$app")" ] \
-      && codesign --verify --deep --strict "$work/zip/Arcadia.app" 2>/dev/null && xcrun stapler validate "$work/zip/Arcadia.app" >/dev/null 2>&1 && ok=1 || ok=0
+    zapp="$(ls -d "$work/zip"/*.app 2>/dev/null | head -1)"
+    [ -n "$zapp" ] && [ -n "$(cdhash "$app")" ] && [ "$(cdhash "$zapp")" = "$(cdhash "$app")" ] \
+      && codesign --verify --deep --strict "$zapp" 2>/dev/null && xcrun stapler validate "$zapp" >/dev/null 2>&1 && ok=1 || ok=0
     check "the zip holds this app, sealed and stapled" $ok
     rm -rf "$work/zip"
   fi
