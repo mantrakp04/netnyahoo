@@ -23,6 +23,12 @@ import { setPopover } from "./layout/pageState";
 import { IconButton, useHover } from "./primitives";
 
 type Variant = "panel" | "hero" | "sidebar";
+
+// Dia 1.52's panel: its text starts 48pt in from its edge, where the URL field's text was (CommandPanel places it so),
+// at the field's 13pt; the search icon is centred 30pt in. An NSTextField draws its text 2.5pt into its frame.
+export const PANEL_TEXT_LEFT = 48;
+const PANEL_ICON_LEFT = 21;
+const FIELD_TEXT_INSET = 2.5;
 type Selection = { start: number; end: number };
 
 const BASE_KEYS = [
@@ -394,9 +400,11 @@ export function Omnibox({
       onKeyDown={onKeyDown}
       style={{
         flex: 1,
-        fontSize: hero ? 17 : dropdown ? 14 : 15,
+        fontSize: hero ? 17 : dropdown ? 14 : 13,
         color: theme.textPrimary,
         paddingVertical: 0,
+        // Centred in its row, the field's baseline sat 1.5pt below the URL field's.
+        marginTop: variant === "panel" ? -3 : 0,
       }}
     />
   );
@@ -482,7 +490,16 @@ export function Omnibox({
   return (
     <View ref={root}>
       <ContextMenuArea captureDescendants onContextMenu={() => void onContextMenu()}>
-        <View style={{ flexDirection: "row", alignItems: "center", height: hero ? 60 : 55, paddingLeft: hero ? 18 : 20, paddingRight: 18, gap: hero ? 8 : 10 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            height: hero ? 60 : 55,
+            paddingLeft: hero ? 18 : PANEL_ICON_LEFT,
+            paddingRight: 18,
+            gap: hero ? 8 : PANEL_TEXT_LEFT - FIELD_TEXT_INSET - PANEL_ICON_LEFT - 18,
+          }}
+        >
           <View style={{ width: 18, alignItems: "center" }}>{leadingIcon}</View>
           {scope && <ScopeChip scope={scope} large={hero} />}
           {field}

@@ -255,6 +255,16 @@ screen capture (frames 8–33 ms apart, most 17), so timings are ±1 frame. Edge
   (30,25,26) as the light fades in.
 - Corner radius 20 (continuous). Border is 1 device pixel of `Border/None`, dark
   rgba(120,125,134,0.32). Shadow is `Shadow/Default`, black at 0.12.
+- **Dia 1.52 (owner's 2x recording, 2026-10-09), opened from the URL field:**
+  - Geometry: with an 810pt field the panel is 888pt, starting about 41pt left of the field's hover pill and ending
+    about 40pt past its right end, so the whole field is covered.
+  - Text: the address in the panel is at exactly the x and baseline it had in the field (0px shift) and the same size
+    (13pt: `x.com` is 69px wide in both). The text starts 48pt in from the panel's edge; the search icon is centred
+    30pt in.
+  - Open: the panel grows out of the field's box. Its left edge per 60fps frame (px at 2x): 676 (the field) → 674, 624,
+    609, 601, 598, 595, 594, i.e. 63%, 82%, 92%, 95%, 99% of the way: an exponential ease-out of about 130ms (ours:
+    `Easing.out(Easing.exp)`, 130ms). Height grows with it. The content doesn't scale or move: the growing shape
+    uncovers it.
 
 ### Logo (orb), measured from a same-screen capture
 

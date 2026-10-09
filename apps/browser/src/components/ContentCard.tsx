@@ -45,7 +45,8 @@ import { ShareBar } from "./media/ShareBar";
 import { CastPicker } from "./media/CastPicker";
 import { DeviceChooser } from "./site/DeviceChooser";
 import { setNowPlaying, setPictureInPictureState } from "./media/state";
-import { Toolbar } from "./Toolbar";
+import { Toolbar, urlFieldRight } from "./Toolbar";
+import { useToolbarExtensionsWidth } from "./extensions/ToolbarExtensions";
 import { AutoHideToolbar, useToolbarMode, useToolbarMotion } from "./AutoHideToolbar";
 import { noteScroll, revealToolbar } from "./layout/toolbarAutoHide";
 import { NavigationOverlays } from "./layout/SwipeOverlay";
@@ -202,11 +203,14 @@ export function ContentCard() {
   };
 
   const focusedRect = activeId ? panes[activeId] : undefined;
+  // The field's own width (the extensions and split buttons sit past it): the command bar covers all of it.
+  const extensionsWidth = useToolbarExtensionsWidth(windowId);
+  const fieldRight = urlFieldRight(!!split, extensionsWidth);
   useEffect(() => {
     if (!origin || !focusedRect || addressInSidebar || small) return;
     const g = geometryFor(focusedRect);
-    setUrlAnchor(windowId, { left: origin.x + focusedRect.x + g.urlLeft, top: origin.y + focusedRect.y, width: focusedRect.width - g.urlLeft - 12 });
-  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, addressInSidebar]);
+    setUrlAnchor(windowId, { left: origin.x + focusedRect.x + g.urlLeft, top: origin.y + focusedRect.y, width: focusedRect.width - g.urlLeft - fieldRight });
+  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, addressInSidebar, fieldRight]);
 
   // While the sidebar slides, the card's size changes every frame: a pane filling the card follows it by itself (flex),
   // and the card's own size (split rects, hidden panes, the URL bar's anchor) is taken once the motion ends, so the

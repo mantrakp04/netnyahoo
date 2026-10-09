@@ -12,7 +12,7 @@ import { usePageProgress } from "../store/pageProgress";
 import type { Tab } from "../store/types";
 import { ToolbarButton, type ClickModifiers } from "./layout/controls";
 import { type ToolbarGeometry } from "./layout/geometry";
-import { setPopover, usePage, usePages } from "./layout/pageState";
+import { setPopover, usePage, usePages, type PageState } from "./layout/pageState";
 import { closeHistoryMenu, goBack, goForward, historyItems, openHistoryMenu, useHistoryAvailability, useHistoryMenu } from "./layout/history";
 import { openModeFor, openUrl } from "./bookmarks/actions";
 import { closePane, openSplitPane, showSplitMenu } from "./layout/splitActions";
@@ -33,6 +33,15 @@ const toolbarTab = (t: Tab | undefined): ToolbarTab | undefined =>
   t && { id: t.id, url: t.url, title: isWebUrl(t.url) ? "" : t.title, windowId: t.windowId, zoom: t.zoom };
 const isWebUrl = (url: string) => /^https?:/i.test(url);
 export const useToolbarTab = (tabId: string | undefined) => useBrowser(useShallow((s) => toolbarTab(tabId ? s.tabs[tabId] : undefined)));
+
+// The URL field's place in a pane's toolbar, which the command bar opens over (CommandPanel.tsx).
+export const URL_FIELD = { top: 21.2 - 15, height: 30 } as const;
+export const urlFieldRight = (inSplit: boolean, extensionsWidth: number) => (inSplit ? 12 + 2 * 28 : 12) + extensionsWidth;
+// Where the field's text starts: after the warning lock on a page that isn't secure.
+const LOCK = { left: 7, width: 18, gap: 3 } as const;
+export const urlTextLeft = (insecure: boolean) => (insecure ? LOCK.left + LOCK.width + LOCK.gap : 8);
+export const insecureLevel = (p: PageState) =>
+  p.security && (p.security.level === "insecure" || p.security.level === "certificateError") ? p.security.level : null;
 
 // bare: no band or divider of its own (AutoHideToolbar draws them, so the controls can fade over a band that doesn't).
 export function Toolbar({
@@ -79,8 +88,8 @@ export function Toolbar({
     const place = (center: number | null) => ({ position: "absolute" as const, top, left: (center ?? 0) - layout.toolbarButton / 2 });
     return { sidebarButton: place(geometry.sidebarButton), back: place(geometry.back), forward: place(geometry.forward), reload: place(geometry.reload) };
   }, [geometry]);
-  const right = (inSplit ? 12 + 2 * 28 : 12) + extensionsWidth;
-  const urlStyle = useMemo(() => ({ position: "absolute" as const, left: geometry.urlLeft, right, top: 21.2 - 15 }), [geometry.urlLeft, right]);
+  const right = urlFieldRight(inSplit, extensionsWidth);
+  const urlStyle = useMemo(() => ({ position: "absolute" as const, left: geometry.urlLeft, right, top: URL_FIELD.top }), [geometry.urlLeft, right]);
   if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
   const top = 21.2 - layout.toolbarButton / 2;
 
@@ -247,7 +256,7 @@ export const UrlField = memo(function UrlField({
   const theme = useTheme();
   const showFullUrl = useSettings((s) => s.showFullUrl);
   const bookmarked = useIsBookmarked(tab.url);
-  const insecure = usePage(tab.id, (p) => (p.security && (p.security.level === "insecure" || p.security.level === "certificateError") ? p.security.level : null));
+  const insecure = usePage(tab.id, insecureLevel);
   const popups = usePage(tab.id, (p) => p.popups.length);
   const capture = usePage(tab.id, (p) => p.mediaAccess);
   const openPanel = (text: string) => {
@@ -298,17 +307,17 @@ export const UrlField = memo(function UrlField({
         )
       ) : null}
       {insecure && (
-        <Pressable onPress={toggleSiteControls} style={{ paddingLeft: 7 }} tooltip="Connection is not secure">
+        <Pressable onPress={toggleSiteControls} style={{ paddingLeft: LOCK.left }} tooltip="Connection is not secure">
           <Symbol
             name="lock.open.trianglebadge.exclamationmark.fill"
             size={12}
             color={insecure === "certificateError" ? "#FF5F57" : palette.secondary}
-            style={{ width: 18, height: 30 }}
+            style={{ width: LOCK.width, height: 30 }}
           />
         </Pressable>
       )}
       <ContextMenuArea style={{ flex: 1 }} onContextMenu={() => void showUrlBarMenu(tab)}>
-      <Pressable onPress={() => openPanel(tab.url)} style={{ flex: 1, height: sidebar?.height ?? 30, justifyContent: "center", paddingLeft: insecure ? 3 : sidebar ? 10 : 8 }}>
+      <Pressable onPress={() => openPanel(tab.url)} style={{ flex: 1, height: sidebar?.height ?? 30, justifyContent: "center", paddingLeft: insecure ? LOCK.gap : sidebar ? 10 : urlTextLeft(false) }}>
         {sidebar ? (
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 13, fontWeight: "500", color: palette.text }}>
