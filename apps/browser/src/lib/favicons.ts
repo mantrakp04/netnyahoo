@@ -1,5 +1,5 @@
-import { faviconsFor, fetchFavicon, onHistoryChanged, removeLegacyFavicons } from "@netnyahoo/nncore";
-import { iconTheme, readDocument, removeDocument, type IconTheme } from "@netnyahoo/shell";
+import { faviconsFor, fetchFavicon, onHistoryChanged, removeLegacyFavicons } from "@arcadia/arcadiacore";
+import { iconTheme, readDocument, removeDocument, type IconTheme } from "@arcadia/shell";
 import { useEffect } from "react";
 import { create } from "zustand";
 import { batchStoreUpdates, useBrowser, type BrowserState } from "../store/browser";
@@ -26,7 +26,7 @@ const EMPTY: Icons = { pages: {}, srcs: {}, appearances: {} };
 const APPEARANCE_SWAP_MS = 5000;
 const MAX_ICONS = 3000;
 const LOOKUP_DELAY_MS = 16;
-// Per engine call (nn_favicons_get answers up to 500).
+// Per engine call (ac_favicons_get answers up to 500).
 const LOOKUP_BATCH = 200;
 let appearanceChangedAt = -Infinity;
 

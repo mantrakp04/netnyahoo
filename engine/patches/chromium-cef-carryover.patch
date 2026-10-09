@@ -1,10 +1,10 @@
-CEF's patches to Chrome whose behaviour NNCore relies on, kept when CEF left the tree (2026-10-09). From
+CEF's patches to Chrome whose behaviour ArcadiaCore relies on, kept when CEF left the tree (2026-10-09). From
 CEF 8037's cef/patch/patches (BSD-3-Clause, Chromium Embedded Framework Authors), unchanged but for the
 Windows-only parts and comments:
 - chrome_browser_browser (only these parts): BrowserManagerService::DeleteBrowser reads what it needs before
   the Browser goes, since that can release the last reference to a private profile and destroy the service
   itself (private profiles released with their last Browser); and the tab strip API's colour provider
-  tolerates a strip without an active tab (NNCore keeps Browsers with empty strips) instead of a CHECK.
+  tolerates a strip without an active tab (ArcadiaCore keeps Browsers with empty strips) instead of a CHECK.
 - mac_keyboard_conversion_1467329: a key with no DOM key mapping is DomKey::NONE, not a fatal NOTREACHED.
 - mac_platform_style_bubble_893292: bubbles near a screen edge are placed as the shipped builds placed them.
 - screen_1443650 (ui/display/screen.cc): DIP <-> screen rects round instead of enclosing (the geometry the
@@ -12,7 +12,7 @@ Windows-only parts and comments:
 - mac_print_preview_modal: print preview's Save as PDF dialog keeps its file dialog policy, and a window with
   a sheet stays resizable.
 - mac_chrome_locale_3623: the Mac UI locale comes from Local State, as on other platforms; LoadLocalState takes
-  the ResourceBundle delegate (engine/nncore/apply.sh passes NNCore's).
+  the ResourceBundle delegate (engine/arcadiacore/apply.sh passes ArcadiaCore's).
 - chrome_browser_extensions_background: browser_tests builds without background mode (gn gen asserts
   otherwise; the build keeps enable_background_mode=false, as CEF's build had it).
 --- a/chrome/browser/ui/browser_manager_service.cc

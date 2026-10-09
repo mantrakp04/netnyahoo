@@ -47,7 +47,7 @@ export const newBookmarkId = () => uuidFrom(Array.from({ length: 4 }, () => Math
  */
 export function bookmarkUuidFor(id: string): string {
   if (isBookmarkUuid(id)) return id;
-  const text = `netnyahoo-bookmark:${id}`;
+  const text = `arcadia-bookmark:${id}`;
   let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
   for (let i = 0; i < text.length; i++) {
     const k = text.charCodeAt(i);

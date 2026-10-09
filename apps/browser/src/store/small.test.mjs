@@ -1,4 +1,4 @@
-// Which profile and window a link from another app (and a new Small Yahu) uses: the last active window's, as Chrome's
+// Which profile and window a link from another app (and a new Little Arcadia) uses: the last active window's, as Chrome's
 // AppController picks its last profile, private windows counting as the profile they were opened from.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -21,8 +21,8 @@ function twoProfilesTwoWindows() {
   return { work, a, b };
 }
 
-// What components/smallYahu/actions.ts does with one link from another app (its imports need the app, not Node):
-// a Small Yahu with no profile asked for, so the store picks it.
+// What components/littleArcadia/actions.ts does with one link from another app (its imports need the app, not Node):
+// a Little Arcadia with no profile asked for, so the store picks it.
 const openExternalUrls = ([url]) => S().createWindow({ small: true, url });
 // ⌘O: the page moves to the frontmost main window of its profile.
 const openInMainWindow = (id) => {
@@ -33,7 +33,7 @@ const openInMainWindow = (id) => {
 const smallWindows = () => Object.values(S().windows).filter((w) => w.kind === "small");
 const lastSmall = () => smallWindows().at(-1);
 
-test("a link from another app opens Small Yahu in the profile of the last active window, not the default one", () => {
+test("a link from another app opens Little Arcadia in the profile of the last active window, not the default one", () => {
   const { work, a } = twoProfilesTwoWindows();
   assert.equal(S().settings.defaultProfileId, "default");
   assert.equal(lastActiveProfile(S()), work);
@@ -52,7 +52,7 @@ test("a link from another app opens Small Yahu in the profile of the last active
 test("with several windows, the one used last wins, even after another app took focus", () => {
   const { work, a, b } = twoProfilesTwoWindows();
   S().setFocusedWindow(b);
-  // Another app comes forward: no Netnyahoo window is key, nothing changes in the store.
+  // Another app comes forward: no Arcadia window is key, nothing changes in the store.
   openExternalUrls(["https://one.example/"]);
   assert.equal(lastSmall().profileId, "default");
   S().setFocusedWindow(a);
@@ -77,7 +77,7 @@ test("several links, or the setting off, go to the last active window and its pr
   assert.equal(mainWindowFor(S(), lastActiveProfile(S())), a);
 });
 
-test("a private window counts as the regular profile it was opened from; Small Yahu is never private", () => {
+test("a private window counts as the regular profile it was opened from; Little Arcadia is never private", () => {
   const { work, a, b } = twoProfilesTwoWindows();
   const priv = S().createWindow({ incognito: true });
   assert.equal(S().windows[priv].originalProfileId, work);
@@ -117,7 +117,7 @@ test("the window in front closing hands over to the next most recent window's pr
   assert.equal(S().ui.focusedWindowId, b);
   openExternalUrls(["https://after-close.example/"]);
   assert.equal(lastSmall().profileId, "default");
-  // Closing Small Yahu leaves B's profile; paging B to Work and closing a window behind it changes nothing.
+  // Closing Little Arcadia leaves B's profile; paging B to Work and closing a window behind it changes nothing.
   S().closeWindow(lastSmall().id);
   S().setFocusedWindow(b);
   S().switchProfile(b, work);

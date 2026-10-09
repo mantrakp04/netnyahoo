@@ -1,7 +1,7 @@
-diff --git a/chrome/app/theme/netnyahoo/BRANDING b/chrome/app/theme/netnyahoo/BRANDING
+diff --git a/chrome/app/theme/arcadia/BRANDING b/chrome/app/theme/arcadia/BRANDING
 new file mode 100644
 --- /dev/null
-+++ b/chrome/app/theme/netnyahoo/BRANDING
++++ b/chrome/app/theme/arcadia/BRANDING
 @@ -0,0 +1,10 @@
 +COMPANY_FULLNAME=The Chromium Authors
 +COMPANY_SHORTNAME=The Chromium Authors
@@ -10,6 +10,6 @@ new file mode 100644
 +PRODUCT_INSTALLER_FULLNAME=Chromium Installer
 +PRODUCT_INSTALLER_SHORTNAME=Chromium Installer
 +COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Chromium Authors. All rights reserved.
-+MAC_BUNDLE_ID=com.netnyahoo.browser
++MAC_BUNDLE_ID=com.arcadia.browser
 +MAC_CREATOR_CODE=Cr24
 +MAC_TEAM_ID=U5L5T3NGVV

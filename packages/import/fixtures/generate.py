@@ -12,7 +12,7 @@ Don't open the Firefox places.sqlite fixture with the sqlite3 CLI: that checkpoi
 file, and the tests rely on rows that only exist in the WAL. Regenerate if it happens.
 
 Test secrets (also in secrets.json):
-  Chromium-family "Safe Storage" secret: netnyahoo-fixture-secret
+  Chromium-family "Safe Storage" secret: arcadia-fixture-secret
   Firefox default profile primary password: (none)
   Firefox "Work" profile primary password: hunter2
 """
@@ -34,7 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SUPPORT = os.path.join(HERE, "home", "Library", "Application Support")
 MISC = os.path.join(HERE, "misc")
 
-CHROMIUM_SECRET = b"netnyahoo-fixture-secret"
+CHROMIUM_SECRET = b"arcadia-fixture-secret"
 CHROMIUM_KEY = hashlib.pbkdf2_hmac("sha1", CHROMIUM_SECRET, b"saltysalt", 1003, 16)
 WRONG_KEY = hashlib.pbkdf2_hmac("sha1", b"some-other-secret", b"saltysalt", 1003, 16)
 
@@ -252,7 +252,7 @@ def chromium_web_data(path):
         INSERT INTO masked_credit_cards VALUES ('server-1', 'Server Card', 'visa', '1111', 1, 2031);
     """)
     modern = {
-        "00000000-0000-4000-8000-00000000a001": [(7, "Alex Example"), (3, "Alex"), (5, "Example"), (60, "Netnyahoo Ltd"),
+        "00000000-0000-4000-8000-00000000a001": [(7, "Alex Example"), (3, "Alex"), (5, "Example"), (60, "Arcadia Ltd"),
             (77, "1 Example Way\nSuite 2"), (30, "1 Example Way"), (31, "Suite 2"), (33, "Cupertino"), (34, "CA"),
             (35, "95014"), (36, "US"), (14, "+14155550100"), (9, "alex@example.com")],
         "00000000-0000-4000-8000-00000000a002": [(3, "Sam"), (5, "Smith"), (30, "10 High Street"), (31, "Flat 1"),
@@ -390,7 +390,7 @@ def build_chrome():
     write(os.path.join(d, "Google Profile Picture.png"), PNG_1PX)
     t = BASE_UNIX - 86400 * 100
     chromium_bookmarks(os.path.join(d, "Bookmarks"),
-                       bar=[bookmark("Netnyahoo", "https://netnyahoo.example/", t, "00000000-0000-4000-8000-000000000101"),
+                       bar=[bookmark("Arcadia", "https://arcadia.example/", t, "00000000-0000-4000-8000-000000000101"),
                             folder("Dev", [
                                 bookmark("Swift Forums", "https://forums.swift.example/", t, "00000000-0000-4000-8000-000000000102"),
                                 folder("Docs", [bookmark("SQLite — Docs", "https://sqlite.example/docs.html", t,
@@ -1142,7 +1142,7 @@ BOOKMARKS_HTML_CHROME = """<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>
     <DT><H3 ADD_DATE="1700000000" LAST_MODIFIED="1700000100" PERSONAL_TOOLBAR_FOLDER="true">Bookmarks bar</H3>
     <DL><p>
-        <DT><A HREF="https://netnyahoo.example/" ADD_DATE="1700000001" ICON="data:image/png;base64,AAAA">Netnyahoo</A>
+        <DT><A HREF="https://arcadia.example/" ADD_DATE="1700000001" ICON="data:image/png;base64,AAAA">Arcadia</A>
         <DT><H3 ADD_DATE="1700000002" LAST_MODIFIED="0">Empty folder</H3>
         <DL><p>
         </DL><p>

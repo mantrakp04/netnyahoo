@@ -9,8 +9,8 @@ export type BrowserCommand =
   | "newTab"
   | "newWindow"
   | "newIncognitoWindow"
-  | "newSmallYahu"
-  | "toggleOpenLinksInSmallYahu"
+  | "newLittleArcadia"
+  | "toggleOpenLinksInLittleArcadia"
   | "reopenClosedTab"
   | "reopenClosedWindow"
   | "restoreClosed"
@@ -161,7 +161,7 @@ export type OpenWindowOptions = {
   focus?: boolean;
   kind?: "browser" | "small" | "settings" | "import" | "taskManager";
   profile?: string;
-  // Small Yahu: its remembered size; the window opens centred on the active screen.
+  // Little Arcadia: its remembered size; the window opens centred on the active screen.
   size?: [number, number];
   // Launch: opens once that window's content is on screen, right behind it (builds before NATIVE_API 9 ignore it).
   behind?: string;
@@ -242,7 +242,7 @@ const Shell = requireNativeModule<{
   replyToTerminate(ok: boolean): Promise<void>;
   confirm(options: ConfirmOptions): Promise<{ confirmed: boolean; suppressed: boolean }>;
   prompt(options: PromptOptions): Promise<string | null>;
-}>("NetnyahooShell");
+}>("ArcadiaShell");
 
 export const readDocument = (name: string) => Shell.readDocument(name);
 export const writeDocument = (name: string, contents: string) => Shell.writeDocument(name, contents);
@@ -268,7 +268,7 @@ export type WindowProfileProps = ViewProps & {
   profile: string;
   neighbours: string[];
 };
-export const WindowProfile = requireNativeViewManager<WindowProfileProps>("NetnyahooWindowProfile");
+export const WindowProfile = requireNativeViewManager<WindowProfileProps>("ArcadiaWindowProfile");
 
 export const closeWindow = (id: string) => Shell.closeWindow(id);
 export const focusWindow = (id: string) => Shell.focusWindow(id);
@@ -324,10 +324,10 @@ export const onAppEvent = (listener: (e: AppEvent) => void) => Shell.addListener
 export const onOpenURLs = (listener: (urls: string[]) => void) =>
   Shell.addListener("onOpenURLs", ({ urls }) => listener(urls));
 
-export const WindowDragRegion = requireNativeViewManager<ViewProps>("NetnyahooShell");
+export const WindowDragRegion = requireNativeViewManager<ViewProps>("ArcadiaShell");
 
 /** A popover's area: `onOutsidePress` hears a press anywhere else in its window (the press still does its own thing). */
-export const OutsidePressArea = requireNativeViewManager<ViewProps & { onOutsidePress?: () => void }>("NetnyahooOutsidePressArea");
+export const OutsidePressArea = requireNativeViewManager<ViewProps & { onOutsidePress?: () => void }>("ArcadiaOutsidePressArea");
 
 export type SymbolProps = ViewProps & {
   name: string;
@@ -336,7 +336,7 @@ export type SymbolProps = ViewProps & {
   color?: string;
 };
 
-export const Symbol = requireNativeViewManager<SymbolProps>("NetnyahooSymbol");
+export const Symbol = requireNativeViewManager<SymbolProps>("ArcadiaSymbol");
 
 export type FadeLabelProps = ViewProps & {
   text: string;
@@ -346,9 +346,9 @@ export type FadeLabelProps = ViewProps & {
   fadeWidth?: number;
 };
 
-export const FadeLabel = requireNativeViewManager<FadeLabelProps>("NetnyahooFadeLabel");
+export const FadeLabel = requireNativeViewManager<FadeLabelProps>("ArcadiaFadeLabel");
 
-export const ActivitySpinner = requireNativeViewManager<ViewProps>("NetnyahooActivitySpinner");
+export const ActivitySpinner = requireNativeViewManager<ViewProps>("ArcadiaActivitySpinner");
 
 export type ContextMenuAreaProps = ViewProps & {
   onContextMenu?: () => void;
@@ -356,7 +356,7 @@ export type ContextMenuAreaProps = ViewProps & {
 };
 
 const NativeContextMenuArea = requireNativeViewManager<Omit<ContextMenuAreaProps, "onContextMenu"> & { onContextMenu?: () => void }>(
-  "NetnyahooContextMenuArea",
+  "ArcadiaContextMenuArea",
 );
 
 export function ContextMenuArea(props: ContextMenuAreaProps) {
@@ -382,7 +382,7 @@ type NativeSurfaceProps = Omit<SurfaceProps, "shadowColor" | "shadowOpacity" | "
   surfaceShadowOffset?: [number, number];
 };
 
-const NativeSurface = requireNativeViewManager<NativeSurfaceProps>("NetnyahooSurface");
+const NativeSurface = requireNativeViewManager<NativeSurfaceProps>("ArcadiaSurface");
 
 export function Surface({ shadowColor, shadowOpacity, shadowRadius, shadowOffset, ...props }: SurfaceProps) {
   return (
@@ -402,7 +402,7 @@ export type VisualEffectProps = ViewProps & {
   cornerRadius?: number;
 };
 
-export const VisualEffect = requireNativeViewManager<VisualEffectProps>("NetnyahooVisualEffect");
+export const VisualEffect = requireNativeViewManager<VisualEffectProps>("ArcadiaVisualEffect");
 
 export type GlassEffectProps = ViewProps & {
   cornerRadius?: number;
@@ -411,17 +411,17 @@ export type GlassEffectProps = ViewProps & {
   dark?: boolean;
 };
 
-const GlassEffectModule = requireNativeModule<{ isLiquidGlass(): boolean }>("NetnyahooGlassEffect");
+const GlassEffectModule = requireNativeModule<{ isLiquidGlass(): boolean }>("ArcadiaGlassEffect");
 
 export const isLiquidGlass = (): boolean => GlassEffectModule.isLiquidGlass();
 
-export const GlassEffect = requireNativeViewManager<GlassEffectProps>("NetnyahooGlassEffect");
+export const GlassEffect = requireNativeViewManager<GlassEffectProps>("ArcadiaGlassEffect");
 
 export type IconTheme = { kind: "blur" } | { kind: "template"; fill: string; stroke?: string };
 
 const DockSelectionModule = requireNativeModule<{
   iconTheme(uri: string | null, emoji: string | null): Promise<IconTheme | null>;
-}>("NetnyahooDockSelection");
+}>("ArcadiaDockSelection");
 
 export const iconTheme = (source: { uri: string } | { emoji: string }): Promise<IconTheme | null> =>
   DockSelectionModule.iconTheme("uri" in source ? source.uri : null, "emoji" in source ? source.emoji : null);
@@ -439,11 +439,11 @@ export type DockSelectionProps = ViewProps & {
   glass?: boolean;
 };
 
-export const DockSelection = requireNativeViewManager<DockSelectionProps>("NetnyahooDockSelection");
+export const DockSelection = requireNativeViewManager<DockSelectionProps>("ArcadiaDockSelection");
 
 const InlineCompletionModule = requireNativeModule<{
   complete(tag: number, typed: string, completion: string): Promise<InlineWrite>;
-}>("NetnyahooInlineCompletion");
+}>("ArcadiaInlineCompletion");
 
 export type InlineWrite = 0 | 1 | 2;
 
@@ -461,7 +461,7 @@ type TranslationModule = {
   translate(source: string, target: string, texts: string[]): Promise<string[]>;
   translateBlocks(source: string, target: string, blocks: string[][]): Promise<(string[] | null)[]>;
 };
-const TranslationNative = requireNativeModule<TranslationModule>("NetnyahooTranslate");
+const TranslationNative = requireNativeModule<TranslationModule>("ArcadiaTranslate");
 
 // Null before macOS 26, which has no translation API for apps.
 export const translation: Omit<TranslationModule, "available"> | null = TranslationNative.available ? TranslationNative : null;

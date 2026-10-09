@@ -34,8 +34,8 @@ export const deletedProfileData = [];
 export const profileDataLeft = new Map();
 export const deleteProfileData = (profile) => (deletedProfileData.push(profile), Promise.resolve(profileDataLeft.get(profile) ?? []));
 
-// expo-modules-core: a test installs native modules on globalThis.nnTestNativeModules.
-export const requireOptionalNativeModule = (name) => globalThis.nnTestNativeModules?.[name] ?? null;
+// expo-modules-core: a test installs native modules on globalThis.acTestNativeModules.
+export const requireOptionalNativeModule = (name) => globalThis.acTestNativeModules?.[name] ?? null;
 export const requireNativeModule = () => ({});
 // Saved passwords, one store per simulated device (sync tests).
 export const passwordStores = new Map();
@@ -116,21 +116,21 @@ export const faviconsFor = async (profile, pages) => ({
 export const removeLegacyFavicons = () => Promise.resolve();
 export const removeDocument = (name) => docs.delete(name);
 
-// Chrome's tab strips (lib/chromeTabs.ts): a test installs a fake engine on globalThis.nnTestTabStrip.
+// Chrome's tab strips (lib/chromeTabs.ts): a test installs a fake engine on globalThis.acTestTabStrip.
 export const chromeWindows = () => Promise.resolve([]);
 export const devWindowAction = () => Promise.resolve("");
 export const engineInfo = () => Promise.resolve(null);
-// //chrome/browser/netnyahoo's calls (packages/nncore/src/engine.ts): a test installs globalThis.nnTestEngineCall.
-export const engineCall = (name, profile, args) => globalThis.nnTestEngineCall?.(name, profile, args) ?? Promise.resolve({});
+// //chrome/browser/arcadia's calls (packages/arcadiacore/src/engine.ts): a test installs globalThis.acTestEngineCall.
+export const engineCall = (name, profile, args) => globalThis.acTestEngineCall?.(name, profile, args) ?? Promise.resolve({});
 export const prepareTabTransfer = () => {};
 export const releaseTabTransfer = () => {};
 export const claimLaunchTab = () => {};
-export const onTabStripTransaction = (listener) => globalThis.nnTestTabStrip.listen(listener);
-export const sendTabStripCommand = (command) => globalThis.nnTestTabStrip.command(command);
-export const tabStrips = () => globalThis.nnTestTabStrip.snapshot();
+export const onTabStripTransaction = (listener) => globalThis.acTestTabStrip.listen(listener);
+export const sendTabStripCommand = (command) => globalThis.acTestTabStrip.command(command);
+export const tabStrips = () => globalThis.acTestTabStrip.snapshot();
 
 // Chrome's bookmarks (BookmarkModel), one per simulated device and engine profile: nodes by UUID, "bar" and
-// "other" the permanent folders. Ops behave as nn_bookmarks_apply's.
+// "other" the permanent folders. Ops behave as ac_bookmarks_apply's.
 export const bookmarkDbs = new Map();
 export const chromeBookmarks = (profile = "", device = current.device) => {
   if (!bookmarkDbs.has(device)) bookmarkDbs.set(device, new Map());

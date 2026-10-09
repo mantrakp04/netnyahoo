@@ -1,4 +1,4 @@
-import { WindowProfile as NativeWindowProfile } from "@netnyahoo/shell";
+import { WindowProfile as NativeWindowProfile } from "@arcadia/shell";
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";

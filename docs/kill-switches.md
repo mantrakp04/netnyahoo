@@ -35,7 +35,7 @@ another. Disclosed in Settings › What's Sent (“Even with sharing off”) and
 
 ## For a bench or a test instance
 
-`NETNYAHOO_SWITCHES="newTabPrewarm=off,lazySidebarRows=off"` sets a launch's values over everything else (the app and
+`ARCADIA_SWITCHES="newTabPrewarm=off,lazySidebarRows=off"` sets a launch's values over everything else (the app and
 the updater both read it). A test instance has no updater, so it never fetches.
 
 ## The switches (see `SWITCHES` for owners and dates)

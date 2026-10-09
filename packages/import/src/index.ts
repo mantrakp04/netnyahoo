@@ -228,7 +228,7 @@ const Native = requireNativeModule<{
   openAutomationSettings(): Promise<null>;
   openDia(): Promise<null>;
   readDiaTabs(): Promise<string>;
-}>("NetnyahooImport");
+}>("ArcadiaImport");
 
 let jobSeq = 0;
 

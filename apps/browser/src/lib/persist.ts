@@ -1,5 +1,5 @@
-import { cancelDownload, type Download } from "@netnyahoo/nncore";
-import { readDocument, writeDocument } from "@netnyahoo/shell";
+import { cancelDownload, type Download } from "@arcadia/arcadiacore";
+import { readDocument, writeDocument } from "@arcadia/shell";
 import { useBrowser, type BrowserState, type HydrateData } from "../store/browser";
 import { inPinnedContainer, isIncognitoProfile, newId, privateSession, snapshotTab } from "../store/model";
 import { earlyLaunchTabOn, launchTab, type LaunchTab } from "../store/launchTab";
@@ -39,7 +39,7 @@ const DOCS: Doc[] = [
     name: "session.json",
     sources: (s) => [s.profiles, s.profileOrder, s.orphanedProfileData, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.ui.lastProfileId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
     json: serialized((s) => {
-      // Small Yahu windows aren't restored: closing (or quitting) throws their page away.
+      // Little Arcadia windows aren't restored: closing (or quitting) throws their page away.
       const windows = Object.values(s.windows).filter((w) => !w.incognito && w.kind !== "small");
       const kept = new Set(windows.map((w) => w.id));
       const focusedWindowId = s.ui.focusOrder.find((id) => kept.has(id)) ?? null;
@@ -53,7 +53,7 @@ const DOCS: Doc[] = [
         windowOrder: s.windowOrder.filter((id) => kept.has(id)),
         focusedWindowId,
         lastProfileId: s.ui.lastProfileId,
-        // Read by the engine as it starts, to load this page before the app's window is up (NNCoreHost).
+        // Read by the engine as it starts, to load this page before the app's window is up (ArcadiaCoreHost).
         launchTab: earlyLaunchTabOn() ? launchTab(s, focusedWindowId) : null,
         tabs: Object.values(s.tabs).filter((t) => kept.has(t.windowId)).map(persistedTab),
         groups: Object.values(s.groups).filter((g) => kept.has(g.windowId)),

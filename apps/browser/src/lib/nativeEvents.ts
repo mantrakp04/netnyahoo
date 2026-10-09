@@ -32,7 +32,7 @@ type Options = {
 };
 export type Hold = ReturnType<typeof createHold>;
 
-// The WebView's live page state (packages/nncore WebView.tsx). Opening windows, focus, activation, page commands,
+// The WebView's live page state (packages/arcadiacore WebView.tsx). Opening windows, focus, activation, page commands,
 // find results, zoom, prompts, crashes and a new page's ready report (its browser id, mute) are never held.
 export const HELD_EVENTS: ReadonlySet<string> = new Set([
   "topNavigationChange",

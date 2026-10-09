@@ -5,7 +5,7 @@ it shows, with our React root laid over Chrome's views (`docs/research/chrome-ho
 WebContents NSView is hosted in our RN views. Before 0.2.0 a hidden "ghost" Browser per app window and profile owned
 the tabs (`docs/research/chromium-ui-layer.md`); entries below from that time say "ghost".
 
-The patched CEF (154.0.28, `NN_CHROME_TABS 1`) has been in since 2026-09-25; `docs/dia-feature-parity.md` holds the
+The patched CEF (154.0.28, `AC_CHROME_TABS 1`) has been in since 2026-09-25; `docs/dia-feature-parity.md` holds the
 current feature status and the remaining work. Rule: when you finish something that can't be verified yet (usually
 because it needs the user present), add it to the **Test ledger** with the exact test to run, and move it to
 **Done & verified** only after running that test.
@@ -15,17 +15,17 @@ because it needs the user present), add it to the **Test ledger** with the exact
   Chrome password/autofill/zoom/site-settings/PiP backends, extension emulation removed, packages/webkit removed.
 - Integration, on stock CEF (instance `integration`, 2026-09-25):
   - `pnpm tsc` for packages/cef and apps/browser passes; the app builds (`build-integration`).
-  - Every `packages/cef/ios/*.mm` passes a syntax check with `NN_CHROME_TABS=1` against the patched headers
+  - Every `packages/cef/ios/*.mm` passes a syntax check with `AC_CHROME_TABS=1` against the patched headers
     (scratchpad `checkpatched.sh`: vendor headers + the tree's changed `include/` files; `cef_media_capture.h`
     stubbed because the tree copy was mid-edit).
   - Moving a tab to another window keeps its page: `window.__marker` and `performance.timeOrigin` survive,
     `visibilityState` is "visible" in the new window, and closing the tab afterwards still closes its browser.
-    This works on Alloy tabs too (lib/chromeTabs.ts + NNBrowserView `transferKey`).
+    This works on Alloy tabs too (lib/chromeTabs.ts + ACBrowserView `transferKey`).
   - Dia-style downloads popover ("RECENT DOWNLOADS", Clear, "View all downloads", "Failed to Download") and the
     password save / update prompts render correctly (screenshots in scratchpad `int-downloads.png`, `int-pw3c.png`).
   - `executeExtensionAction` returns null and `resolvePasswordPrompt` does nothing on stock CEF, so the old
     behaviour stays.
-- Integration, on the patched CEF 154.0.28 with `NN_CHROME_TABS 1` (instance `integration`, 2026-09-25). Results
+- Integration, on the patched CEF 154.0.28 with `AC_CHROME_TABS 1` (instance `integration`, 2026-09-25). Results
   per ledger item below (numbers as in the Test ledger):
   - **1 Hosting.** Our tabs are Chrome tabs of each window's ghost Browser, and there's no placeholder tab.
     `pageInsets` follow the page rect (47,190,7,7).
@@ -38,7 +38,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - **7 Popups.**
     - `window.open` and `target=_blank` → adopted tab with `opener`.
     - Sized popups show in our popup window, sized correctly. Chrome resizes hosted views to its window, so
-      NNBrowserView now enforces the page frame. The popup gets its own ghost ("normal" window to extensions).
+      ACBrowserView now enforces the page frame. The popup gets its own ghost ("normal" window to extensions).
   - **8 Closing.** `window.close()` and `tabs.remove` close the tab in the app.
   - **9 Founder tab.** Closing a window's first tab keeps the others alive.
   - **10 Moving.** To new and existing windows, including a window's last tab. The page survives (`__marker`) and
@@ -49,7 +49,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - **14 Stray windows.** `windows.create` → our tab, no visible window.
   - **16 uBOL.** Component extension: an ad script is blocked in the default profile and in an incognito window.
   - **17/18 Passwords.**
-    - Our save prompt comes from Chrome's bubble hook (`CEF_NN_PASSWORD_BUBBLE`) with no Chrome bubble. Save
+    - Our save prompt comes from Chrome's bubble hook (`CEF_AC_PASSWORD_BUBBLE`) with no Chrome bubble. Save
       stores it, and Chrome autofills it on the next visit.
     - A changed password → "Update saved password?" → update. The ungoogled defaults that disabled saving and
       autofill were reverted in the dist.
@@ -61,7 +61,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
     (`download_bubble.partial_view_enabled` = false per profile).
   - **26 Tab dialogs.** Tested `alert()` and HTTP basic auth: Chrome's dialog is centred on the page area (x centre
     847 = page centre). Chrome only shows JS dialogs for the last active Browser: test instances need
-    `nnChromeTabs.devWindowAction(n, "active:1")`.
+    `acChromeTabs.devWindowAction(n, "active:1")`.
   - **Screen sharing.**
     - The page-script `getDisplayMedia` override now installs in every tab. `OnContextCreated` also fired for
       extensions' isolated worlds, whose script instance took over `receive`, so it now runs in the main world only.
@@ -76,9 +76,9 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - **12 Discard.** Superseded by R1 below: a sleeping tab stays in `chrome.tabs` as `discarded: true`.
   - **Split view.** Both panes are Chrome tabs at their own sizes (578 pt each) and both visible. Chrome's dialogs
     follow the focused pane (`pageInsets` 47,775,7,7).
-  - **After the switch to the real keychain** ("Netnyahoo Safe Storage" dist), a fresh-profile regression passed:
+  - **After the switch to the real keychain** ("Arcadia Safe Storage" dist), a fresh-profile regression passed:
     items 1/2, 7, 10, 16, 17 (save) and 19 (a saved login auto-fills on revisit).
-  - **Focus.** Test instances can't activate (see NNActivation.mm: prohibited policy, activation guards, log).
+  - **Focus.** Test instances can't activate (see ACActivation.mm: prohibited policy, activation guards, log).
     `lsappinfo front` never changed over several launches, popups, dialogs and new windows.
 - Signing and passkeys (instance `passkeys`, patched CEF 154.0.28, 2026-09-25):
   - Debug is team-signed (Apple Development, automatic provisioning, team U5L5T3NGVV) with the hardened runtime.
@@ -87,7 +87,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
     same team. `codesign --verify --deep --strict` passes, and the app, renderers, GPU and utility processes run.
   - Release: `xcodebuild archive` + `-exportArchive -exportOptionsPlist macos/ExportOptions-DeveloperID.plist
     -allowProvisioningUpdates` gives a Developer ID app: every piece re-signed, timestamped, with the hardened
-    runtime and entitlements kept, plus an embedded "Mac Team Direct Provisioning Profile: com.netnyahoo.browser".
+    runtime and entitlements kept, plus an embedded "Mac Team Direct Provisioning Profile: com.arcadia.browser".
     It launches. `spctl` says "Unnotarized Developer ID": notarization is still to do.
   - Security keys: `navigator.credentials.create` with `hints:["security-key"]` opens Chrome's "Use your security
     key with webauthn.io" dialog (448×328) centred over the page area. USB HID enumeration runs under the hardened
@@ -100,14 +100,14 @@ because it needs the user present), add it to the **Test ledger** with the exact
     Expected value: .org.chromium.Chromium.webauthn". The BRANDING change has since shipped in the vendored
     framework (test 40).
 - Passkey dialogs were invisible (bug in 0.1.1, fixed 2026-09-25, Debug `build-pkfix` and a Developer ID archive +
-  export of the fix, data dirs `/tmp/nn-pkfix`, `/tmp/nn-pkrel`; captures in the session scratchpad `passkey-fix/`):
+  export of the fix, data dirs `/tmp/ac-pkfix`, `/tmp/ac-pkrel`; captures in the session scratchpad `passkey-fix/`):
   - Symptom: Google's "Verifying it's you… Complete sign-in using your passkey" stayed stuck with no UI.
   - Cause: Chrome shows web-modal dialogs (all of WebAuthn's sheets, security key PINs…) as level-0 child windows
     of the Browser window, and AppKit keeps a window's children right above it. Our ghost Browser window sits below
     the app window, so the dialog was created, sized and centred over the page, then drawn behind our window. The
     earlier checks read its frame and accessibility tree only. Chrome's popups (autofill dropdowns, level 999)
     weren't affected.
-  - Fix (`NNWindowHost.mm`): the ghost watches its child windows (Chromium's `childWindowAddedHandler`, KVO on
+  - Fix (`ACWindowHost.mm`): the ghost watches its child windows (Chromium's `childWindowAddedHandler`, KVO on
     `visible`) and moves in front of the app window while one shows, back behind when none does. It stays
     transparent and click-through: macOS and Chromium's occlusion checker both ignore it, so the page stays VISIBLE
     (WebAuthn needs that to complete), and focus never moves. `ghostWindows()` reports `lifted` / `chromeWindows`.
@@ -116,7 +116,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
     "Passkeys: use your phone or tablet" with its QR code over the page; a discoverable `get()` shows "Passkeys &
     Security Keys"; Cancel rejects both with `NotAllowedError`. webauthn.io Platform: "Create a passkey for
     webauthn.io" (Chrome profile), Continue → created ("Chromium Browser" AAGUID), Authenticate → logged in. With
-    user verification required, macOS's Touch ID sheet ("Netnyahoo is trying to verify your identity on
+    user verification required, macOS's Touch ID sheet ("Arcadia is trying to verify your identity on
     webauthn.io") appears over the window, and the user completed register and sign-in with it. Picking a passkey:
     "Use a saved passkey for webauthn.io" lists the profile's passkeys plus "Use a phone, tablet, or security key".
     Cross-platform register: the QR sheet with Back / Cancel. A CDP virtual authenticator completes webauthn.io's
@@ -126,9 +126,9 @@ because it needs the user present), add it to the **Test ledger** with the exact
     virtual authenticator environment for everyone, so a virtual-authenticator flow must run in one session
     (scratchpad `passkey-fix/virtflow.mjs`). Test instances behind other apps are occluded and WebAuthn then fails
     with "the page does not have focus": launch them with
-    `NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows`.
+    `ARCADIA_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows`.
 - Menu commands crashed the app (bug in 0.1.0 and 0.1.1, fixed 2026-09-25, Release `build-keycrash`, data dir
-  `/tmp/nn-keycrash`):
+  `/tmp/ac-keycrash`):
   - Symptom: ⌘T, ⌘W (and every other command item: its shortcut or a click in the menu bar) quit with
     "unrecognized selector sent to instance", from a New Tab page (AppKit's `routeKeyEquivalent` → main menu) and
     from a web page (`RenderWidgetHostViewCocoa` → CEF `OnPreKeyEvent` → `[NSApp.mainMenu performKeyEquivalent:]`).
@@ -143,9 +143,9 @@ because it needs the user present), add it to the **Test ledger** with the exact
     ("Close 1 tab?" prompt), ⇧⌘T (reopens the closed page), ⌘1 / ⌘9, ⇧⌘[ / ⇧⌘], ⌃Tab, ⌘N, ⇧⌘N, ⌥⌘T, ⌘L, ⌘R,
     ⇧⌘R, ⌘F, ⌘G, ⌘[ / ⌘], ⌘= / ⌘- / ⌘0, ⇧⌘B, ⇧⌘A, ⌘S, ⇧⌘C, ⌥⌘U, ⇧⌘J, ⌘Y, ⌘D, ⌃⇧], ⌘, — no crash. The CEF
     path, driven in lldb (`-[RenderWidgetHostViewCocoa keyEvent:wasKeyEquivalent:]` with ⌘T on example.com),
-    reaches `MenuTarget.performCommand` through `nn::Client::OnPreKeyEvent` → `-[NSMenu performKeyEquivalent:]`
+    reaches `MenuTarget.performCommand` through `ac::Client::OnPreKeyEvent` → `-[NSMenu performKeyEquivalent:]`
     and opens the tab.
-- The app bundle stays sealed (2026-09-25, Release archive + Developer ID export, data dirs `/tmp/nn-sigfix-*`):
+- The app bundle stays sealed (2026-09-25, Release archive + Developer ID export, data dirs `/tmp/ac-sigfix-*`):
   - Bug in 0.1.0: its first launch wrote `Resources/Extensions/ublock-lite/_metadata/generated_indexed_rulesets/
     _ruleset1…6` into the bundle (DNR indexes uBlock's rulesets next to the extension), so `codesign --verify --deep
     --strict` failed. From a read-only copy of 0.1.0, nothing was blocked. Nothing else wrote into the bundle
@@ -176,13 +176,13 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - **Clear Browsing Data** (`CefRequestContext::ClearBrowsingData`, Chrome's BrowsingDataRemover): a range that
     starts in the future clears nothing; "last hour" empties Chrome's history (`chrome.history.search` 4 → 0),
     the page's `localStorage` and cookies, and resolves (60 ms–1.2 s). No `.clear-site-data` marker any more.
-  - **Page menu** (NETNYAHOO_CONTEXT_MENU_LOG dumps the model and runs a picked item instead of showing the menu):
+  - **Page menu** (ARCADIA_CONTEXT_MENU_LOG dumps the model and runs a picked item instead of showing the menu):
     on a link, one "Open Link in New Tab" / "New Window" / "Split View" / "Incognito Window", Save Link As, Copy
     Link Address; on a selection, Look Up, Copy, Copy Link to Highlight, "Search <engine> for “…”" (relabelled when
     the engine name changes); Print, the extension's item, Inspect, Speech. Picked: the extension item ran its
     `onClicked` (it retitled the page), Open Link in New Tab opened a background tab with its opener, Open Link in
     Split View made a split, Search ran our search. Not seen: the NSMenu itself on screen (checklist step 9d).
-  - **NNSwipe**: after a synthetic swipe the page view's delegate is ours in front of
+  - **ACSwipe**: after a synthetic swipe the page view's delegate is ours in front of
     `ChromeRenderWidgetHostViewMacDelegate`; Check Spelling, Spelling panel, Check Spelling While Typing, Grammar
     and Start Speaking validate enabled (Stop Speaking off while nothing speaks); a back swipe goes back exactly
     one entry (Chrome's own history swiper doesn't also navigate).
@@ -228,7 +228,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
   CDP and the app's DEV AppleScript runner; the screen was locked, so nothing was seen on screen:
   - **Extension search engines.** Two unpacked fixture extensions with `chrome_settings_overrides.search_provider`
     (one `is_default: true`). Chrome's settings list (`getSearchEnginesList` in the hidden chrome://settings,
-    `NNExtensions searchEngineList`) reports both with their extension; the app keeps them in
+    `ACExtensions searchEngineList`) reports both with their extension; the app keeps them in
     `settings.extensionSearchEngines`. A typed search went to the default-claiming extension's URL
     (`duckduckgo.com/?q=…&t=nnfixture`); Settings › Search Engine showed "Search Fixture Default is controlling this
     setting" (Manage / Disable), the built-ins' Make Default disabled, and an "Extensions" section with both engines
@@ -237,34 +237,34 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - **Edit › AutoFill** (`CefShowAutofillSuggestions`). With a form field focused (CDP `focus()`), the call returns
     true and Chrome's dropdown window opens under the field (a 174×108 level-999 window for a saved address,
     148×54 for Passwords…); with the page blurred it returns false and the menu command opened Settings.
-  - **PiP extras** (`NNPictureInPicture.mm`). `NETNYAHOO_PIP_SELFTEST=1` on a canvas-stream video in Chrome's PiP
+  - **PiP extras** (`ACPictureInPicture.mm`). `ARCADIA_PIP_SELFTEST=1` on a canvas-stream video in Chrome's PiP
     window: pill on hover with the host, stash past the right edge (28 pt peek, handle), re-stash after a Chrome
     move, handle click back on screen, stash on the left edge, drag out, Keep Window on Top toggling the level,
     Back to Tab (the app switched back to the tab from another one, PiP closed, the video still playing). All 10
     steps pass; layer snapshots show the pill, its hover state and both handles. A real pointer drag is parity
     checklist step 13.
-  - **Raycast** (`extras/raycast-netnyahoo`). The extension's list, focus and close scripts (with `tell current
+  - **Raycast** (`extras/raycast-arcadia`). The extension's list, focus and close scripts (with `tell current
     application` in place of the bundle id) ran in the app: the list returned every tab with window id, title, URL,
     pinned and selected state; focus selected the tab; close removed it; an unknown tab id fails with AppleScript's
     -1728. Its `npm test` checks the parser against that output. Installing it in Raycast is checklist step 14.
-- Offline page, "Where's Big Yahu?" (`chromium-neterror-yahu.patch`, 2026-09-25; Debug build `build-yahu`, CDP):
+- Offline page, "Where's the mascot?" (`chromium-neterror-mascot.patch`, 2026-09-25; Debug build `build-mascot`, CDP):
   - Before the patch, an offline load showed Chrome's dino page, in a Chrome-style tab and in an Alloy-style
     standalone view (an extension popup) alike: the renderer is Chrome's for both, so no Alloy fallback is needed.
   - With CDP `Network.emulateNetworkConditions({offline: true})` (and the cache disabled), `https://example.com/`
-    in a tab shows the game: `YAHU_ERROR` `{code: "ERR_INTERNET_DISCONNECTED", url: "https://example.com/"}`, header
+    in a tab shows the game: `GAME_ERROR` `{code: "ERR_INTERNET_DISCONNECTED", url: "https://example.com/"}`, header
     "ERR_INTERNET_DISCONNECTED · example.com", title "example.com · No internet", 63 images from `data:` URLs, no
     other request, no console message. Start plays level 1; Retry while offline shows the game again; Retry after
     going back online loads Example Domain. The same in an extension-popup view (Alloy).
   - `ERR_NAME_NOT_RESOLVED` (`.invalid` host) and `ERR_CONNECTION_REFUSED` (127.0.0.1:59999) keep Chrome's page.
-  - `netnyahoo://yahu` typed through the store: the tab reads `netnyahoo://yahu/` "Where's Big Yahu?", the engine
-    loads `chrome://yahu/`, and the game runs standalone (no offline header); `chrome://dino` too. Play (clicks,
+  - `arcadia://game` typed through the store: the tab reads `arcadia://game/` "Where's the mascot?", the engine
+    loads `chrome://game/`, and the game runs standalone (no offline header); `chrome://dino` too. Play (clicks,
     hint key) makes no request. A best of 4200 stored through `updateEasterEggHighScore` came back after a reload.
   - The DNS-probe path's document swap (`document.open/write` of the resource, as `UpdateErrorPage` does) run by
     hand on an `ERR_NAME_NOT_RESOLVED` page: the hashed scripts run, `errorPageController` survives, no request.
     The probe itself ending in "no internet" is ledger 43.
 
-- Profile paging (layout/profilePager, 2026-09-25, instance `/tmp/nn-pager`, three profiles plum/blue/green with
-  different tabs; synthetic events through `nnSwipe.sidebar(w)` / `nnSwipe.strip(w)` `devSimulate`, frames from
+- Profile paging (layout/profilePager, 2026-09-25, instance `/tmp/ac-pager`, three profiles plum/blue/green with
+  different tabs; synthetic events through `acSwipe.sidebar(w)` / `acSwipe.strip(w)` `devSimulate`, frames from
   ScreenCaptureKit in scratchpad `profile-swipe/`):
   - Sidebar swipe held at 25 / 50 / 75 % (position 0.25 / 0.50 / 0.76 = half the scroll distance over the 190 pt
     page): the next profile's page (its own selected row, favicons, New Tab row) slides in clipped to the sidebar,
@@ -293,19 +293,19 @@ because it needs the user present), add it to the **Test ledger** with the exact
     window too), so the drag runs through React Native's responder, `layout/tabDrag` and `windowDrop`: a sidebar row
     dropped on the other window moves there with its page; one dropped on the desktop tears off. (A locked screen
     held back AppKit's move notifications for programmatic moves, so the test tells the store the frames.)
-  - **Swipe, 15 checks.** `nnSwipe.pane(tab).devSimulate` (CGEvent trackpad events through the window; the renderer
+  - **Swipe, 15 checks.** `acSwipe.pane(tab).devSimulate` (CGEvent trackpad events through the window; the renderer
     acks them): one entry back and forward, Chrome's delegate still chained, short and vertical swipes pass, a
     carousel keeps the swipe until its start, `overscroll-behavior-x: none` opts out, the destination list (hold,
     then down: two back), a three-finger swipe, back to the New Tab page and forward from it. A layer snapshot shows
     the circle and chevron mid-swipe.
-  - **Full screen (ledger 15), 22 checks.** Test instances now act the window's full screen out (NNChromeWindow's
+  - **Full screen (ledger 15), 22 checks.** Test instances now act the window's full screen out (ACChromeWindow's
     `fakeFullScreen:`) instead of skipping it, so the whole path runs. **Two bugs found and fixed:** leaving window
     full screen by hand (green button, ⌃⌘F) left the page full screen with our chrome hidden (Chrome's own
     `FullscreenController` reads the state we keep for it), and a page in another profile's window over a
     full-screen window asked its own window to toggle, which the forwarding sent to the full-screen one, taking it out
     of full screen.
-  - **File chooser, 12 checks.** Test instances log open and save panels instead of showing them (NNActivation.mm) and
-    answer from `$NETNYAHOO_DATA_DIR/file-chooser.txt`: a sheet on the app window; single, multiple with the
+  - **File chooser, 12 checks.** Test instances log open and save panels instead of showing them (ACActivation.mm) and
+    answer from `$ARCADIA_DATA_DIR/file-chooser.txt`: a sheet on the app window; single, multiple with the
     `accept` types (Chrome's type menu: PNG image, JPEG image, Custom Files, All Files), folders; files reach the page;
     Cancel fires `cancel`; `showOpenFilePicker` / `showSaveFilePicker`; DevTools' `setInterceptFileChooserDialog`.
   - **Passwords and autofill (ledger 17–21).** Saved login in the dropdown (read from its window's accessibility
@@ -340,19 +340,19 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
 ## Test ledger
 
 **Setup.** `packages/cef/scripts/setup.sh` puts our CEF build (the one `engine.lock` pins) in `vendor/cef`, and
-the build fails with `#error` against any other (stock CEF, or one missing a `CEF_NN_*` marker). Build with your
-derived-data folder, and launch with `NETNYAHOO_BACKGROUND=1 NETNYAHOO_DATA_DIR=/tmp/nn-<you>
-NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
+the build fails with `#error` against any other (stock CEF, or one missing a `CEF_AC_*` marker). Build with your
+derived-data folder, and launch with `ARCADIA_BACKGROUND=1 ARCADIA_DATA_DIR=/tmp/ac-<you>
+ARCADIA_REMOTE_DEBUGGING_PORT=<port>`.
 
 **Tools.**
-- Drive the store with scratchpad `nneval.sh '<js>'` (devHarness `nn`).
+- Drive the store with scratchpad `nneval.sh '<js>'` (devHarness `ac`).
 - Pages: `cdp-integration.mjs`.
-- Chrome windows: `chromeWindows()` (`globalThis.nnChromeTabs`, or `NNCef.chromeWindows`: `anchorBrowserId`,
+- Chrome windows: `chromeWindows()` (`globalThis.acChromeTabs`, or `ACCef.chromeWindows`: `anchorBrowserId`,
   `anyTabBrowserId`, `ready`, `pageInsets`, `group`).
 - Test extension: an unpacked fixture that exposes `chrome.tabs` / `chrome.windows` results from its service worker
   (CDP target).
 
-### Tabs (NNWindowHost, NNBrowserView, lib/chromeTabs.ts)
+### Tabs (ACWindowHost, ACBrowserView, lib/chromeTabs.ts)
 
 1. **Hosting.** Open 2 tabs. Pass if all of these hold:
    - CDP lists both pages and no `about:blank` placeholder.
@@ -362,18 +362,18 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
    fixture. Pass if there is one Chrome window per app window and profile, its bounds equal the app window frame,
    and the tab list and URLs equal the sidebar's (pinned first, sidebar order).
 3. **Tab ids.** The fixture sets `chrome.action.setBadgeText({tabId, text:"7"})` for one tab. Pass if the toolbar
-   badge shows only on that tab (NNExtensions `TabIdOf` via `GetTabId`).
+   badge shows only on that tab (ACExtensions `TabIdOf` via `GetTabId`).
 4. **Active tab.**
    - Switch tabs in the sidebar. `chrome.tabs.query({active:true,currentWindow:true})` must return the shown tab.
    - In split view, clicking into a pane must make it the active tab.
-5. **Tab-strip sync (`CEF_NN_TAB_STRIP`).**
+5. **Tab-strip sync (`CEF_AC_TAB_STRIP`).**
    - `chrome.tabs.update(id,{active:true})` must switch the app to that tab.
    - `{pinned:true}` must pin it in the sidebar.
    - Dragging a tab in the sidebar must show the new order in `chrome.tabs.query`.
    - Pass only if there are no event loops: dev-console stays clean and CPU is idle after 30 rapid switches.
 6. **Chrome-made tabs.** `chrome.tabs.create({url})` must add a tab to the app window that loads, and closing it in
    the app must remove it from `chrome.tabs`.
-7. **Popups (`CEF_NN_POPUP_TABS`).**
+7. **Popups (`CEF_AC_POPUP_TABS`).**
    - A `target=_blank` link or `window.open(url)` must open an adopted tab whose `window.opener` is set.
    - `window.open(url,'x','width=500,height=600')` must open our popup window.
    - In both cases no new on-screen window of our PID may appear other than ours (`winpid <pid>`).
@@ -400,10 +400,10 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
     window, and an extension `chrome.commands` shortcut must run for B.
 14. **Stray windows.** `chrome.windows.create({url})` from the fixture must open the page as our tab, with no
     visible Chrome window.
-15. **Fullscreen (`CEF_NN_TAB_FULLSCREEN`).** `requestFullscreen()` on a video page must put our window into
+15. **Fullscreen (`CEF_AC_TAB_FULLSCREEN`).** `requestFullscreen()` on a video page must put our window into
     fullscreen (Chrome only tracks the state). Esc must exit.
 
-### Content blocker (NNContentBlocker, NNChromePages)
+### Content blocker (ACContentBlocker, ACChromePages)
 
 16. **uBlock Origin Lite as a component extension.** Pass if all of these hold:
     - Ads are blocked on a test page in the default profile, in a second profile, and in an incognito window. Only
@@ -432,7 +432,7 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
 
 ### Chrome UI surfaces (WP4)
 
-22. **Extension action (`CEF_NN_EXTENSION_ACTION`).**
+22. **Extension action (`CEF_AC_EXTENSION_ACTION`).**
     - An action with no popup that uses `action.onClicked` + activeTab + `scripting.executeScript`: clicking its
       toolbar button must run the script.
     - An action with a popup: our popup must show, `chrome.tabs.query({active:true,currentWindow:true})` from the
@@ -468,10 +468,10 @@ I1. **Browsers.** The importer now covers Chrome (+ Beta/Dev/Canary/Chromium), B
     "Dia"; Helium (imput's ungoogled-chromium) under `net.imput.helium`, Keychain "Helium Storage Key" /
     "Helium" (confirmed from the binary's `saltysaltHelium Storage Key` string and the Keychain item's
     attributes). Both add only a `BrowserDefinition`; discovery/parse/unlock are unchanged.
-I2. **Safari direct.** `SafariDirect` reads `~/Library/Safari` when Netnyahoo has Full Disk Access:
+I2. **Safari direct.** `SafariDirect` reads `~/Library/Safari` when Arcadia has Full Disk Access:
     `Bookmarks.plist` (bookmarks + Reading List), `History.db` (`history_items`⋈`history_visits`,
     CFAbsoluteTime), and `LastSession.plist` (open tabs). `hasAccess()` probes without a prompt; the
-    import UI shows a "Give Netnyahoo Full Disk Access" step that opens System Settings
+    import UI shows a "Give Arcadia Full Disk Access" step that opens System Settings
     (`x-apple.systempreferences:…Privacy_AllFiles`) and re-checks on app re-activation. The export
     `.zip` remains the fallback and the only path for Safari passwords/cards.
 I3. **Dia sidebar.** Not imported. Dia keeps its spaces / pinned tiles / folders / custom names in a
@@ -482,7 +482,7 @@ I3. **Dia sidebar.** Not imported. Dia keeps its spaces / pinned tiles / folders
     reading real browsing data (forbidden by the task's data rules), so it's left out. Dia's open tabs
     still import from its plaintext SNSS `Sessions/`.
 I4. **Chrome and Brave need Full Disk Access.** On this macOS both protect their data folders from
-    other apps: inside Netnyahoo, listing `Google/Chrome` or `BraveSoftware/Brave-Browser` fails with a
+    other apps: inside Arcadia, listing `Google/Chrome` or `BraveSoftware/Brave-Browser` fails with a
     permission error, while Arc, Dia and Helium read fine. Discovery used to drop them silently; it now
     lists a browser whose folder exists but can't be listed (and has a `Local State`/`Default` marker,
     which can still be stat'ed) with `needsFullDiskAccess`, and the import window routes it to the same
@@ -491,7 +491,7 @@ I5. **Tests.** `swift test` (51 cases, incl. Helium/Dia import, Safari-direct an
     discovery) and `node --test src/index.test.ts` (6) pass; fixtures for Helium, Dia (two profiles,
     SNSS session) and Safari-direct (`Bookmarks.plist`/`History.db`/`LastSession.plist`) come from
     `fixtures/generate.py`. `pnpm -C apps/browser typecheck` passes.
-I6. **Real installs, verified 2026-09-25** (background instance, throwaway `NETNYAHOO_DATA_DIR`, counts only):
+I6. **Real installs, verified 2026-09-25** (background instance, throwaway `ARCADIA_DATA_DIR`, counts only):
     discovery lists exactly Chrome (data only: the app isn't installed, so it gets the globe icon; needs
     FDA), Arc (1 profile, 2 spaces), Dia (2 profiles), Safari (no FDA → Full Disk Access step / .zip),
     Brave (needs FDA) and Helium (1 profile). A real Helium import into the throwaway profile read 8
@@ -504,7 +504,7 @@ I6. **Real installs, verified 2026-09-25** (background instance, throwaway `NETN
       "Helium Storage Key" / "Dia Safe Storage"); Safari direct and Chrome/Brave against real data
       (need Full Disk Access granted by the user).
 
-### Chrome Web Store (integration; hook 10 `CEF_NN_INSTALL_PROMPT`)
+### Chrome Web Store (integration; hook 10 `CEF_AC_INSTALL_PROMPT`)
 
 W1. **Install from the store. Verified 2026-09-25.**
     - The store's own button runs Chrome's webstorePrivate / WebstoreInstaller flow.
@@ -512,7 +512,7 @@ W1. **Install from the store. Verified 2026-09-25.**
       warning list.
     - Tested with Bitwarden 2026.8.0 (3 warnings) and Dark Reader 4.9.133: each installed as a store extension,
       location FROM_STORE, update_url `https://clients2.google.com/service/update2/crx`, and the page then shows
-      "Remove from Netnyahoo".
+      "Remove from Arcadia".
     - The store opens the extension's welcome tab, and it's adopted as our tab.
     - A Web Store link in Settings now opens the store page: there's no unpacked fallback any more when the engine
       has the hook.
@@ -521,9 +521,9 @@ W1. **Install from the store. Verified 2026-09-25.**
         and `getHighEntropyValues` in the page, and to the `sec-ch-ua` request header, didn't remove it, so both
         shims were reverted. It's cosmetic; install and remove work.
       - uBlock Origin Lite from the store is untested. We ship it built in, and a store copy would duplicate it.
-W2. **Uninstall. Verified at the engine level:** `NNExtensions.uninstall` removed Bitwarden, and it left
+W2. **Uninstall. Verified at the engine level:** `ACExtensions.uninstall` removed Bitwarden, and it left
     `getExtensionsInfo`. Still to test with the user present:
-    - "Remove from Netnyahoo" on the store page and Settings › Extensions › Remove. Both go through our "Remove …?"
+    - "Remove from Arcadia" on the store page and Settings › Extensions › Remove. Both go through our "Remove …?"
       confirmation, a native sheet that needs a key window.
     - Chrome's uninstall dialog isn't hooked; our confirmation replaces it.
 W3. **Auto-update. Verified 2026-09-25 (r2).**
@@ -533,7 +533,7 @@ W3. **Auto-update. Verified 2026-09-25 (r2).**
       `chromium-extension-updates.patch` removes the early return and points extension update checks at
       `https://clients2.google.com/service/update2/json` (the same protocol; the component updater stays cut off).
     - Test: Dark Reader installed from the store at 4.9.133; with the app quit, its on-disk manifest was set to
-      4.9.100 and the app relaunched with `NETNYAHOO_CHROMIUM_SWITCHES="--lang=fr --extensions-update-frequency=30"`
+      4.9.100 and the app relaunched with `ARCADIA_CHROMIUM_SWITCHES="--lang=fr --extensions-update-frequency=30"`
       (a new locale makes Chrome reload the manifest from disk, so it reported 4.9.100; the manifest isn't
       content-verified).
     - Result: the net log shows `clients2.google.com/service/update2/json` and the CRX from
@@ -544,7 +544,7 @@ W3. **Auto-update. Verified 2026-09-25 (r2).**
 ### Dia 1.50 "Sunglow" visuals (WP11; needs the unlocked screen, not the patched CEF)
 
 Spec: `docs/dia-spec.md` › "1.50 Sunglow". Launch a `build-sunglow` instance with
-`NETNYAHOO_BACKGROUND=1 NETNYAHOO_SHADERS_FORCE_KEY=1` and capture with `screencapture -l`; capture Dia 1.50.1
+`ARCADIA_BACKGROUND=1 ARCADIA_SHADERS_FORCE_KEY=1` and capture with `screencapture -l`; capture Dia 1.50.1
 read-only (never click it).
 
 28. **Painted mark vs Dia.** For each profile colour in light and dark, a Dia 1.50.1 New Tab capture next to ours at
@@ -558,48 +558,48 @@ read-only (never click it).
 30. **Command bar shadow.** Light mode: under the bar's bottom edge, the 0.08 r2 (0, 0.5) + 0.04 r1 (0, 2) shadow
     matches Dia row by row.
 31. **Toolbar breadcrumb.** Find when Dia 1.50.1 shows only the host (seen on a trycloudflare.com page whose title
-    was "Netnyahoo Build Status") and match it.
-32. **Focus. Resolved.** On 2026-09-25 a `build-sunglow` instance launched with `open -g` and `NETNYAHOO_BACKGROUND=1`
-    was frontmost right after launch, twice. `NNActivation.mm` now makes such instances BackgroundOnly and guards
+    was "Arcadia Build Status") and match it.
+32. **Focus. Resolved.** On 2026-09-25 a `build-sunglow` instance launched with `open -g` and `ARCADIA_BACKGROUND=1`
+    was frontmost right after launch, twice. `ACActivation.mm` now makes such instances BackgroundOnly and guards
     every activation path (logged to `activation.log`); `lsappinfo front` hasn't shown a test instance since
     (Done › Focus).
 
-### netnyahoo:// URLs (core appUrls.ts, cef WebView, NNClient; see docs/store-api.md)
+### arcadia:// URLs (core appUrls.ts, cef WebView, ACClient; see docs/store-api.md)
 
 Use the scratchpad `nneval.sh` to drive the store and `cdp-integration.mjs` (with your port) to read pages.
 
-33. **WebUI pages in Chrome-style tabs.** Type `netnyahoo://version`, `gpu`, `flags`, `net-internals`, `inspect`,
+33. **WebUI pages in Chrome-style tabs.** Type `arcadia://version`, `gpu`, `flags`, `net-internals`, `inspect`,
     `extensions` and `settings/languages` in the bar. Pass if all of these hold:
     - Each renders in the tab. CDP lists the page as `chrome://…`.
-    - The store's `tab.url` and the toolbar read `netnyahoo://…`.
+    - The store's `tab.url` and the toolbar read `arcadia://…`.
     - The page isn't blank. On stock Alloy, some WebUI hosts don't render at all, so test this on the new engine.
-34. **In-page WebUI navigation.** On `netnyahoo://extensions`, open "Keyboard shortcuts" and an extension's Details.
-    On `netnyahoo://settings/languages`, click the back arrow. Pass if the bar follows each step as `netnyahoo://…`
+34. **In-page WebUI navigation.** On `arcadia://extensions`, open "Keyboard shortcuts" and an extension's Details.
+    On `arcadia://settings/languages`, click the back arrow. Pass if the bar follows each step as `arcadia://…`
     (`extensions/shortcuts`, `?id=…`), and Back / Forward and the back-list popover titles work.
-35. **Page-initiated.** On a WebUI page, run `location.href = "netnyahoo://version"` via CDP. It must load
+35. **Page-initiated.** On a WebUI page, run `location.href = "arcadia://version"` via CDP. It must load
     chrome://version. From an https page, run the same, plus a ⌘-click and a `window.open` on a
-    `<a href="netnyahoo://quit">`. Pass if nothing opens, the app keeps running, and no Launch Services prompt appears.
-    If a web page's netnyahoo:// navigation reaches `OnProtocolExecution` instead of `OnBeforeBrowse`, move the
+    `<a href="arcadia://quit">`. Pass if nothing opens, the app keeps running, and no Launch Services prompt appears.
+    If a web page's arcadia:// navigation reaches `OnProtocolExecution` instead of `OnBeforeBrowse`, move the
     check there.
 36. **Chrome-made tabs.** `chrome.tabs.create({url: "chrome://version"})` from the fixture extension (and with no
-    url, which gives chrome://newtab). Pass if the sidebar tab reads `netnyahoo://version`. A Chrome New Tab
-    (`netnyahoo://newtab` in the store) should show our New Tab page; today it loads Chrome's NTP in a web view.
+    url, which gives chrome://newtab). Pass if the sidebar tab reads `arcadia://version`. A Chrome New Tab
+    (`arcadia://newtab` in the store) should show our New Tab page; today it loads Chrome's NTP in a web view.
     If it does, map it in lib/chromeTabs.
 37. **chrome://history reached inside the engine** (for example, a Chrome surface opening History). Pass if the tab
     switches to our React History page. Known cost: that tab's web view and its back list are dropped
     (ContentCard unmounts internal tabs).
 38. **Extensions reading URLs.** `chrome.tabs.query({})` reports `chrome://version/` for such a tab. That's
-    expected: only the app shows netnyahoo://. An extension calling `chrome.tabs.create({url: "netnyahoo://…"})` is
-    blocked by NNClient; the optional Chromium patch in the scheme agent's report would fix that.
+    expected: only the app shows arcadia://. An extension calling `chrome.tabs.create({url: "arcadia://…"})` is
+    blocked by ACClient; the optional Chromium patch in the scheme agent's report would fix that.
 
 ### Signing and passkeys (passkeys agent)
 
 Signing: Debug = Apple Development (automatic), Release = archive + Developer ID export. Ad-hoc fallback for machines
 without the team: `-xcconfig macos/AdHoc.xcconfig` (no hardened runtime, no keychain groups; security keys and
 phone passkeys still work). The Chromium side is in the passkeys agent's patch
-(scratchpad `passkeys-chromium.patch`): `branding_file_path` → `chrome/app/theme/netnyahoo/BRANDING`
-(MAC_BUNDLE_ID=com.netnyahoo.browser, MAC_TEAM_ID=U5L5T3NGVV), the iCloud Keychain NSWindow fallback in
-`ChromeAuthenticatorRequestDelegate::ConfigureNSWindow`, and "Netnyahoo Safe Storage" + `CEF_NN_SAFE_STORAGE`.
+(scratchpad `passkeys-chromium.patch`): `branding_file_path` → `chrome/app/theme/arcadia/BRANDING`
+(MAC_BUNDLE_ID=com.arcadia.browser, MAC_TEAM_ID=U5L5T3NGVV), the iCloud Keychain NSWindow fallback in
+`ChromeAuthenticatorRequestDelegate::ConfigureNSWindow`, and "Arcadia Safe Storage" + `CEF_AC_SAFE_STORAGE`.
 
 39. **Phone (hybrid) sign-in, needs the user and a phone.** The QR sheet is verified (above). On webauthn.io Register
     → "Use a phone or tablet", scan the QR with an iPhone/Android camera. Pass if the phone connects (tunnel through
@@ -609,22 +609,22 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
     invisible"): webauthn.io Register (Platform) offers the Chrome profile, macOS's Touch ID sheet appears when the
     site requires user verification, and the user completed register and sign-in with Touch ID. Still to see in the
     shipped app: the same on Google (checklist step 6).
-41. **Safe Storage (`CEF_NN_SAFE_STORAGE`).** In a team-signed Debug run without `NETNYAHOO_DATA_DIR`, pass if:
-    - A "Netnyahoo Safe Storage" item appears in the login keychain, with no prompt.
+41. **Safe Storage (`CEF_AC_SAFE_STORAGE`).** In a team-signed Debug run without `ARCADIA_DATA_DIR`, pass if:
+    - A "Arcadia Safe Storage" item appears in the login keychain, with no prompt.
     - Cookies survive a rebuild and relaunch with no prompt.
-    - With `NETNYAHOO_DATA_DIR` or an ad-hoc build, no item is touched (mock keychain).
+    - With `ARCADIA_DATA_DIR` or an ad-hoc build, no item is touched (mock keychain).
     - One-time cost: the default profile's cookies and saved passwords, which were encrypted with the mock key,
       are lost once.
 42. **iCloud Keychain passkeys.** Only after Apple grants `com.apple.developer.web-browser.public-key-credential`.
     Enable the capability on the App ID, then set `CODE_SIGN_ENTITLEMENTS` to
-    `Netnyahoo-macOS/Netnyahoo-ICloudPasskeys.entitlements` and rebuild with `-allowProvisioningUpdates`. Pass if all
+    `Arcadia-macOS/Arcadia-ICloudPasskeys.entitlements` and rebuild with `-allowProvisioningUpdates`. Pass if all
     of these hold:
     - The dialog offers "iCloud Keychain".
-    - The first use raises macOS's "Allow Netnyahoo to use passkeys…" prompt, attached to our window (needs the
+    - The first use raises macOS's "Allow Arcadia to use passkeys…" prompt, attached to our window (needs the
       NSWindow fallback in the patch).
     - A passkey created there shows in Passwords.app.
 
-### Offline page (`chromium-neterror-yahu.patch`)
+### Offline page (`chromium-neterror-mascot.patch`)
 
 43. **DNS probe ending in "no internet".** Join a Wi-Fi network with no upstream (or unplug the router's WAN), keep
     the Mac's interface up, and load a site not in the DNS cache. Chrome's page first shows the DNS error while the
@@ -642,16 +642,16 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
     scrolls the chips first. Pass if all of that holds and the tab list never janks during a swipe with 50+ tabs.
 
 ### Window translucency (WindowBackdrop `vibrancy`, lib/windowTint; dia-spec › Window translucency)
-Verified so far: build `build-transl`, instance `/tmp/nn-transl`, captures in the session scratchpad `translucency/`
+Verified so far: build `build-transl`, instance `/tmp/ac-transl`, captures in the session scratchpad `translucency/`
 (composited with the windows below, over our own non-activating helper windows). Inactive, dark, plum: the sidebar
 gutter reads (53, 33.5, 36) / (56, 40, 42) / (59, 48, 48) at 7 / 50 / 95 % height, identical over white and black,
 against Dia's inactive (52.6, 33.8, 35.8) / (55.7, 40.8, 41.7) / (58.7, 47.6, 48.6). Forced key
-(`NetnyahooAreaLight.debugSetWindowActive(true)`): the gutter top goes from (42.5, 27, 30) over black to (73, 58, 60.5)
+(`ArcadiaAreaLight.debugSetWindowActive(true)`): the gutter top goes from (42.5, 27, 30) over black to (73, 58, 60.5)
 over white, and a bright disc behind the window's bottom-left shows through the sidebar and, at about half strength,
 the New Tab card (`comparison-sheet.png`). Light appearance renders (pink-tinted, blur under it) but has no Dia
 reference. Dia itself could only be captured inactive (it's never key while we work), where it is opaque.
 Still to run (needs the user at the screen, with Dia key):
-1. **Key window vs Dia.** Put Dia (pink profile, New Tab) and Netnyahoo (plum, New Tab) side by side over the same
+1. **Key window vs Dia.** Put Dia (pink profile, New Tab) and Arcadia (plum, New Tab) side by side over the same
    wallpaper, each key in turn, and capture the screen (not a window-only capture: those never show the desktop).
    Pass if the sidebar gutter and the card read within 2 levels of Dia's at the top and bottom, and a bright
    wallpaper feature shows through both by the same amount.
@@ -663,7 +663,7 @@ Still to run (needs the user at the screen, with Dia key):
 5. **Profile swipe.** Page between two profiles with the window key: the blur must stay steady while the tints
    cross-fade (each page layer carries its own blur).
 
-### Chrome-hosted windows (the only path since 0.2.0; `CEF_NN_CLIENT_WINDOW`; docs/research/chrome-hosted-window.md)
+### Chrome-hosted windows (the only path since 0.2.0; `CEF_AC_CLIENT_WINDOW`; docs/research/chrome-hosted-window.md)
 Phases 1–3a verified headless behind the flag (2026-09-26; the design doc has the tables). The flip to the only path
 (0.2.0) was verified on hidden instances of the 0.2.0 engine (no `chromium-context-menu-hosted.patch`):
 - `spike/spike.mjs`: page click and typing, sidebar click, autofill ↓ + Enter, passkey sheet in front and gone on

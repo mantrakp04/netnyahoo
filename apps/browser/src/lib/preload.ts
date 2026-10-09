@@ -1,4 +1,4 @@
-import { engineCall } from "@netnyahoo/nncore";
+import { engineCall } from "@arcadia/arcadiacore";
 import { useEffect, useState } from "react";
 import { switchOn } from "./killSwitches";
 
@@ -6,9 +6,9 @@ import { switchOn } from "./killSwitches";
 
 // MARK: The engine
 
-// The prewarm needs an engine with its fixes (NNCore: the prewarmed about:blank leaves no Back entry, and nothing in
-// Chrome's closed-tab list when it, its window or the app closes), which answers nn_omnibox_opened with {prewarm: 2}
-// (nn_omnibox.h). On an older engine, or an app build that doesn't let the JS call it, the prewarm stays off. Asked once, a moment after
+// The prewarm needs an engine with its fixes (ArcadiaCore: the prewarmed about:blank leaves no Back entry, and nothing in
+// Chrome's closed-tab list when it, its window or the app closes), which answers ac_omnibox_opened with {prewarm: 2}
+// (ac_omnibox.h). On an older engine, or an app build that doesn't let the JS call it, the prewarm stays off. Asked once, a moment after
 // launch; a profile that isn't loaded yet asks again.
 let engine: "unknown" | "asking" | "yes" | "no" = "unknown";
 const ENGINE_PROBE_DELAY_MS = 1500;
@@ -17,7 +17,7 @@ function askEngine(tries = 5) {
   if (engine !== "unknown") return;
   engine = "asking";
   // It answers and changes nothing.
-  engineCall<{ prewarm?: number }>("nn_omnibox_opened", "", {}).then(
+  engineCall<{ prewarm?: number }>("ac_omnibox_opened", "", {}).then(
     (r) => void (engine = (r?.prewarm ?? 0) >= 2 ? "yes" : "no"),
     (e: unknown) => {
       if (/not an engine call|the engine has no/.test(String(e))) engine = "no";
@@ -42,7 +42,7 @@ export const setEngineForTests = (has: boolean) => void (engine = has ? "yes" : 
 // against 52 ms for a page navigated in place). It goes when the New Tab page does without a navigation (another tab
 // shown, the tab closed).
 const PREWARM_DELAY_MS = 120;
-// A kill switch, and benches' control (nn.preload): off, a New Tab page makes no page until Enter.
+// A kill switch, and benches' control (ac.preload): off, a New Tab page makes no page until Enter.
 let prewarmOn = true;
 export const setNewTabPrewarm = (on: boolean) => void (prewarmOn = on);
 // The newTabPrewarm kill switch (lib/killSwitches.ts) is read each time a New Tab page asks: off, Enter makes the tab first.

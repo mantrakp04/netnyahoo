@@ -1,5 +1,5 @@
-import { classifyPaste, cleanUrl, searchUrl, type PasteAction } from "@netnyahoo/core";
-import { copyText, showMenu, type MenuItem } from "@netnyahoo/shell";
+import { classifyPaste, cleanUrl, searchUrl, type PasteAction } from "@arcadia/core";
+import { copyText, showMenu, type MenuItem } from "@arcadia/shell";
 import { NativeModules } from "react-native";
 import { useBrowser } from "../../store/browser";
 import { defaultSearchEngine } from "../../store/settings";

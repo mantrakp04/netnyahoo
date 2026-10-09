@@ -16,7 +16,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       </div>
       <div class="game-title">
         <p class="label kicker">The offline page</p>
-        <h2 class="poster" id="game-title" data-reveal>Where’s Big Yahu?</h2>
+        <h2 class="poster" id="game-title" data-reveal>Where’s the mascot?</h2>
       </div>
       <p class="game-copy" data-reveal style="--i: 1">
         Chrome gives you a dinosaur. We give you a room full of donors, lobbyists and very generous friends. Find
@@ -30,7 +30,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       <div class="board-img" style={`aspect-ratio: ${crowd.width} / ${crowd.height}`}>
         <Picture
           src={crowd}
-          alt="An early screenshot of the game: a ballroom packed with caricatured party guests, Big Yahu somewhere among them."
+          alt="An early screenshot of the game: a ballroom packed with caricatured party guests, the mascot somewhere among them."
           formats={["avif"]}
           fallbackFormat="webp"
           widths={[640, 1024, 1440, 2248]}
@@ -41,7 +41,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
           class="found"
           type="button"
           data-found
-          aria-label="That’s him. Reveal Big Yahu."
+          aria-label="That’s him. Reveal the mascot."
           style={`left: ${(spot.x - spot.r) * 100}%; top: ${spot.y * 100}%; width: ${spot.r * 200}%`}
         ></button>
       </div>
@@ -51,7 +51,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       <figcaption class="label">
         <span>Fig. 8 — Level 1, 83 suspects</span>
         <span class="swipe">Swipe the crowd. He’s in there.</span>
-        <span>Online too, at netnyahoo://yahu</span>
+        <span>Online too, at arcadia://game</span>
       </figcaption>
     </figure>
   </div>
@@ -236,7 +236,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       const s = started ? ((performance.now() - started) / 1000).toFixed(1) : null;
       found = s ? `Found him in ${s} s. He hides better offline.` : "Found him. He hides better offline.";
       say(found);
-      track("yahu_found", { seconds: s ? Number(s) : null, misses });
+      track("mascot_found", { seconds: s ? Number(s) : null, misses });
     });
     const lines = ["That’s a donor.", "That’s a lobbyist.", "Close. That’s his friend with the envelope.", "Not him. Keep looking."];
     board.addEventListener("click", () => say(found || lines[misses++ % lines.length]));

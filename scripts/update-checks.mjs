@@ -7,11 +7,11 @@
 //
 // usage: node scripts/update-checks.mjs [days=14]
 // The events come from our ClickHouse (docs/growth.md, "Telemetry"), read with the read-only user in
-// ~/.config/netnyahoo/telemetry.env. Without that file, only the GitHub counts print.
+// ~/.config/arcadia/telemetry.env. Without that file, only the GitHub counts print.
 
 import { clickhouse, hasTelemetryEnv } from "./telemetry-env.mjs";
 
-const REPO = "mantrakp04/netnyahoo";
+const REPO = "mantrakp04/arcadia";
 const days = Math.max(1, Number(process.argv[2] ?? 14) || 14);
 const key = hasTelemetryEnv();
 
@@ -61,7 +61,7 @@ console.log("GitHub feed: fetches of that release's appcast.xml, i.e. update che
 console.log("included) while it was the latest release.");
 
 if (!key) {
-  console.log("\nNo ~/.config/netnyahoo/telemetry.env: first launches and daily checks need it (docs/growth.md, Telemetry).");
+  console.log("\nNo ~/.config/arcadia/telemetry.env: first launches and daily checks need it (docs/growth.md, Telemetry).");
   process.exit(0);
 }
 console.log(`\nUpdate checks per day, last ${days} days (UTC)`);

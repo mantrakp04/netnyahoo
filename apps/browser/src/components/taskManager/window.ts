@@ -1,4 +1,4 @@
-import { openWindow } from "@netnyahoo/shell";
+import { openWindow } from "@arcadia/shell";
 
 export const TASK_MANAGER_WINDOW_ID = "task-manager";
 

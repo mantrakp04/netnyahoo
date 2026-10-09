@@ -25,7 +25,7 @@ enum DocumentStore {
     var waiters: [Done]
   }
 
-  private static let queue = DispatchQueue(label: "netnyahoo.documents", qos: .utility)
+  private static let queue = DispatchQueue(label: "arcadia.documents", qos: .utility)
   private static let lock = NSLock()
   private static var staged: [String: Staged] = [:]
   private static var generation: UInt64 = 0
@@ -95,7 +95,7 @@ enum DocumentStore {
     lock.unlock()
     for waiter in waiters { waiter(failure) }
     guard let failure else { return }
-    NSLog("Netnyahoo: saving \(key) failed (try \(attempt + 1)): \(failure.localizedDescription)")
+    NSLog("Arcadia: saving \(key) failed (try \(attempt + 1)): \(failure.localizedDescription)")
     // Kept staged and tried again, backing off to a minute; a newer save of the document takes over instead.
     let delay = min(60.0, 2.0 * pow(2.0, Double(min(attempt, 5))))
     queue.asyncAfter(deadline: .now() + delay) { land(key, generation, attempt: attempt + 1) }
@@ -126,11 +126,11 @@ enum DocumentStore {
 public class ShellModule: Module {
   static func documentURL(_ name: String) throws -> URL {
     let dir: URL
-    if let custom = ProcessInfo.processInfo.environment["NETNYAHOO_DATA_DIR"] {
+    if let custom = ProcessInfo.processInfo.environment["ARCADIA_DATA_DIR"] {
       dir = URL(fileURLWithPath: custom, isDirectory: true)
     } else {
       let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-      dir = base.appendingPathComponent(Bundle.main.bundleIdentifier ?? "Netnyahoo", isDirectory: true)
+      dir = base.appendingPathComponent(Bundle.main.bundleIdentifier ?? "Arcadia", isDirectory: true)
     }
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir.appendingPathComponent((name as NSString).lastPathComponent)
@@ -142,7 +142,7 @@ public class ShellModule: Module {
   private var switcherMonitor: Any?
 
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooShell")
+    Name("ArcadiaShell")
     Events("onCommand", "onOpenURLs", "onWindowEvent", "onAppEvent")
 
     OnCreate {
@@ -161,9 +161,9 @@ public class ShellModule: Module {
           self?.sendEvent("onAppEvent", ["type": "appearance", "dark": ShellModule.isDark])
         }
         self?.observeForSidebar()
-        // NNCore cancelled a quit JS was told of (willQuit): JS goes on saving (WindowManager's App lifecycle).
+        // ArcadiaCore cancelled a quit JS was told of (willQuit): JS goes on saving (WindowManager's App lifecycle).
         let quitCancelled = NotificationCenter.default.addObserver(
-          forName: Notification.Name("NNCoreQuitCancelled"), object: nil, queue: .main
+          forName: Notification.Name("ArcadiaCoreQuitCancelled"), object: nil, queue: .main
         ) { _ in self?.sendEvent("onAppEvent", ["type": "quitCancelled"]) }
         self?.sidebarObservers.append((NotificationCenter.default, quitCancelled))
       }
@@ -518,7 +518,7 @@ public enum ShellApp {
 
 public class FadeLabelModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooFadeLabel")
+    Name("ArcadiaFadeLabel")
 
     View(FadeLabel.self) {
       Prop("text") { (view: FadeLabel, v: String) in view.text = v }
@@ -593,7 +593,7 @@ final class FadeLabel: ExpoView {
 
 public class ActivitySpinnerModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooActivitySpinner")
+    Name("ArcadiaActivitySpinner")
 
     View(ActivitySpinner.self) {}
   }
@@ -669,7 +669,7 @@ final class ActivitySpinner: ExpoView {
 
 public class SymbolModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooSymbol")
+    Name("ArcadiaSymbol")
 
     View(SymbolView.self) {
       Prop("name") { (view: SymbolView, name: String) in view.name = name }
@@ -792,7 +792,7 @@ final class WindowDragRegion: ExpoView {
 
 public class OutsidePressAreaModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooOutsidePressArea")
+    Name("ArcadiaOutsidePressArea")
 
     View(OutsidePressArea.self) {
       Events("onOutsidePress")
@@ -902,7 +902,7 @@ let installScrollViewInsetFix: Void = {
 
 public class ContextMenuAreaModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooContextMenuArea")
+    Name("ArcadiaContextMenuArea")
 
     View(ContextMenuArea.self) {
       Events("onContextMenu")
@@ -939,7 +939,7 @@ final class ContextMenuArea: ExpoView {
 
 public class VisualEffectModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooVisualEffect")
+    Name("ArcadiaVisualEffect")
 
     View(VisualEffect.self) {
       Prop("material") { (view: VisualEffect, name: String) in view.setMaterial(name) }
@@ -992,7 +992,7 @@ final class VisualEffect: ExpoView {
 
 public class GlassEffectModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooGlassEffect")
+    Name("ArcadiaGlassEffect")
 
     Function("isLiquidGlass") { () -> Bool in
       if #available(macOS 26.0, *) { return true }
@@ -1061,7 +1061,7 @@ final class GlassEffect: ExpoView {
 
 public class SurfaceModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooSurface")
+    Name("ArcadiaSurface")
 
     View(Surface.self) {
       Prop("fill") { (view: Surface, hex: String?) in view.surfaceFill = hex.flatMap(NSColor.init(hex:)) }

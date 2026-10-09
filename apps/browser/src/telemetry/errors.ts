@@ -1,4 +1,4 @@
-import { crashReports, systemInfo } from "@netnyahoo/shell";
+import { crashReports, systemInfo } from "@arcadia/shell";
 import { advanceCrashCursor, capture, crashCursor, isSharing, loadChoice } from "./client";
 import { recordLog } from "./logs";
 import { errorCode, errorMessage, errorType, nativeCrashExceptions, parseStack, type ExceptionFrame } from "./sanitize";

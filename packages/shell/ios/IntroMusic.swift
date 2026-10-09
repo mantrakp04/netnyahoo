@@ -32,11 +32,11 @@ final class IntroMusic {
   private var muted = false
   private var ramp: Timer?
 
-  // A hidden test instance (NETNYAHOO_BACKGROUND) never makes a sound on the owner's Mac; every fresh test profile
-  // runs onboarding. NETNYAHOO_ALLOW_AUDIO=1 brings it back for a test that needs it.
+  // A hidden test instance (ARCADIA_BACKGROUND) never makes a sound on the owner's Mac; every fresh test profile
+  // runs onboarding. ARCADIA_ALLOW_AUDIO=1 brings it back for a test that needs it.
   private static let silent: Bool = {
     let env = ProcessInfo.processInfo.environment
-    return env["NETNYAHOO_BACKGROUND"] == "1" && env["NETNYAHOO_ALLOW_AUDIO"] != "1"
+    return env["ARCADIA_BACKGROUND"] == "1" && env["ARCADIA_ALLOW_AUDIO"] != "1"
   }()
 
   func play(cues: [String: Double], muted: Bool) {

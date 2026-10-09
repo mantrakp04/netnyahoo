@@ -44,7 +44,7 @@ export function springAt(
   return 1 - Math.exp(-damping * omega * t) * (Math.cos(wd * t) + ((damping * omega) / wd) * Math.sin(wd * t));
 }
 
-/** Where AppKit puts the traffic lights (NNCore's default centre, NNCoreChromeWindow.mm), window top-left points. */
+/** Where AppKit puts the traffic lights (ArcadiaCore's default centre, ArcadiaCoreChromeWindow.mm), window top-left points. */
 export const LIGHTS_CENTER: readonly [number, number] = [25, 27];
 
 /** The peek panel's top-left in the window (Dia's 6/6; Arc's is 5/5): the panel holds the lights, so they sit as far in. */
@@ -85,7 +85,7 @@ export function setDockMoving(windowId: string, moving: boolean) {
 const peeking = new Set<string>();
 export const setPeekShown = (windowId: string, shown: boolean) => void (shown ? peeking.add(windowId) : peeking.delete(windowId));
 export const peekShown = (windowId: string) => peeking.has(windowId);
-/** Development: each window's peek, for the dev harness (nnLayout.peek[windowId].show()). */
+/** Development: each window's peek, for the dev harness (acLayout.peek[windowId].show()). */
 export const devPeeks: Record<string, { show(): void; hide(): void }> = {};
 
 // The sidebar's own button with the address bar in the sidebar (Arc's header, sidebar/AddressBar.tsx): after the traffic

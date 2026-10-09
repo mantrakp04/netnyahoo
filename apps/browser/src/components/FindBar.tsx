@@ -1,4 +1,4 @@
-import { Surface, Symbol } from "@netnyahoo/shell";
+import { Surface, Symbol } from "@arcadia/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { hex, useTheme } from "../lib/theme";

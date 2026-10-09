@@ -1,19 +1,19 @@
-// Hidden test instances of Netnyahoo, for every script that drives the app (acceptance runs, *-test.mjs, e2e, smoke):
+// Hidden test instances of Arcadia, for every script that drives the app (acceptance runs, *-test.mjs, e2e, smoke):
 // launch, find our own pid, evaluate in the app's JS (the dev harness) and in its pages (DevTools), quit. One copy of
 // what eleven scripts each did their own way.
 //
 //   import { launch, attach, session, reporter } from "<repo>/scripts/lib/instance.mjs";
-//   const app = await launch("apps/browser/build-me/Build/Products/Debug/Netnyahoo.app", { data: "/tmp/…/data" });
-//   await app.eval("return nn.store.getState().windowOrder");            // the dev harness (lib/devHarness.ts)
+//   const app = await launch("apps/browser/build-me/Build/Products/Debug/Arcadia.app", { data: "/tmp/…/data" });
+//   await app.eval("return ac.store.getState().windowOrder");            // the dev harness (lib/devHarness.ts)
 //   const page = await app.page("127.0.0.1:8080/a");                       // DevTools, one socket per page
 //   await page.eval("document.title"); await page.send("Page.reload"); page.on("Page.loadEventFired", fn);
 //   await app.quit();
 //
-// - Always hidden: `open -g -n` with NETNYAHOO_BACKGROUND=1, its own data dir and DevTools port (AGENTS.md).
+// - Always hidden: `open -g -n` with ARCADIA_BACKGROUND=1, its own data dir and DevTools port (AGENTS.md).
 // - The pid is the one process of the app's binary listening on that DevTools port, started by this launch (it
 //   didn't listen before), with its start time kept so a reused pid is never signalled. Diffing process lists picked
 //   another run's instance of the same binary and killed it (smoke.sh, 2026-09).
-// - `<data>/instance.json` records the instance, so another script (or `scripts/agent/nn`) can attach to it.
+// - `<data>/instance.json` records the instance, so another script (or `scripts/agent/ac`) can attach to it.
 // - `eval` fails at once when the app dies, and runs one script at a time (the harness has one dev-eval.js).
 // - `js: "pinned"` (default) serves Metro through a proxy that refuses its websockets, so other agents' edits and
 //   reload broadcasts can't restart the app's JS mid-run; the proxy runs detached and exits once the app has gone.
@@ -46,7 +46,7 @@ export function parsePort(value) {
   return n;
 }
 const pidList = (text) => [...new Set(text.split(/\s+/).filter(Boolean).map(Number))].filter((n) => Number.isInteger(n) && n > 0);
-// The main binary, not a helper (`…/Netnyahoo Helper.app/…/Netnyahoo Helper`) nor a longer name.
+// The main binary, not a helper (`…/Arcadia Helper.app/…/Arcadia Helper`) nor a longer name.
 export const commandIsBinary = (command, binary) => command === binary || command.startsWith(`${binary} `);
 export function listenerPids(port) {
   const r = spawnSync("lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5000 });
@@ -338,10 +338,10 @@ class Instance {
 
 /**
  * Launches `app` hidden. Options:
- *   data      NETNYAHOO_DATA_DIR (default a fresh dir under $TMPDIR); created, and wiped first with `fresh`
+ *   data      ARCADIA_DATA_DIR (default a fresh dir under $TMPDIR); created, and wiped first with `fresh`
  *   session   a session.json to restore (an object; see session()); `files` writes any other files into the data dir
  *   onboarded true: onboarding.json says it's done (no intro); probe: true writes perf-probe (a Release build's harness)
- *   env       { NAME: value } more environment (null leaves a variable out: NETNYAHOO_DATA_DIR: null starts the app
+ *   env       { NAME: value } more environment (null leaves a variable out: ARCADIA_DATA_DIR: null starts the app
  *             on its default data, as an installed copy; `data` is then the folder its dev harness reads);
  *             `switches` Chromium switches (string or array)
  *   args      arguments after --args (they reach Chrome's command line)
@@ -355,7 +355,7 @@ class Instance {
 export async function launch(app, opts = {}) {
   app = resolve(app);
   if (app.startsWith("/Applications/")) throw new Error("never an installed app: pass a build (apps/browser/build-*)");
-  const data = resolve(opts.data ?? join(process.env.TMPDIR ?? "/tmp", `nn-instance-${process.pid}-${Date.now()}`));
+  const data = resolve(opts.data ?? join(process.env.TMPDIR ?? "/tmp", `ac-instance-${process.pid}-${Date.now()}`));
   if (opts.fresh) rmSync(data, { recursive: true, force: true });
   mkdirSync(data, { recursive: true });
   // A relaunch on this data dir keeps the Metro proxy its last instance had, while it runs.
@@ -381,9 +381,9 @@ export async function launch(app, opts = {}) {
   const location = jsMode === "pinned" ? `localhost:${js.port}` : jsMode === "live" ? `localhost:${metroPort}` : jsMode === "none" ? null : jsMode;
   const switches = [opts.switches].flat().filter(Boolean).join(" ");
   const env = {
-    NETNYAHOO_BACKGROUND: "1", NETNYAHOO_DATA_DIR: data, NETNYAHOO_REMOTE_DEBUGGING_PORT: String(port),
-    ...(location ? { NETNYAHOO_JS_LOCATION: location } : {}),
-    ...(switches ? { NETNYAHOO_CHROMIUM_SWITCHES: switches } : {}),
+    ARCADIA_BACKGROUND: "1", ARCADIA_DATA_DIR: data, ARCADIA_REMOTE_DEBUGGING_PORT: String(port),
+    ...(location ? { ARCADIA_JS_LOCATION: location } : {}),
+    ...(switches ? { ARCADIA_CHROMIUM_SWITCHES: switches } : {}),
     ...opts.env,
   };
   const log = resolve(opts.log ?? join(data, "app.out.log"));
@@ -506,7 +506,7 @@ if (process.argv[1] === here) {
   const args = process.argv.slice(2);
   if (args[0] === "--metro-proxy") await metroProxyMain(args[1], Number(args[2]));
   else if (args[0] === "--self-test") {
-    const bin = "/tmp/Netnyahoo.app/Contents/MacOS/Netnyahoo";
+    const bin = "/tmp/Arcadia.app/Contents/MacOS/Arcadia";
     const cmd = (map) => (pid) => map[pid];
     assert.equal(parsePort("9474"), 9474);
     for (const bad of ["0", "65536", "94.5", "-1", "", "9474x", "1e3"]) assert.throws(() => parsePort(bad), /1\.\.65535/, bad);
@@ -515,7 +515,7 @@ if (process.argv[1] === here) {
     assert.ok(commandIsBinary(bin, bin));
     assert.ok(commandIsBinary(`${bin} --flag`, bin));
     assert.ok(!commandIsBinary(`${bin}2`, bin));
-    assert.ok(!commandIsBinary(`/tmp/Netnyahoo.app/Contents/Frameworks/Netnyahoo Helper.app/Contents/MacOS/Netnyahoo Helper`, bin));
+    assert.ok(!commandIsBinary(`/tmp/Arcadia.app/Contents/Frameworks/Arcadia Helper.app/Contents/MacOS/Arcadia Helper`, bin));
     assert.deepEqual(parseProcessLine(`Wed Sep 30 18:44:18 2026     ${bin} --x\n`), { started: "Wed Sep 30 18:44:18 2026", command: `${bin} --x` });
     assert.equal(parseProcessLine(""), null);
     assert.equal(ownedCandidate([], new Set(), cmd({}), bin), null);

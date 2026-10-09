@@ -1,6 +1,6 @@
 # Videos
 
-Remotion videos for Netnyahoo, a Remocn Studio project. Each folder in `src/videos` is a composition, named after the
+Remotion videos for Arcadia, a Remocn Studio project. Each folder in `src/videos` is a composition, named after the
 folder. Render one with `pnpm -C apps/videos render <id>`, which writes `out/<id>.mp4` (gitignored).
 
 `render` runs `scripts/deliver.sh`. Remotion's own AAC carries 2048 samples of encoder priming with no edit list, so
@@ -25,16 +25,16 @@ Two caveats for delivery:
 | `teaser-9x16` | 1080 × 1920 | 14.9 s |
 
 Every other browser asks for something. Four brass stabs carry "SIGN IN. / TRY AI. / ACCEPT ALL. / UPGRADE.",
-each over a site interrupting you in a real Netnyahoo window: a login wall sliding up, an AI copilot panel sliding
+each over a site interrupting you in a real Arcadia window: a login wall sliding up, an AI copilot panel sliding
 in over an article, a cookie wall, an "upgrade to keep typing" modal, with a pointer heading for each button. Then
-the asks get stamped onto it on a snare roll. Big Yahu rises behind the
-pile and swats it off as "NETNYAHOO — THE SIDEBAR BROWSER FOR MAC" lands, then stamps "ASKS FOR NOTHING."
+the asks get stamped onto it on a snare roll. The mascot rises behind the
+pile and swats it off as "ARCADIA — THE SIDEBAR BROWSER FOR MAC" lands, then stamps "ASKS FOR NOTHING."
 
 The product follows, live:
 - clicking down the tabs and scrolling a page;
 - the profile swipe (Personal → Work → Campaign → Side Project), each profile's name and colour switching on the
   frame its page changes;
-- split view with the divider dragged, Big Yahu popping up for "NO COALITION TALKS.";
+- split view with the divider dragged, the mascot popping up for "NO COALITION TALKS.";
 - the built-in blocker switched off and on, its count climbing;
 - "IT'S ACTUALLY CHROMIUM.".
 
@@ -45,13 +45,13 @@ paper taking each profile's colour. Then:
 - "SEVEN APP ICONS. ONE FACE.";
 - four "NO" cards;
 - netnyahoo.com typed into the address bar, the camera diving into the site's "Full immunity.";
-- the end card: the icon, the name, DOWNLOAD FOR MAC / NETNYAHOO.COM and the GitHub address, with Big Yahu doing the
+- the end card: the icon, the name, DOWNLOAD FOR MAC / NETNYAHOO.COM and the GitHub address, with the mascot doing the
   griddy and landing a flex on the last brass button.
 
 The film uses about 80 words on screen. The type is the site's poster system on warm stock: Archivo, Newsreader and
 Martian Mono, with the tie's blue and the stamp's red.
 
-`src/lib/nn-launch` holds the film:
+`src/lib/ac-launch` holds the film:
 
 - `cuts.json` holds the tempo (128.57 BPM, so a beat is exactly 14 frames at 30 fps), each cut's arrangement,
   silent windows and sound effects in beats, and the master's loudness. The score and the edit both read it.
@@ -59,11 +59,11 @@ Martian Mono, with the tie's blue and the stamp's red.
   aspects. It has no imports. Portrait keeps everything that matters inside y 220–1480 and x 60–940, clear of
   Reels, TikTok and Shorts captions.
 - `shots.tsx` has one component per shot: camera moves and cuts, footage frame choice, swipes timed so each page
-  change lands on its beat, the pointer, and Big Yahu.
+  change lands on its beat, the pointer, and the mascot.
 - `kit.tsx` has the window (real footage, the macOS corner and shadow, a camera that can aim a window's corner at
   the frame, and motion blur used only on the dive), the pointer, the trackpad glyph, the type styles, the springs
   and the paper.
-- `Yahu3D.tsx` renders the site's rigged Big Yahu with three.js, pure in time. `remotion.config.ts` enables ANGLE
+- `Mascot3D.tsx` renders the site's rigged the mascot with three.js, pure in time. `remotion.config.ts` enables ANGLE
   for WebGL.
 - `Film.tsx` places the shots on the beat grid and plays the score. `footage.json` indexes the captured frames;
   `scripts/capture/composite.py` writes it.
@@ -86,19 +86,19 @@ declares that a document lacks. It keeps existing values, removals and operation
 
 ```bash
 cd apps/videos
-scripts/prepare-assets.sh          # fonts, Big Yahu's model, the app icon, macOS pointers (AppKit)
+scripts/prepare-assets.sh          # fonts, the mascot's model, the app icon, macOS pointers (AppKit)
 python3 scripts/capture/sites/fetch-images.py   # CC0 / public-domain photos for the stand-in sites
 scripts/music/fetch-samples.sh     # the CC0 samples (public/music/samples)
 python3 scripts/music/score.py     # public/music/launch.wav, teaser.wav (numpy + scipy)
 # footage: a DEV build, captured hidden (needs Metro on :8081, like any DEV instance)
 ../../scripts/agent/build-app --as videos
-scripts/capture/run-all.sh ../browser/build-videos/Build/Products/Debug/Netnyahoo.app <scratch dir> [scene…]
+scripts/capture/run-all.sh ../browser/build-videos/Build/Products/Debug/Arcadia.app <scratch dir> [scene…]
 ```
 
 ### How the footage is made
 
-Every UI pixel comes from Netnyahoo itself, never a mock-up. `run-all.sh` launches a hidden DEV instance
-(`NETNYAHOO_BACKGROUND=1`, a scratch `NETNYAHOO_DATA_DIR`, `--session` from `scripts/capture/session.mjs`). That
+Every UI pixel comes from Arcadia itself, never a mock-up. `run-all.sh` launches a hidden DEV instance
+(`ARCADIA_BACKGROUND=1`, a scratch `ARCADIA_DATA_DIR`, `--session` from `scripts/capture/session.mjs`). That
 session has five profiles, each with real sites, in light appearance with the address in the toolbar, so each
 profile's name sits next to the traffic lights in its colour:
 - Personal (plum)
@@ -111,7 +111,7 @@ The script runs each scene in `scripts/capture/scenes` through the dev harness (
 The screen was locked when these were made (2026-10-03), so WindowServer recording came back black and everything
 is captured in-process, frame by frame:
 
-- **The window** is the app drawing its own layers (`nn.shell.devSnapshotWindow`, 2x).
+- **The window** is the app drawing its own layers (`ac.shell.devSnapshotWindow`, 2x).
 - **Stand-in sites.** The hook's four interruptions and the blocker's dictionary page are pages built for the film
   in `scripts/capture/sites/` (moodwall.example, dailyledger.example, crumbs.example, docpad.example and
   lexicon.example). They carry no real brand, logo, headline or photo. `sites/serve.mjs` serves them, and the
@@ -127,7 +127,7 @@ is captured in-process, frame by frame:
 - **The pages** are each tab's own picture of itself (`WebViewHandle.capturePicture(2)`), taken again for every
   frame where the page moves.
 - **Live motion**, one real state per film frame:
-  - **Profile swipes:** fed step by step through the real gesture tracker (`nnSwipe.sidebar(W).devSimulate`).
+  - **Profile swipes:** fed step by step through the real gesture tracker (`acSwipe.sidebar(W).devSimulate`).
     Profiles always change through the swipe, because a programmatic switch leaves the pager mid-move.
   - **Typing:** netnyahoo.com typed a key at a time through the window's key path (DEV `type:`), with the
     field's inline completion, then Return.
@@ -143,10 +143,10 @@ is captured in-process, frame by frame:
     repainted) are skipped.
   - The traffic lights are AppKit's own buttons, drawn offscreen as an active window (`lights.swift`). The
     pointer is AppKit's `NSCursor` artwork (`cursor.swift`).
-- **Big Yahu** is drawn as a printed illustration: three-tone toon shading over his own colours (the scan's texture
+- **the mascot** is drawn as a printed illustration: three-tone toon shading over his own colours (the scan's texture
   smoothed and flattened), a fine ink outline (three.js `OutlineEffect`) and a contact shadow. On the netnyahoo.com
-  frames the site's own glossy render is covered with this one, so the film shows one Big Yahu; the site itself is
-  untouched. The model is the site's rigged one (`apps/site/public/models/big-yahu.glb`, clips "Griddy" and "Default
+  frames the site's own glossy render is covered with this one, so the film shows one the mascot; the site itself is
+  untouched. The model is the site's rigged one (`apps/site/public/models/big-mascot.glb`, clips "Griddy" and "Default
   Dance"), rendered in the film.
 - **Not captured:** the sidebar's translucency over the desktop. It needs a WindowServer capture.
 
@@ -183,7 +183,7 @@ To recreate the audio:
 3. `python3 scripts/music/analyze.py` measures the result.
 
 Other assets: the fonts are Archivo, Newsreader and Martian Mono (SIL Open Font License, via apps/site's
-Fontsource packages). Big Yahu and the app icon are the project's own. The pages shown are public sites as they
+Fontsource packages). The mascot and the app icon are the project's own. The pages shown are public sites as they
 appeared on 2026-10-03.
 
 ## Checking a render

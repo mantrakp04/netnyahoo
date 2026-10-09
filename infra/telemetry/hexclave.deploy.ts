@@ -1,4 +1,4 @@
-// Netnyahoo's first-party telemetry, on Hexclave Deployments in the same project as the site
+// Arcadia's first-party telemetry, on Hexclave Deployments in the same project as the site
 // (infra/site/hexclave.deploy.ts). Nothing here is public: the site's nginx is the only way in.
 //
 //   netnyahoo.com/otel/v1/logs     -> otel-collector (OTLP/HTTP logs) -> ph-clickhouse, table telemetry.otel_logs
@@ -65,9 +65,9 @@ export const deploy = ({ secret, service }: any) => ({
       image: SEAWEEDFS,
       startCommand:
         // Once: clear what the trial PostHog left on this disk.
-        "{ [ -f /data/.nn-telemetry ] || { find /data -mindepth 1 -maxdepth 1 ! -name weed -exec rm -rf {} +; touch /data/.nn-telemetry; }; }; " +
+        "{ [ -f /data/.ac-telemetry ] || { find /data -mindepth 1 -maxdepth 1 ! -name weed -exec rm -rf {} +; touch /data/.ac-telemetry; }; }; " +
         "mkdir -p /data/weed && cd /data/weed && " +
-        "{ (until echo 'fs.configure -locationPrefix=/buckets/replays/ -ttl=30d -apply' | weed shell -master=localhost:9333 2>/dev/null | grep -q replays; do sleep 3; done; echo '[nn] replays kept 30 days') & } && " +
+        "{ (until echo 'fs.configure -locationPrefix=/buckets/replays/ -ttl=30d -apply' | weed shell -master=localhost:9333 2>/dev/null | grep -q replays; do sleep 3; done; echo '[ac] replays kept 30 days') & } && " +
         "exec weed server -dir=/data/weed -filer -master.volumePreallocate=false -volume.max=200",
       persistentVolumes: { objects: { path: "/data", sizeGb: 20 } },
       env: {},

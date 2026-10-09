@@ -102,7 +102,7 @@ class MetalSurface: ExpoView, MTKViewDelegate {
       pipelines[ObjectIdentifier(self)] = state
       return state
     } catch {
-      NSLog("[NetnyahooShaders] \(self) pipeline failed: \(error)")
+      NSLog("[ArcadiaShaders] \(self) pipeline failed: \(error)")
       return nil
     }
   }
@@ -159,11 +159,11 @@ extension SIMD4 where Scalar == Float {
 }
 
 final class WindowActivity {
-  static var override: Bool? = ProcessInfo.processInfo.environment["NETNYAHOO_SHADERS_FORCE_KEY"] == "1" ? true : nil {
+  static var override: Bool? = ProcessInfo.processInfo.environment["ARCADIA_SHADERS_FORCE_KEY"] == "1" ? true : nil {
     didSet { NotificationCenter.default.post(name: changed, object: nil) }
   }
   static var reduceMotionOverride: Bool?
-  static let changed = Notification.Name("NetnyahooShadersWindowActivityChanged")
+  static let changed = Notification.Name("ArcadiaShadersWindowActivityChanged")
 
   static var reduceMotion: Bool {
     reduceMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

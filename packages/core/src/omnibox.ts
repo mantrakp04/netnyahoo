@@ -22,7 +22,7 @@ export function hostOf(url: string): string {
 
 const KNOWN_SCHEMES = new Set([
   "http", "https", "file", "about", "data", "blob", "mailto", "tel", "sms", "facetime", "ftp", "view-source",
-  "netnyahoo", "chrome", "chrome-extension", "devtools", "x-apple.systempreferences", "itms-apps", "slack", "zoommtg", "vscode",
+  "arcadia", "chrome", "chrome-extension", "devtools", "x-apple.systempreferences", "itms-apps", "slack", "zoommtg", "vscode",
   "cursor", "notion", "figma", "spotify", "linear", "obsidian", "raycast",
 ]);
 

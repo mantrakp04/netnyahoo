@@ -14,6 +14,6 @@ export function startLive() {
   if (__DEV__) {
     const hover = require("../components/sidebar/hover") as typeof import("../components/sidebar/hover");
     const settings = require("../components/settings/windows") as typeof import("../components/settings/windows");
-    (globalThis as { nnLive?: object }).nnLive = { alerts, calendar, engine, googleAuth, meetingGroups, sources, store, hover, settings };
+    (globalThis as { acLive?: object }).acLive = { alerts, calendar, engine, googleAuth, meetingGroups, sources, store, hover, settings };
   }
 }

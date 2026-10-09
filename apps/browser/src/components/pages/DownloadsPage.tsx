@@ -1,5 +1,5 @@
-import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@netnyahoo/nncore";
-import { fileExists, MouseArea, openFile, revealFile, Symbol } from "@netnyahoo/shell";
+import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@arcadia/arcadiacore";
+import { fileExists, MouseArea, openFile, revealFile, Symbol } from "@arcadia/shell";
 import { useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";

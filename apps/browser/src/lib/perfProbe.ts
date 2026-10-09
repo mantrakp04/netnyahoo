@@ -1,11 +1,11 @@
 // Opt-in probe for the JS benchmark (apps/browser/scripts/perf/js-bench.mjs). It turns on only in an
-// isolated instance (NETNYAHOO_DATA_DIR or NETNYAHOO_BACKGROUND) whose data folder holds a `perf-probe`
+// isolated instance (ARCADIA_DATA_DIR or ARCADIA_BACKGROUND) whose data folder holds a `perf-probe`
 // file; otherwise it installs nothing.
 // index.js imports it first, so React's renderer finds the hook below when it loads.
 //
 // With it on: React commits, component renders and mounts, host view updates, store updates and the time
 // their subscribers take, native→JS calls (events, timers) with their time, timer callbacks and document
-// writes, all readable through `globalThis.nnPerf` from the dev harness.
+// writes, all readable through `globalThis.acPerf` from the dev harness.
 
 type Fiber = {
   tag: number;
@@ -43,13 +43,13 @@ if (!(globalThis as { expo?: unknown }).expo) {
   } catch {}
 }
 const modules = (globalThis as { expo?: { modules?: Record<string, Record<string, (...a: unknown[]) => unknown>> } }).expo?.modules;
-const shell = modules?.NetnyahooShell;
+const shell = modules?.ArcadiaShell;
 
 // The file's contents name optional (slower) probes: "selectors" times every store selector by call site;
 // "renders" says why each component rendered (props, state, context, or nothing: a wasted render).
 const probeOptions = (() => {
   try {
-    const info = modules?.NetnyahooApp?.systemInfo?.() as { isolatedInstance?: boolean } | undefined;
+    const info = modules?.ArcadiaApp?.systemInfo?.() as { isolatedInstance?: boolean } | undefined;
     if (!info?.isolatedInstance || typeof shell?.readDocument !== "function") return null;
     const file = shell.readDocument("perf-probe");
     return typeof file === "string" ? file : null;
@@ -60,7 +60,7 @@ const probeOptions = (() => {
 
 export const perfProbeEnabled = probeOptions !== null;
 
-// What the probe counts, as nnPerf.revision; js-bench stamps it into its reports and `compare` warns when two differ.
+// What the probe counts, as acPerf.revision; js-bench stamps it into its reports and `compare` warns when two differ.
 // Bump it whenever a change moves the numbers (a new kind of task timed, a counter redefined).
 //   1  before 6232fa43 (0.2.21 and older): Expo module events (JSI) weren't timed as tasks
 //   2  6232fa43: module events timed as module:<event> tasks, counted in taskMs; commitTasks
@@ -298,7 +298,7 @@ function installReactHook() {
 }
 
 let traceTimers = false;
-// How many frames name an anonymous timer's call site (nnPerf.traceDepth).
+// How many frames name an anonymous timer's call site (acPerf.traceDepth).
 let traceDepth = 4;
 
 const callers = (stack: string | undefined, depth = 4) =>
@@ -316,7 +316,7 @@ function wrapTimers() {
     g[name] = function (this: unknown, callback: unknown, ...rest: unknown[]) {
       if (typeof callback !== "function") return original.call(this, callback, ...rest);
       let label = `${name}:${callback.name || "anonymous"}`;
-      // With nnPerf.traceTimers on, anonymous callbacks are named by the functions that scheduled them.
+      // With acPerf.traceTimers on, anonymous callbacks are named by the functions that scheduled them.
       if (traceTimers && !callback.name) label += ` <${callers(new Error().stack, traceDepth)}>`;
       bump(stats.timersScheduled, label);
       return original.call(
@@ -345,7 +345,7 @@ function wrapSelectors() {
   const react = require("react") as { useSyncExternalStore: (...a: unknown[]) => unknown };
   const original = react.useSyncExternalStore;
   // A subscribe function per (store, call site), so React keeps its subscription across renders; the gauge counts the
-  // live subscriptions by call site (nnPerf.subscriptions()).
+  // live subscriptions by call site (acPerf.subscriptions()).
   const counted = new WeakMap<object, Map<string, unknown>>();
   react.useSyncExternalStore = (subscribe: unknown, getSnapshot: unknown, getServerSnapshot: unknown) => {
     const label = callers(new Error().stack, 4);
@@ -526,7 +526,7 @@ if (perfProbeEnabled) {
   wrapModuleEvents();
   wrapWrites();
   if (probeOptions?.includes("selectors")) wrapSelectors();
-  (globalThis as { nnPerf?: unknown }).nnPerf = {
+  (globalThis as { acPerf?: unknown }).acPerf = {
     revision: PERF_PROBE_REVISION,
     marks,
     startup,

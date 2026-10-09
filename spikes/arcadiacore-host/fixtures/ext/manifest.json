@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "ArcadiaCore spike extension",
+  "version": "1.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ArcadiaCore spike"
+  },
+  "background": {
+    "service_worker": "worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "tabs",
+    "sidePanel",
+    "sessions",
+    "declarativeNetRequest"
+  ],
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "optional_permissions": [
+    "bookmarks"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "nnblock",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}

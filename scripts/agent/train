@@ -12,19 +12,19 @@ How it works:
     --max-batch, default 240, after the first) ride the same build.
   - `serve` builds the whole working tree once per batch with scripts/agent/build-app --as train (derived data
     apps/browser/build-train, incremental), per config asked for (Debug and/or Release), then clones the .app to
-    apps/browser/build-train/out/<n>-<config>/Netnyahoo.app so a later build never changes an app someone is running.
+    apps/browser/build-train/out/<n>-<config>/Arcadia.app so a later build never changes an app someone is running.
   - `wait` prints `ok <app path>` (exit 0) or `failed <log path>` with the errors (exit 1) once a build that started
     after your request finishes. A failure lists the files in the errors: if they're yours, fix and request again;
     if not, tell the main session. Run your own hidden instances from your copy (`cp -c` the app into your scratch
     if you need to modify it). Never build the app yourself while the train runs.
   - JS-only changes need no build: Metro serves the tree to Debug builds, and js-bench bundles can be swapped into
     Release copies as before.
-State lives in /tmp/nn-train (requests.jsonl, builds/<n>.json, serve.log).
+State lives in /tmp/ac-train (requests.jsonl, builds/<n>.json, serve.log).
 """
 import argparse, json, os, re, subprocess, sys, time
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STATE = "/tmp/nn-train"
+STATE = "/tmp/ac-train"
 REQ = f"{STATE}/requests.jsonl"
 BUILDS = f"{STATE}/builds"
 OUT = f"{REPO}/apps/browser/build-train/out"
@@ -100,7 +100,7 @@ def build_once(n, config, who):
     if p.returncode == 0:
         m = re.findall(r"(/\S+?\.app)\b", text)
         src = m[-1] if m else None
-        dst = f"{OUT}/{n:04d}-{config}/Netnyahoo.app"
+        dst = f"{OUT}/{n:04d}-{config}/Arcadia.app"
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         subprocess.run(["cp", "-cR", src, dst], check=False)
         rec["app"] = dst

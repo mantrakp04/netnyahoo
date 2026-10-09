@@ -1,4 +1,4 @@
-import { hostOf } from "@netnyahoo/core";
+import { hostOf } from "@arcadia/core";
 import type { BrowserState } from "../../store/browser";
 import type { HistoryEntry } from "../../store/types";
 

@@ -1,5 +1,5 @@
 {
-  "name": "@netnyahoo/sync",
+  "name": "@arcadia/sync",
   "version": "0.0.0",
   "private": true,
   "description": "End-to-end-encrypted sync through a folder the user chooses (iCloud Drive, Dropbox, a NAS, a USB drive)",
@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/netnyahoo-sync-swiftpm\" && node --test \"src/**/*.test.ts\""
+    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/arcadia-sync-swiftpm\" && node --test \"src/**/*.test.ts\""
   },
   "peerDependencies": {
     "expo": "*",

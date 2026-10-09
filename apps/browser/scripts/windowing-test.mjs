@@ -2,7 +2,7 @@
 // off into a new window, and a window's last tab dragged onto another window, recorded off the screen at 60 fps in a
 // hidden instance.
 //
-//   node apps/browser/scripts/windowing-test.mjs <Debug Netnyahoo.app> [--port=9483] [--keep-data]
+//   node apps/browser/scripts/windowing-test.mjs <Debug Arcadia.app> [--port=9483] [--keep-data]
 //
 // Each frame is the instance's own windows as the screen composites them (windowing-rec.swift, built here with
 // swiftc). A frame that shows neither the state before a change nor the one after it is a glitch: the old page
@@ -27,13 +27,13 @@ import { launch, reporter, session, sleep } from "../../../scripts/lib/instance.
 const args = process.argv.slice(2);
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node windowing-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]");
+  console.error("usage: node windowing-test.mjs <Debug Arcadia.app> [--port=<DevTools port>] [--keep-data]");
   process.exit(2);
 }
 const appPath = resolve(appArg);
 const port = args.find((a) => a.startsWith("--port="))?.slice(7);
 const keep = args.includes("--keep-data");
-const scratch = mkdtempSync(join(tmpdir(), "nn-windowing-"));
+const scratch = mkdtempSync(join(tmpdir(), "ac-windowing-"));
 const data = join(scratch, "data");
 const rep = reporter(join(scratch, "windowing-test.log"), { name: "windowing-test" });
 
@@ -64,8 +64,8 @@ const fixture = () => session({
 
 let app = null;
 const HELPERS = `
-const C = globalThis.expo.modules.NetnyahooCEF;
-const st = () => nn.store.getState();
+const C = globalThis.expo.modules.ArcadiaCEF;
+const st = () => ac.store.getState();
 const win = (id) => C.chromeWindows().then((ws) => { const f = st().windows[id].frame; const w = ws.filter((w) => w.hasRoot).find((w) => { const r = w.frame.match(/[-\\d.]+/g).map(Number); return Math.abs(r[0] - f[0]) < 2 && Math.abs(r[2] - f[2]) < 2; }); return w && w.window; });
 const act = (id, a) => win(id).then((n) => C.devWindow(n, a));
 const settle = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -210,12 +210,12 @@ async function newWindowInProcess(ids) {
     let before, t0, id, at = null;
     const poll = () => C.chromeWindows().then((ws) => {
       const w = ws.find((w) => !before.has(w.window));
-      if (w && w.alpha === 1) { at = Date.now() - t0; return nn.shell.devSnapshotWindow(id, ${JSON.stringify(shots[0])}); }
+      if (w && w.alpha === 1) { at = Date.now() - t0; return ac.shell.devSnapshotWindow(id, ${JSON.stringify(shots[0])}); }
       return Date.now() - t0 > 3000 ? false : poll();
     });
-    return C.chromeWindows().then((ws) => { before = new Set(ws.map((w) => w.window)); t0 = Date.now(); return nn.actions.openWindow(); })
+    return C.chromeWindows().then((ws) => { before = new Set(ws.map((w) => w.window)); t0 = Date.now(); return ac.actions.openWindow(); })
       .then((created) => { id = created; return poll(); })
-      .then((saved) => saved && settle(1500).then(() => nn.shell.devSnapshotWindow(id, ${JSON.stringify(shots[1])})))
+      .then((saved) => saved && settle(1500).then(() => ac.shell.devSnapshotWindow(id, ${JSON.stringify(shots[1])})))
       .then((saved) => ({ id, at, saved, frame: st().windows[id] && st().windows[id].frame }));`);
   assert.ok(shown.id && !ids.includes(shown.id), "a new window");
   assert.ok(shown.at !== null, "the window never turned opaque");
@@ -258,10 +258,10 @@ try {
     if (noScreen) return noScreen;
     const frame = await run(`return st().windows.w1.frame;`);
     // Each page once first (a page loading for the first time is white until it paints, rightly).
-    await run(`nn.actions.switchToTab("b1"); return settle(1500).then(() => { nn.actions.switchToTab("g1"); return settle(1000); });`);
+    await run(`ac.actions.switchToTab("b1"); return settle(1500).then(() => { ac.actions.switchToTab("g1"); return settle(1000); });`);
     // Web page to web page, and to and from a New Tab page, 20 switches 400 ms apart.
     const order = ["b1", "g1", "n2", "b1", "n1", "g1", "b1", "n2", "g1", "b1", "g1", "n1", "b1", "g1", "n2", "b1", "n2", "g1", "b1", "g1"];
-    const frames = await record(9.5, () => run(`${JSON.stringify(order)}.forEach((id, i) => setTimeout(() => nn.actions.switchToTab(id), i * 400)); return 1;`));
+    const frames = await record(9.5, () => run(`${JSON.stringify(order)}.forEach((id, i) => setTimeout(() => ac.actions.switchToTab(id), i * 400)); return 1;`));
     assert.ok(frames, "no frames");
     // The page area, clear of the sidebar and the toolbar.
     const region = regionOf(frame, H, { left: 200, top: 56, right: 16, bottom: 16 });
@@ -278,7 +278,7 @@ try {
       if (noScreen) return await newWindowInProcess(ids);
       let frames;
       let created;
-      frames = await record(2.5, async () => { created = await run(`return nn.actions.openWindow();`); });
+      frames = await record(2.5, async () => { created = await run(`return ac.actions.openWindow();`); });
       assert.ok(frames && created && !ids.includes(created), "a new window");
       const frame = await run(`return st().windows["${created}"].frame;`);
       // Its sidebar (the New Tab page's picture fades in on its own).
@@ -309,7 +309,7 @@ try {
     }
     assert.ok(row !== null, "g1's row in w1's tab list");
     // Each page painted once, the torn one shown last.
-    await run(`nn.actions.switchToTab("b1"); return settle(800).then(() => { nn.actions.switchToTab("g1"); return settle(1200); });`);
+    await run(`ac.actions.switchToTab("b1"); return settle(800).then(() => { ac.actions.switchToTab("g1"); return settle(1200); });`);
     const ids = await run(`return Object.keys(st().windows);`);
     // Out of w1 to the right, below w2, so the new window and the dragged card stay clear of w1's page.
     const target = [w1[2] + 300, w1[3] - 50];

@@ -1,7 +1,7 @@
 # Agent brief (read first)
 
 You are one of several engineers working **in parallel in the same working tree** on
-Netnyahoo, a macOS browser that must reach **full feature and visual parity with Dia**
+Arcadia, a macOS browser that must reach **full feature and visual parity with Dia**
 (The Browser Company). The feature checklist is `docs/dia-feature-parity.md`; the
 visual spec (colors, sizes, animations recovered from Dia's binary) is `docs/dia-spec.md`.
 The user is demanding: no sloppy work, every hover state/animation/detail matters.
@@ -11,25 +11,25 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 - `apps/browser`: Expo SDK 54 + react-native-macos 0.81 (Legacy architecture), zustand store,
   inline styles.
 - Native code lives in Expo modules under `packages/*/ios` (Swift / Objective-C++):
-  - `packages/nncore`: the web engine, **NNCore**: Chrome's own framework (`Chromium Framework.framework`, plain
+  - `packages/arcadiacore`: the web engine, **ArcadiaCore**: Chrome's own framework (`Chromium Framework.framework`, plain
     Chromium 154.0.8037.97 + ungoogled-chromium + our patch series, `docs/engine-build.md`) with our layer linked
-    in, and the Expo modules and JS API the app uses (`docs/nncore-spike.md`, `docs/nncore-parity.md`).
-    - **Chromium runs the process.** `main.swift` calls `NNCoreHost.run`: `ChromeMain` starts with our
-      `NNMainDelegate`, `NSApp` is Chrome's `BrowserCrApplication`, and the React Native host (`AppDelegate`) starts
+    in, and the Expo modules and JS API the app uses (`docs/arcadiacore-spike.md`, `docs/arcadiacore-parity.md`).
+    - **Chromium runs the process.** `main.swift` calls `ArcadiaCoreHost.run`: `ChromeMain` starts with our
+      `ACMainDelegate`, `NSApp` is Chrome's `BrowserCrApplication`, and the React Native host (`AppDelegate`) starts
       inside Chrome's run loop. Nothing may touch `NSApp` before that.
-    - **Every app window is one `NNCoreWindow`** (a Views-backed `NSWindow`, so Chrome's bubbles, dialogs, menus and
+    - **Every app window is one `ArcadiaCoreWindow`** (a Views-backed `NSWindow`, so Chrome's bubbles, dialogs, menus and
       autofill dropdowns attach to it) holding a Chrome `Browser` per profile shown in it, each with no
-      `BrowserView`, tab strip or toolbar (`NNCoreChromeWindow.mm`, the `NNChromeWindowHost` packages/shell looks
+      `BrowserView`, tab strip or toolbar (`ArcadiaCoreChromeWindow.mm`, the `ACChromeWindowHost` packages/shell looks
       up). Paging between profiles changes the active profile; the window stays.
     - Every tab is a real Chrome tab of its window's Browser; its `WebContents` view is hosted in our React Native
-      views (`NNCoreWebView`). Popups, `target=_blank` and ⌘-click keep Chrome's own new `WebContents`.
+      views (`ArcadiaCoreWebView`). Popups, `target=_blank` and ⌘-click keep Chrome's own new `WebContents`.
     - Passwords, autofill, extensions, zoom and search engines call Chrome's services directly through our
-      own Chromium code, `//chrome/browser/netnyahoo` (`engine/chromium`), exported as plain C
-      (`NNCoreEngineBridge`, `NNCoreServices`); NNCore's own layer is `//netnyahoo/core` (`engine/nncore`).
+      own Chromium code, `//chrome/browser/arcadia` (`engine/chromium`), exported as plain C
+      (`ArcadiaCoreEngineBridge`, `ArcadiaCoreServices`); ArcadiaCore's own layer is `//arcadia/core` (`engine/arcadiacore`).
       No chrome:// page is scripted.
-    - JS API in `packages/nncore/src` (`WebView`, downloads, permissions, profiles, extensions, Chrome UI); its
-      native modules keep their CEF-era names: `NetnyahooCEF` is `packages/nncore/ios/CefModule.swift`, and
-      `NetnyahooExtensions`, `NetnyahooSwipe` and `NetnyahooChromeUI` are `ExtensionsModule.swift`,
+    - JS API in `packages/arcadiacore/src` (`WebView`, downloads, permissions, profiles, extensions, Chrome UI); its
+      native modules keep their CEF-era names: `ArcadiaCEF` is `packages/arcadiacore/ios/CefModule.swift`, and
+      `ArcadiaExtensions`, `ArcadiaSwipe` and `ArcadiaChromeUI` are `ExtensionsModule.swift`,
       `SwipeModule.swift` and `ChromeUIModule.swift` there.
   - `packages/shell`: menus, shortcuts, windows, native primitives (Surface, Symbol, FadeLabel,
     VisualEffect, WindowDragRegion, ContextMenuArea, ActivitySpinner…).
@@ -46,16 +46,16 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   only if a patch adds or removes files). To change one: `pnpm patch <pkg>@<version> --edit-dir <scratch dir>`,
   edit there, then `scripts/agent/locked pod -- pnpm patch-commit <scratch dir>`, and read the new `.patch`:
   pnpm can add bogus `deleted file` entries (drop them and run `pnpm install` again under the same lock).
-  Mark edits `[Netnyahoo: … Netnyahoo]`. Current patches: `react-native-macos` (a view's `transform` survives
+  Mark edits `[Arcadia: … Arcadia]`. Current patches: `react-native-macos` (a view's `transform` survives
   AppKit layout and applies from its centre; RCTTiming's display link, c7ebd600; a view in a scroll view observes its bounds once, not once per re-add; focus() on a text field being edited keeps its edit, caret and selection) and `expo-modules-core` (the JS
   runtime is prepared on the JS thread only, 364f5f7e).
 
 ## The engine
-- NNCore is built outside the repo in `~/chromium-build` (the tree and its patches: `engine/patches`,
-  `docs/engine-build.md` › "Rebuilding"; `engine/chromium/apply.sh` and `engine/nncore/apply.sh` copy our code in).
+- ArcadiaCore is built outside the repo in `~/chromium-build` (the tree and its patches: `engine/patches`,
+  `docs/engine-build.md` › "Rebuilding"; `engine/chromium/apply.sh` and `engine/arcadiacore/apply.sh` copy our code in).
   The app's build stages a copy of `out/Release_GN_arm64/Chromium Framework.framework`
-  (`packages/nncore/scripts/stage-framework.sh`: copied and signed once per engine build into
-  `apps/browser/build-nncore/staged`, then cloned into each build's own derived data, `NNCORE_STAGE_DIR`), links it
+  (`packages/arcadiacore/scripts/stage-framework.sh`: copied and signed once per engine build into
+  `apps/browser/build-arcadiacore/staged`, then cloned into each build's own derived data, `ARCADIACORE_STAGE_DIR`), links it
   and embeds it (`embed.sh`), so every agent's next build picks up a new framework.
 - One agent at a time edits or builds `~/chromium-build`: hold the chromium lock for the whole edit → build cycle
   (`scripts/agent/locked chromium --take <you>`, then each command as `scripts/agent/locked chromium --as <you> --
@@ -63,57 +63,57 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   with `--as`). Builds are incremental only: `scripts/agent/engine-build [--as <you>] [target…]` (default
   `chrome_framework`; `--help`) runs both `apply.sh` and their checks, then autoninja, under the chromium lock; run it
   with `run_in_background`. By hand, after both `apply.sh`:
-  `cd ~/chromium-build/chromium_git/chromium/src && PATH=$HOME/chromium-build/depot_tools:$PATH DEPOT_TOOLS_UPDATE=0 ~/Documents/netnyahoo/scripts/agent/locked chromium [--as <you>] -- autoninja -C out/Release_GN_arm64 chrome_framework`.
+  `cd ~/chromium-build/chromium_git/chromium/src && PATH=$HOME/chromium-build/depot_tools:$PATH DEPOT_TOOLS_UPDATE=0 ~/Documents/arcadia/scripts/agent/locked chromium [--as <you>] -- autoninja -C out/Release_GN_arm64 chrome_framework`.
   `apply.sh` copies the whole working tree, so other agents' uncommitted engine files get compiled too.
   A new framework changes every agent's next build, so say so in your report. To try one privately, build the app with
-  `NNCORE_FRAMEWORK=<framework> scripts/agent/build-app --as <you>` (it stages into your own derived data).
-- New engine code goes in `//chrome/browser/netnyahoo` (`engine/chromium/src`) or `//netnyahoo/core`
-  (`engine/nncore/src`), never straight into the tree (`docs/engine-build.md` › "Our own code in the tree").
+  `ARCADIACORE_FRAMEWORK=<framework> scripts/agent/build-app --as <you>` (it stages into your own derived data).
+- New engine code goes in `//chrome/browser/arcadia` (`engine/chromium/src`) or `//arcadia/core`
+  (`engine/arcadiacore/src`), never straight into the tree (`docs/engine-build.md` › "Our own code in the tree").
   `engine/patches/series` is the apply order of our patches to Chromium; `engine/patches/series.py check` proves the
-  series reproduces the tree. Hooks in Chrome's code are `g_netnyahoo_*` pointers NNCore sets (`nn_seams.mm`). CEF
+  series reproduces the tree. Hooks in Chrome's code are `g_arcadia_*` pointers ArcadiaCore sets (`ac_seams.mm`). CEF
   left the tree on 2026-10-09: the few of its patches we keep are `chromium-cef-carryover.patch`, and the seams of its
-  that NNCore used are our hooks H1–H6 in `engine/nncore/apply.sh` (`docs/engine-build.md` › "Our hooks in Chrome's
-  code"). Whether a Browser is NNCore's is `WindowHost::ForBrowser`.
+  that ArcadiaCore used are our hooks H1–H6 in `engine/arcadiacore/apply.sh` (`docs/engine-build.md` › "Our hooks in Chrome's
+  code"). Whether a Browser is ArcadiaCore's is `WindowHost::ForBrowser`.
 
-### NNCore code map
-Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/nncore/ios`, JS in `apps/browser/src`.
+### ArcadiaCore code map
+Engine files are in `engine/arcadiacore/src/arcadia/core`, app files in `packages/arcadiacore/ios`, JS in `apps/browser/src`.
 
 | Concern | Engine | App | JS |
 | --- | --- | --- | --- |
-| Windows, tab ownership | `nn_browser.h` (`WindowHost`, `NNWebContentsDelegate`, `TabBridge`), `nn_browser_window.mm` | `NNCoreChromeWindow.mm`, `NNCoreTabStrip.mm` | `lib/chromeTabs.ts`, `store/liveTabs.ts` |
-| Tab activation | `nncore_api.mm` `-activateTab:`, `nn_browser.mm` `ActiveTabChanged` | `NNCoreWebView.mm` `-activate`, `NNCoreTabStrip.mm` | same |
-| Focus guard (test instances) | `nn_browser.mm` (`WindowHost` activation) | `NNCoreActivation.mm` (`activation.log`), `NNCoreChromeWindow.mm` | `packages/shell/ios/Windows.swift` |
-| Fullscreen | `nn_browser_window.mm` (`ExclusiveAccessContext`), `nn_browser.mm` `FullscreenChanged` | `NNCoreChromeWindow.mm` (acted out in test instances) | `components/ContentCard.tsx`, `components/layout/pageState.ts` |
-| Picture in Picture | `nn_picture_in_picture.mm`; Dia's window and controls in `engine/chromium/…/netnyahoo/pip/`; the auto-PiP hook in `engine/nncore/apply.sh` | `NNCorePictureInPicture.mm` | `components/media/pip.ts` |
-| Password and autofill bubbles | `nn_password_prompt.mm`, `nn_browser_window.h` (`NNAutofillBubbleHandler`), `nn_autofill_trigger.mm` (dropdown) | `NNCoreChromeWindow.mm` (`window:passwordPrompt:forTab:`) → `NNCoreWebView` event | `components/site/Prompts.tsx`, `site/Autofill.tsx` |
-| Share tab, screen share | `nncore_api.mm` (`TabSharingDelegateFor`), `nn_desktop_capture.mm` | `NNCoreHost.mm` `shareTabInstead`, `ChromeUIModule.swift` | `components/media/ShareBar.tsx`, `SharePicker.tsx` |
-| Restore, discard | `engine/chromium/…/nn_tab_restore.cc` (closed tabs) | `NNCoreWebView.mm` (`discard:`, `transferKey`) | `lib/tabLifecycle.ts`, `store/windows.ts` |
-| Permissions | `nn_permissions.mm` | `NNCoreHost.mm` (`permissionRequest`) | `components/site/permissions.ts`, `Prompts.tsx` |
-| Page script | `nn_page_channel.mm`, `renderer/nn_content_renderer_client.cc` | `page_script.js`, `NNCoreWebView.mm` | `onPageMessage` (`packages/nncore/src/WebView.tsx`) |
+| Windows, tab ownership | `ac_browser.h` (`WindowHost`, `ACWebContentsDelegate`, `TabBridge`), `ac_browser_window.mm` | `ArcadiaCoreChromeWindow.mm`, `ArcadiaCoreTabStrip.mm` | `lib/chromeTabs.ts`, `store/liveTabs.ts` |
+| Tab activation | `arcadiacore_api.mm` `-activateTab:`, `ac_browser.mm` `ActiveTabChanged` | `ArcadiaCoreWebView.mm` `-activate`, `ArcadiaCoreTabStrip.mm` | same |
+| Focus guard (test instances) | `ac_browser.mm` (`WindowHost` activation) | `ArcadiaCoreActivation.mm` (`activation.log`), `ArcadiaCoreChromeWindow.mm` | `packages/shell/ios/Windows.swift` |
+| Fullscreen | `ac_browser_window.mm` (`ExclusiveAccessContext`), `ac_browser.mm` `FullscreenChanged` | `ArcadiaCoreChromeWindow.mm` (acted out in test instances) | `components/ContentCard.tsx`, `components/layout/pageState.ts` |
+| Picture in Picture | `ac_picture_in_picture.mm`; Dia's window and controls in `engine/chromium/…/arcadia/pip/`; the auto-PiP hook in `engine/arcadiacore/apply.sh` | `ArcadiaCorePictureInPicture.mm` | `components/media/pip.ts` |
+| Password and autofill bubbles | `ac_password_prompt.mm`, `ac_browser_window.h` (`ACAutofillBubbleHandler`), `ac_autofill_trigger.mm` (dropdown) | `ArcadiaCoreChromeWindow.mm` (`window:passwordPrompt:forTab:`) → `ArcadiaCoreWebView` event | `components/site/Prompts.tsx`, `site/Autofill.tsx` |
+| Share tab, screen share | `arcadiacore_api.mm` (`TabSharingDelegateFor`), `ac_desktop_capture.mm` | `ArcadiaCoreHost.mm` `shareTabInstead`, `ChromeUIModule.swift` | `components/media/ShareBar.tsx`, `SharePicker.tsx` |
+| Restore, discard | `engine/chromium/…/ac_tab_restore.cc` (closed tabs) | `ArcadiaCoreWebView.mm` (`discard:`, `transferKey`) | `lib/tabLifecycle.ts`, `store/windows.ts` |
+| Permissions | `ac_permissions.mm` | `ArcadiaCoreHost.mm` (`permissionRequest`) | `components/site/permissions.ts`, `Prompts.tsx` |
+| Page script | `ac_page_channel.mm`, `renderer/ac_content_renderer_client.cc` | `page_script.js`, `ArcadiaCoreWebView.mm` | `onPageMessage` (`packages/arcadiacore/src/WebView.tsx`) |
 
-- **Call path:** JS (`packages/nncore/src`) → `*Module.swift` → `NNCoreHost` / `NNCoreWebView` → `public/NNCore.h` →
-  `nncore_api.mm` → `nn_*.mm`. Events come back through an `NNCore*Delegate` method, `-emit:payload:`, and the event
+- **Call path:** JS (`packages/arcadiacore/src`) → `*Module.swift` → `ArcadiaCoreHost` / `ArcadiaCoreWebView` → `public/ArcadiaCore.h` →
+  `arcadiacore_api.mm` → `ac_*.mm`. Events come back through an `ArcadiaCore*Delegate` method, `-emit:payload:`, and the event
   switch in `CefModule.swift`.
-- **Adding to `NNCore.h`:** implement it in `nncore_api.mm` (a new file goes in `BUILD.gn` `sources`); a new class
-  must be named `NNCore*` to be exported (the `nncore.exports` wildcard). The pod reads `NNCore.h` from the repo and
+- **Adding to `ArcadiaCore.h`:** implement it in `arcadiacore_api.mm` (a new file goes in `BUILD.gn` `sources`); a new class
+  must be named `ArcadiaCore*` to be exported (the `arcadiacore.exports` wildcard). The pod reads `ArcadiaCore.h` from the repo and
   the staged framework may be older, so the app guards new selectors with `respondsToSelector:`.
-- **Adding an engine call** (Chrome's services are `nn_*` C calls in `engine/chromium`, which the app finds with
-  dlsym through `NNCoreEngineBridge`): (1) write `NN_ENGINE_CALL(nn_<domain>_<verb>)` in
-  `engine/chromium/src/chrome/browser/netnyahoo/nn_<domain>.cc` (conventions in `public/nn_engine.h`; a new file goes
-  in that `BUILD.gn`; `nn_engine.exports` exports every `nn_*`); (2) `scripts/agent/engine-build`; (3) call it with
-  `NNCoreEngineBridge call:` (`callWithSecret:` for secrets), guarded by `exports:`; for JS's `engineCall`, add it to
-  `NNCoreEngineCalls.swift`.
-- **The page script** is `packages/nncore/ios/page_script.js`, a pod resource: `NNCoreHost.mm` hands it to the
+- **Adding an engine call** (Chrome's services are `ac_*` C calls in `engine/chromium`, which the app finds with
+  dlsym through `ArcadiaCoreEngineBridge`): (1) write `AC_ENGINE_CALL(ac_<domain>_<verb>)` in
+  `engine/chromium/src/chrome/browser/arcadia/ac_<domain>.cc` (conventions in `public/ac_engine.h`; a new file goes
+  in that `BUILD.gn`; `ac_engine.exports` exports every `ac_*`); (2) `scripts/agent/engine-build`; (3) call it with
+  `ArcadiaCoreEngineBridge call:` (`callWithSecret:` for secrets), guarded by `exports:`; for JS's `engineCall`, add it to
+  `ArcadiaCoreEngineCalls.swift`.
+- **The page script** is `packages/arcadiacore/ios/page_script.js`, a pod resource: `ArcadiaCoreHost.mm` hands it to the
   engine at launch and the renderer runs it in every http(s) and file frame. Changing it needs an app rebuild, not an
-  engine one. Its `post(kind, json)` crosses the page channel to `-[NNCoreWebView tab:didReceivePageMessage:…]`,
+  engine one. Its `post(kind, json)` crosses the page channel to `-[ArcadiaCoreWebView tab:didReceivePageMessage:…]`,
   which handles it or emits `pageMessage` (JS `onPageMessage`).
 - **CEF-era code** (removed in 6bdf66ce): `git show 6bdf66ce^:packages/cef/ios/<file>`. Comments citing
-  `packages/cef/…` mean: `NNBrowserView.mm`, `NNClient.mm` → `NNCoreWebView.mm`; `NNChromeWindow.mm`,
-  `NNPopupWindow.mm` → `NNCoreChromeWindow.mm`; `NNActivation`, `NNTabStrip`, `NNPictureInPicture`,
-  `NNContentBlocker`, `NNEngineBridge` → `NNCore<same>.mm`; `NNPasswords`, `NNAutofill`, `NNZoom` →
-  `NNCoreServices.mm`; `NNExtensions.mm` → `ExtensionsModule.swift`; `NNCef.mm` → `NNCoreHost.mm`,
-  `NNCoreStartup.mm`; `NNEngine.mm` → `nncore_api.mm`; `helper/page_script.js` → `packages/nncore/ios/`;
-  `packages/cef/src` → `packages/nncore/src`.
+  `packages/cef/…` mean: `ACBrowserView.mm`, `ACClient.mm` → `ArcadiaCoreWebView.mm`; `ACChromeWindow.mm`,
+  `ACPopupWindow.mm` → `ArcadiaCoreChromeWindow.mm`; `ACActivation`, `ACTabStrip`, `ACPictureInPicture`,
+  `ACContentBlocker`, `ACEngineBridge` → `ArcadiaCore<same>.mm`; `ACPasswords`, `ACAutofill`, `ACZoom` →
+  `ArcadiaCoreServices.mm`; `ACExtensions.mm` → `ExtensionsModule.swift`; `ACCef.mm` → `ArcadiaCoreHost.mm`,
+  `ArcadiaCoreStartup.mm`; `ACEngine.mm` → `arcadiacore_api.mm`; `helper/page_script.js` → `packages/arcadiacore/ios/`;
+  `packages/cef/src` → `packages/arcadiacore/src`.
 
 ## Rules
 - **Stay inside the files you own** (listed in your task). If you need a change elsewhere,
@@ -126,10 +126,10 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
   with `git commit --only -- <paths>` (or check `git diff --cached --stat` lists only your files).
 - **Never steal focus from the user.** They are working in other apps.
   - Launch the app only with `open -g` (never plain `open`, never `activate`) **and** with
-    `NETNYAHOO_BACKGROUND=1`: `open -g` alone does not stop LaunchServices from making the app
+    `ARCADIA_BACKGROUND=1`: `open -g` alone does not stop LaunchServices from making the app
     frontmost once its windows appear (this stole the user's keystrokes). With it the process is
-    BackgroundOnly and every activation path is guarded (`packages/nncore/ios/NNCoreActivation.mm`); each
-    attempt is logged to `$NETNYAHOO_DATA_DIR/activation.log`. `lsappinfo front` must never show
+    BackgroundOnly and every activation path is guarded (`packages/arcadiacore/ios/ArcadiaCoreActivation.mm`); each
+    attempt is logged to `$ARCADIA_DATA_DIR/activation.log`. `lsappinfo front` must never show
     your pid.
   - Any standalone test program or prototype window you create must be unable to take focus
     (NSApplicationActivationPolicyProhibited/accessory, non-activating panels).
@@ -144,15 +144,15 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
     new derived data compiles everything (a few minutes), and a copy of someone else's does too (its paths differ).
     A JS-only change needs no build: it says so and stops (`--force` builds). A new engine framework is staged
     under the chromium lock: `--release` your chromium take first, or it uses your take (`--as`).
-    `/tmp/nn-<name>.holder` says who holds a lock. Every `scripts/agent` script takes `--help`.
-  - Run: `scripts/agent/nn launch apps/browser/build-<you>/Build/Products/Debug/Netnyahoo.app --data <scratch>/data`
-    (hidden: `open -g -n`, `NETNYAHOO_BACKGROUND=1`, its own data dir and DevTools port; prints the pid and port).
-    `nn eval|page|quit|status` take that data dir (`--help`); scripts use `scripts/lib/instance.mjs` (`launch`,
+    `/tmp/ac-<name>.holder` says who holds a lock. Every `scripts/agent` script takes `--help`.
+  - Run: `scripts/agent/ac launch apps/browser/build-<you>/Build/Products/Debug/Arcadia.app --data <scratch>/data`
+    (hidden: `open -g -n`, `ARCADIA_BACKGROUND=1`, its own data dir and DevTools port; prints the pid and port).
+    `ac eval|page|quit|status` take that data dir (`--help`); scripts use `scripts/lib/instance.mjs` (`launch`,
     `attach`, `session`, `reporter`), whose pid is the DevTools port's listener, never a process-list diff
-    (`NETNYAHOO_DATA_DIR` isolates Chrome's and the app's data; a Debug build refuses to start without one).
-    Quit only your own instance (`nn quit`), never `pkill Netnyahoo`.
+    (`ARCADIA_DATA_DIR` isolates Chrome's and the app's data; a Debug build refuses to start without one).
+    Quit only your own instance (`ac quit`), never `pkill Arcadia`.
   - Open a URL in your instance: CDP `Target.createTarget`, or the dev harness
-    (`nn.actions.openUrls([url])`); `open -a` routes to whichever instance macOS picks.
+    (`ac.actions.openUrls([url])`); `open -a` routes to whichever instance macOS picks.
   - Metro (JS dev server) is already running on :8081 and serves this working tree to every
     instance. Don't start another one and don't kill it. Consequences:
     - Every instance runs everyone's current JS, including instances built before your native
@@ -174,9 +174,9 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
     the module provider).
 - **Shared files** several agents must touch — `packages/shell/ios/Menus.swift`,
   `apps/browser/src/lib/commands.ts`, `apps/browser/src/App.tsx`, `apps/browser/src/store/settings.ts`,
-  `apps/browser/src/lib/theme.ts`, `packages/nncore/ios/NNCoreInternal.h`, `packages/nncore/ios/NetnyahooNNCore.podspec`,
-  `packages/nncore/ios/NNCoreWebView.mm`, `packages/nncore/scripts/acceptance.mjs`, NNCore's `public/NNCore.h`,
-  `nncore_api.mm` and `nn_browser*.mm`, the `expo-module.config.json` files: re-read right before each edit, keep
+  `apps/browser/src/lib/theme.ts`, `packages/arcadiacore/ios/ArcadiaCoreInternal.h`, `packages/arcadiacore/ios/ArcadiaCore.podspec`,
+  `packages/arcadiacore/ios/ArcadiaCoreWebView.mm`, `packages/arcadiacore/scripts/acceptance.mjs`, ArcadiaCore's `public/ArcadiaCore.h`,
+  `arcadiacore_api.mm` and `ac_browser*.mm`, the `expo-module.config.json` files: re-read right before each edit, keep
   edits small and additive (add your case/item/field; don't restructure), and never undo someone else's lines.
   Native files there compile into everyone's build: check one pod with `scripts/agent/typecheck-pod <Pod>` before saving more.
 - **Scratch files** go in a subdirectory of the session scratchpad named for your task; clean up only that
@@ -184,38 +184,38 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
 - The store API is documented in `docs/store-api.md` (read it before touching app state).
 - Tests, test-instance variables and what background mode changes: `docs/testing.md`. Benchmarks and the perf gate:
   `docs/perf/README.md`.
-- The Bash tool runs zsh: quote globs (`--include='*.mm'`, `'/tmp/nn-*.holder'`) or use `git grep -n PAT -- '*.mm'`.
+- The Bash tool runs zsh: quote globs (`--include='*.mm'`, `'/tmp/ac-*.holder'`) or use `git grep -n PAT -- '*.mm'`.
 - **Verify before reporting done.** At minimum: `pnpm -w typecheck` (or `npx tsc -p <pkg>`)
   passes for what you touched, the app builds, and you exercised the feature in a running
   instance.
-  - Drive the app through the dev harness: `scripts/agent/nn eval <data dir> '<body>'` (a function body that
-    returns a value or promise; it fails at once if the instance died). `nn` = store, actions, runCommand, webviews, shell, …
-    (`lib/devHarness.ts`); Expo modules are on `globalThis.expo.modules`. `nn.runCommand` takes an object:
-    `nn.runCommand({ command: "importBrowserData", arg: null, windowId: null })`; the utility windows' ids are
+  - Drive the app through the dev harness: `scripts/agent/ac eval <data dir> '<body>'` (a function body that
+    returns a value or promise; it fails at once if the instance died). `ac` = store, actions, runCommand, webviews, shell, …
+    (`lib/devHarness.ts`); Expo modules are on `globalThis.expo.modules`. `ac.runCommand` takes an object:
+    `ac.runCommand({ command: "importBrowserData", arg: null, windowId: null })`; the utility windows' ids are
     `"settings"` and `"import"`.
-  - The NNCore acceptance run (`docs/nncore-parity.md` › "How to build and check it"): `node
-    packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir> --keep [check…]` once, then `--attach <scratch
+  - The ArcadiaCore acceptance run (`docs/arcadiacore-parity.md` › "How to build and check it"): `node
+    packages/arcadiacore/scripts/acceptance.mjs <Debug app> <scratch dir> --keep [check…]` once, then `--attach <scratch
     dir> [check…]` for each try (no boot: seconds). `--list` names every check and what it needs; each check prints
     one line, the details go to `<scratch dir>/data/acceptance.log`.
   - Camera and microphone: a hidden instance captures only from Chrome's fake devices (`docs/testing.md`). Run
     capture tests on a copy without the device entitlements (ad hoc, hardened runtime), so macOS refuses a real
     device without asking (acceptance.mjs's media checks make one): on 2026-10-01 a Debug build's microphone stream
     raised macOS's consent dialog on the owner's screen.
-  - Keyboard shortcuts: `nn.shell.devKeyEquivalent(windowId, { key, keyCode, modifiers, focus, asKey })` presses a
-    key as AppKit dispatches it (Chrome's window, then the menu bar), `nn.shell.devTypeKeys("key", text, ms)` types
+  - Keyboard shortcuts: `ac.shell.devKeyEquivalent(windowId, { key, keyCode, modifiers, focus, asKey })` presses a
+    key as AppKit dispatches it (Chrome's window, then the menu bar), `ac.shell.devTypeKeys("key", text, ms)` types
     into whatever window is key, and
     `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` checks every shortcut in every focus.
-  - Page content: `scripts/agent/nn page <data dir> <url part> '<expression>'`, or CDP on the instance's port
-    (`http://localhost:<port>/json`, `Runtime.evaluate`, `Page.captureScreenshot`). A `NETNYAHOO_BACKGROUND` instance's windows answer NO to
-    `-[NSWindow isOccluded]` (`NNCoreHost.mm`), so a covered window shows a tab at once instead of after Chrome's 1 s
-    occlusion delay; set `NETNYAHOO_ALLOW_OCCLUSION=1` to test occlusion itself.
+  - Page content: `scripts/agent/ac page <data dir> <url part> '<expression>'`, or CDP on the instance's port
+    (`http://localhost:<port>/json`, `Runtime.evaluate`, `Page.captureScreenshot`). A `ARCADIA_BACKGROUND` instance's windows answer NO to
+    `-[NSWindow isOccluded]` (`ArcadiaCoreHost.mm`), so a covered window shows a tab at once instead of after Chrome's 1 s
+    occlusion delay; set `ARCADIA_ALLOW_OCCLUSION=1` to test occlusion itself.
   - Native UI: `screencapture -l <windowID>` while nothing covers the window (find the id with CGWindowList by owner
     PID). Wrap every capture in `timeout 20`: with the screen locked they can hang instead of failing.
-    For the New Tab intro, launch with `NETNYAHOO_SHADERS_FORCE_KEY=1` (it only plays in a key window).
+    For the New Tab intro, launch with `ARCADIA_SHADERS_FORCE_KEY=1` (it only plays in a key window).
   - The user's screen may be locked: screen captures then fail or deliver no frames. Fall back to
-    `nn.shell.devSnapshotWindow(windowId, path)` (`false` means it failed; the window's layers at 2x; Metal views
+    `ac.shell.devSnapshotWindow(windowId, path)` (`false` means it failed; the window's layers at 2x; Metal views
     render blank; text opacity is applied twice, so a label at α reads 1 − (1 − α)², don't match colours on it),
-    `globalThis.expo.modules.NetnyahooAreaLight.debugSnapshot(dir)` (every Metal view, offscreen, with its frame),
+    `globalThis.expo.modules.ArcadiaAreaLight.debugSnapshot(dir)` (every Metal view, offscreen, with its frame),
     the accessibility tree and store state, and list "needs visual check" items in your report.
 - Code style: read the surrounding code first and match it — naming, comment density
   (short "why" comments, no noise), idioms. Keep files cohesive; new features go in new

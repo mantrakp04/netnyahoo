@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-  name: "NetnyahooImportCore",
+  name: "ArcadiaImportCore",
   platforms: [.macOS(.v14)],
-  products: [.library(name: "NetnyahooImportCore", targets: ["NetnyahooImportCore"])],
+  products: [.library(name: "ArcadiaImportCore", targets: ["ArcadiaImportCore"])],
   targets: [
-    .target(name: "NetnyahooImportCore", path: "ios/Core", linkerSettings: [.linkedLibrary("sqlite3")]),
+    .target(name: "ArcadiaImportCore", path: "ios/Core", linkerSettings: [.linkedLibrary("sqlite3")]),
     .testTarget(
-      name: "NetnyahooImportCoreTests",
-      dependencies: ["NetnyahooImportCore"],
+      name: "ArcadiaImportCoreTests",
+      dependencies: ["ArcadiaImportCore"],
       path: "tests"
     ),
   ]

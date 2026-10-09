@@ -1,5 +1,5 @@
-import { applyBookmarkOps, bookmarkTree, onBookmarksChanged, watchBookmarks, type BookmarkOp, type EngineBookmark } from "@netnyahoo/nncore";
-import { readDocument, removeDocument, writeDocument } from "@netnyahoo/shell";
+import { applyBookmarkOps, bookmarkTree, onBookmarksChanged, watchBookmarks, type BookmarkOp, type EngineBookmark } from "@arcadia/arcadiacore";
+import { readDocument, removeDocument, writeDocument } from "@arcadia/shell";
 import { bookmarkUuidFor, isBookmarkUuid, rootIdsFor } from "../store/bookmarks";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile, isIncognitoProfile } from "../store/model";
@@ -152,7 +152,7 @@ export function bookmarkOps(from: Flat, to: Flat, engine: string): BookmarkOp[] 
 const keepsUrl = (url: string) => /^[a-z][a-z0-9+.-]*:./i.test(url);
 
 /**
- * `ops` applied to a tree as Chrome applies them (nn_bookmarks_apply): in order, stopping at the first that can't
+ * `ops` applied to a tree as Chrome applies them (ac_bookmarks_apply): in order, stopping at the first that can't
  * apply. For merging the app's edits into a tree read from Chrome meanwhile.
  */
 export function applyOps(tree: Flat, ops: BookmarkOp[], engine: string): Flat {

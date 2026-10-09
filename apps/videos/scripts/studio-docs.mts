@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Aspect, CUTS, type CutName, FRAME } from "../src/lib/nn-launch/plan.ts";
+import { type Aspect, CUTS, type CutName, FRAME } from "../src/lib/ac-launch/plan.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const VIDEOS: Record<string, { cut: CutName; aspect: Aspect }> = {

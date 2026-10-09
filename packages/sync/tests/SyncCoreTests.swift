@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import NetnyahooSyncCore
+@testable import ArcadiaSyncCore
 
 final class RecoveryPhraseTests: XCTestCase {
   func testReferenceVectors() throws {
@@ -49,7 +49,7 @@ final class SyncVaultTests: XCTestCase {
   var vault: SyncVault!
 
   override func setUpWithError() throws {
-    folder = FileManager.default.temporaryDirectory.appendingPathComponent("nn-sync-tests-\(UUID().uuidString)", isDirectory: true)
+    folder = FileManager.default.temporaryDirectory.appendingPathComponent("ac-sync-tests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     vault = SyncVault(folder: folder, keys: SyncKeys(entropy: entropy))
   }

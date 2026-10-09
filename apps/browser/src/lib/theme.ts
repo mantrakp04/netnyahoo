@@ -1,4 +1,4 @@
-import type { AreaLightPalette } from "@netnyahoo/shaders";
+import type { AreaLightPalette } from "@arcadia/shaders";
 import { createContext, createElement, useContext, type ReactNode } from "react";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { PageProfileContext, WindowContext } from "../store/hooks";

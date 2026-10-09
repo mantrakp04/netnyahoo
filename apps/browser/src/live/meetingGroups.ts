@@ -1,4 +1,4 @@
-import { confirm } from "@netnyahoo/shell";
+import { confirm } from "@arcadia/shell";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { changedIds } from "../store/changes";
 import { activeTabId } from "../store/model";
@@ -78,7 +78,7 @@ async function offerAlerts(windowId: string) {
   updateCalendarSettings({ prompted: true });
   const { confirmed } = await confirm({
     title: "Would you like to see meeting alerts for this calendar?",
-    message: "Netnyahoo can alert you when a new meeting is about to begin. You can hide these alerts or manage how close to a meeting start they show up.",
+    message: "Arcadia can alert you when a new meeting is about to begin. You can hide these alerts or manage how close to a meeting start they show up.",
     confirmTitle: "Show Alerts",
     cancelTitle: "Don't Show These Alerts",
     windowId,

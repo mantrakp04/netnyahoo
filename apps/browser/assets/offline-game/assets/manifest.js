@@ -1,4 +1,4 @@
-window.YAHU_MANIFEST = {
+window.MASCOT_MANIFEST = {
  "sprites": [
   {
    "id": "crowd-sheet1-0",
@@ -2074,8 +2074,8 @@ window.YAHU_MANIFEST = {
    "trait": "tie"
   },
   {
-   "id": "yahu-yahu-0",
-   "kind": "yahu",
+   "id": "mascot-mascot-0",
+   "kind": "mascot",
    "w": 395,
    "h": 400,
    "mask": [
@@ -2114,8 +2114,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-1",
-   "kind": "yahu",
+   "id": "mascot-mascot-1",
+   "kind": "mascot",
    "w": 393,
    "h": 400,
    "mask": [
@@ -2155,8 +2155,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-2",
-   "kind": "yahu",
+   "id": "mascot-mascot-2",
+   "kind": "mascot",
    "w": 386,
    "h": 400,
    "mask": [
@@ -2196,8 +2196,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-3",
-   "kind": "yahu",
+   "id": "mascot-mascot-3",
+   "kind": "mascot",
    "w": 366,
    "h": 400,
    "mask": [
@@ -2239,8 +2239,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-4",
-   "kind": "yahu",
+   "id": "mascot-mascot-4",
+   "kind": "mascot",
    "w": 410,
    "h": 400,
    "mask": [
@@ -2278,8 +2278,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-5",
-   "kind": "yahu",
+   "id": "mascot-mascot-5",
+   "kind": "mascot",
    "w": 403,
    "h": 400,
    "mask": [
@@ -2318,8 +2318,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-6",
-   "kind": "yahu",
+   "id": "mascot-mascot-6",
+   "kind": "mascot",
    "w": 358,
    "h": 400,
    "mask": [
@@ -2362,8 +2362,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-7",
-   "kind": "yahu",
+   "id": "mascot-mascot-7",
+   "kind": "mascot",
    "w": 386,
    "h": 400,
    "mask": [
@@ -2403,8 +2403,8 @@ window.YAHU_MANIFEST = {
    ]
   },
   {
-   "id": "yahu-yahu-8",
-   "kind": "yahu",
+   "id": "mascot-mascot-8",
+   "kind": "mascot",
    "w": 371,
    "h": 400,
    "mask": [

@@ -7,14 +7,14 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const [ratio = "0.16", texture = "2048", quality = "76"] = process.argv.slice(2);
-const source = process.env.NN_BRAND_OUTPUT ?? `${homedir()}/Documents/netnyahoo/output`;
-const out = fileURLToPath(new URL("../public/models/big-yahu.glb", import.meta.url));
+const source = process.env.AC_BRAND_OUTPUT ?? `${homedir()}/Documents/arcadia/output`;
+const out = fileURLToPath(new URL("../public/models/big-mascot.glb", import.meta.url));
 
 await MeshoptEncoder.ready;
 await MeshoptSimplifier.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.encoder": MeshoptEncoder });
-const doc = await io.read(`${source}/mascot-griddy/netnyahoo-griddy.glb`);
-const dance = await io.read(`${source}/mascot-dance/netnyahoo-default-dance.glb`);
+const doc = await io.read(`${source}/mascot-griddy/arcadia-griddy.glb`);
+const dance = await io.read(`${source}/mascot-dance/arcadia-default-dance.glb`);
 
 const root = doc.getRoot();
 const nodes = new Map(root.listNodes().map((n) => [n.getName(), n]));

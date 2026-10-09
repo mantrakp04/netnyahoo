@@ -3,7 +3,7 @@
 // page reloads with its ads), then on again (it reloads clean and the "blocked" count climbs as it loads). The switch
 // is flipped through its own onChange; its knob animation runs 12x slower for the snapshots.
 let tabId;
-const open = () => nn.pageState.setState((p) => ({ popover: Object.assign({}, p.popover, { [tabId]: "siteControls" }) }));
+const open = () => ac.pageState.setState((p) => ({ popover: Object.assign({}, p.popover, { [tabId]: "siteControls" }) }));
 // The popover's first switch is Block Ads & Trackers (Show Full URL comes last); fibers() walks siblings in reverse.
 const toggle = () => roots().flatMap((r) => fibers(r.current, (f) => f.type && f.type.name === "SiteControls")).flatMap((sc) => fibers(sc.child, (f) => f.memoizedProps && typeof f.memoizedProps.onChange === "function" && typeof f.memoizedProps.value === "boolean")).pop();
 then(() => { unsplit(); st().updateSettings({ showFullUrl: false }); return goProfile("default"); });
@@ -18,5 +18,5 @@ then(() => {
   return snapLive("on", 9000).then(() => { A.timing = timing; A.spring = spring; });
 });
 then(() => sleep(2000).then(() => snapLive("onRest", 400)));
-then(() => { nn.pageState.setState((p) => ({ popover: Object.assign({}, p.popover, { [tabId]: null }) })); st().closeTab(tabId); return sleep(500); });
+then(() => { ac.pageState.setState((p) => ({ popover: Object.assign({}, p.popover, { [tabId]: null }) })); st().closeTab(tabId); return sleep(500); });
 return finish({ tabId });

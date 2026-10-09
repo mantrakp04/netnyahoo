@@ -1,4 +1,4 @@
-import type { Download } from "@netnyahoo/nncore";
+import type { Download } from "@arcadia/arcadiacore";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { engineProfile, isIncognitoProfile, privateSession } from "./model";

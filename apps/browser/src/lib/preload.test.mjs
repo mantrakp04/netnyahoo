@@ -1,4 +1,4 @@
-// The New Tab page's prewarm (lib/preload.ts): on only with an engine that has its fixes (it answers nn_omnibox_opened),
+// The New Tab page's prewarm (lib/preload.ts): on only with an engine that has its fixes (it answers ac_omnibox_opened),
 // and only while its kill switch and the bench's own setting say so.
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
@@ -9,7 +9,7 @@ const ks = await import("./killSwitches.ts");
 
 let calls = [];
 let answer = () => Promise.resolve({});
-globalThis.nnTestEngineCall = (name, profile, args) => {
+globalThis.acTestEngineCall = (name, profile, args) => {
   calls.push({ name, profile, ...args });
   return answer(name);
 };
@@ -29,7 +29,7 @@ test("the engine is asked once, a moment after launch, with a call that changes 
   mock.timers.tick(1500);
   await settle();
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], { name: "nn_omnibox_opened", profile: "" });
+  assert.deepEqual(calls[0], { name: "ac_omnibox_opened", profile: "" });
   assert.equal(preload.newTabPrewarmOn(), false);
   answer = () => Promise.resolve({ prewarm: 2 });
   mock.timers.tick(1500);

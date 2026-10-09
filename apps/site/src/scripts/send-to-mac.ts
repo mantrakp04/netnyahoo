@@ -7,7 +7,7 @@
 import { track } from "./track";
 
 const LINK = "https://netnyahoo.com/?ref=share";
-const DATA: ShareData = { url: LINK, title: "Netnyahoo", text: "Netnyahoo: real Chromium for the Mac. Open this on your Mac." };
+const DATA: ShareData = { url: LINK, title: "Arcadia", text: "Arcadia: real Chromium for the Mac. Open this on your Mac." };
 
 const root = document.documentElement;
 const inapp = root.dataset.inapp ?? null;

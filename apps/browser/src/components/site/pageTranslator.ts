@@ -2,7 +2,7 @@
 export type Passage = [number, [number, string][]];
 
 const INSTALL = String.raw`
-const KEY = Symbol.for("netnyahoo.translator");
+const KEY = Symbol.for("arcadia.translator");
 if (!window[KEY]) {
   const SKIP = "script,style,noscript,template,code,pre,kbd,samp,var,textarea,input,select,option,svg,math,iframe,[contenteditable]:not([contenteditable=false]),[translate=no],.notranslate";
   // What makes a passage: the text of one of these, minus the ones nested in it.
@@ -176,5 +176,5 @@ if (!window[KEY]) {
 `;
 
 export function translatorCall(op: "sample" | "start" | "next" | "apply" | "revert", ...args: unknown[]): string {
-  return `${INSTALL}\npost("result", JSON.stringify(window[Symbol.for("netnyahoo.translator")].${op}(...${JSON.stringify(args)})));`;
+  return `${INSTALL}\npost("result", JSON.stringify(window[Symbol.for("arcadia.translator")].${op}(...${JSON.stringify(args)})));`;
 }

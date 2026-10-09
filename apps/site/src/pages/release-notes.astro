@@ -38,18 +38,18 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <Base
-  title="Release notes — Netnyahoo"
-  description="Every Netnyahoo release on the record: what’s new, what’s fixed, what got smaller."
+  title="Release notes — Arcadia"
+  description="Every Arcadia release on the record: what’s new, what’s fixed, what got smaller."
 >
   <Header home={`${base}/`} />
   <main class="gazette">
     <header class="wrap nameplate">
       <p class="label ears">
-        <span>Netnyahoo release notes</span>
+        <span>Arcadia release notes</span>
         <span>No. {latest.no}<span class="optional"> · {longDate.format(latest.date)}</span></span>
       </p>
       <h1 class="poster title">
-        <span class="visually-hidden">Netnyahoo release notes: </span>
+        <span class="visually-hidden">Arcadia release notes: </span>
         <span class="word"><span>Official</span></span>{" "}
         <span class="word"><span>Gazette</span></span>
       </h1>
@@ -92,7 +92,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
                 </p>
                 <h2 class="headline" id={`title-${r.version}`}>
                   <a href={`#${r.version}`}>
-                    <span class="visually-hidden">Netnyahoo {r.version}: </span>
+                    <span class="visually-hidden">Arcadia {r.version}: </span>
                     {r.headline}
                   </a>
                 </h2>

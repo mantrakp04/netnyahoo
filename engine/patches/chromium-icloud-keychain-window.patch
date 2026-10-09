@@ -15,7 +15,7 @@ diff --git a/chrome/browser/webauthn/chrome_authenticator_request_delegate.cc b/
      }
 +  } else if (const gfx::NativeWindow window =
 +                 platform_util::GetTopLevel(web_contents->GetNativeView())) {
-+    // Netnyahoo: the tab's view is hosted in the embedder's own NSWindow, which
++    // Arcadia: the tab's view is hosted in the embedder's own NSWindow, which
 +    // isn't a views::Widget. iCloud Keychain's sheet attaches to that window.
 +    discovery_factory->set_nswindow(window);
    }

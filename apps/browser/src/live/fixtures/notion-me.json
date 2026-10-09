@@ -1,7 +1,7 @@
 {
  "object": "user",
  "id": "bot1",
- "name": "Netnyahoo",
+ "name": "Arcadia",
  "type": "bot",
  "bot": {
   "workspace_name": "Acme"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds netnyahoo.com and deploys it to Hexclave (hexclave.deploy.ts, project "netnyahoo").
+# Builds netnyahoo.com and deploys it to Hexclave (hexclave.deploy.ts, project "arcadia").
 # `hexclave deploy` uploads the deploy file's directory, so the built site is staged here as dist/
 # (gitignored) next to the Dockerfile and nginx.conf that serve it.
 # usage: infra/site/deploy.sh   (or `pnpm -C apps/site run deploy`)

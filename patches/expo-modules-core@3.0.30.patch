@@ -16,11 +16,11 @@ index 2ed1c00f47406e109750cc27ace7e0d88e42c00e..d8a48716793d0b252cd667982f8a2cb4
  
  #if !__has_include(<ReactCommon/RCTRuntimeExecutor.h>)
 -  _appContext._runtime = [EXJavaScriptRuntimeManager runtimeFromBridge:bridge];
-+  // [Netnyahoo: React Native 0.81 has no RCTRuntimeExecutor.h, so the legacy bridge lands here, and not always on the
++  // [Arcadia: React Native 0.81 has no RCTRuntimeExecutor.h, so the legacy bridge lands here, and not always on the
 +  // JS thread: EXNativeModulesProxy is set up on the main thread and pulls this module in through moduleForClass:.
 +  // Preparing the runtime there raced the JS thread's initializeRuntime (Hermes' reentrancy trap in Debug, unguarded
 +  // concurrent use of the runtime in Release). The runtime is only touched on the JS thread: there, ahead of the
-+  // bundle as before when the runtime exists by then, else by installModules once JS asks. Netnyahoo]
++  // bundle as before when the runtime exists by then, else by installModules once JS asks. Arcadia]
 +  __weak ExpoBridgeModule *weakSelf = self;
 +  __weak RCTBridge *weakBridge = bridge;
 +  [bridge dispatchBlock:^{
@@ -33,8 +33,8 @@ index 2ed1c00f47406e109750cc27ace7e0d88e42c00e..d8a48716793d0b252cd667982f8a2cb4
  #endif // React Native <0.74
  }
  
-+// [Netnyahoo: on the JS thread only. A runtime that isn't there yet is left unset (setting nil releases the modules'
-+// JS objects). Netnyahoo]
++// [Arcadia: on the JS thread only. A runtime that isn't there yet is left unset (setting nil releases the modules'
++// JS objects). Arcadia]
 +- (void)installRuntimeIfNeeded
 +{
 +  if (_bridge && !_appContext._runtime) {

@@ -11,7 +11,7 @@ final class SQLiteSnapshot {
     guard fm.fileExists(atPath: source.path) else {
       throw ImportError.notFound("\(source.lastPathComponent) not found")
     }
-    tempDir = fm.temporaryDirectory.appendingPathComponent("netnyahoo-import-\(UUID().uuidString)", isDirectory: true)
+    tempDir = fm.temporaryDirectory.appendingPathComponent("arcadia-import-\(UUID().uuidString)", isDirectory: true)
     try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
     let copy = tempDir.appendingPathComponent("db.sqlite")
     do {

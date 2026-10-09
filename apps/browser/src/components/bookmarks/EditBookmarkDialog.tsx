@@ -1,5 +1,5 @@
-import { resolveInput } from "@netnyahoo/core";
-import { Surface } from "@netnyahoo/shell";
+import { resolveInput } from "@arcadia/core";
+import { Surface } from "@arcadia/shell";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { hex, useTheme } from "../../lib/theme";

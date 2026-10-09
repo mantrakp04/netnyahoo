@@ -1,4 +1,4 @@
-import type { StripGroup, StripState, StripTab } from "@netnyahoo/nncore";
+import type { StripGroup, StripState, StripTab } from "@arcadia/arcadiacore";
 import type { BrowserState } from "./browser";
 import { engineProfile, pinnedFirst } from "./model";
 import { forgetOpeners, switchKeepsOpeners } from "./openers";

@@ -1,4 +1,4 @@
-import { FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
+import { FadeLabel, Surface, Symbol } from "@arcadia/shell";
 import { useShallow } from "zustand/react/shallow";
 import { useRef, type ComponentProps } from "react";
 import { Image, Pressable, View } from "react-native";

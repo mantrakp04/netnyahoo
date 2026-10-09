@@ -5,7 +5,7 @@
 //   node scripts/replay.mjs <session-id> [--open]
 //
 // Fetches the session's chunks (replays/<day>/<session>/<seq>.json[.gz], docs/growth.md "Telemetry")
-// with the read-only token in ~/.config/netnyahoo/telemetry.env, writes a self-contained page with
+// with the read-only token in ~/.config/arcadia/telemetry.env, writes a self-contained page with
 // rrweb-player to the temp folder and prints its path (--open opens it in the default browser).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -74,7 +74,7 @@ chunks.sort((a, b) => a.seq - b.seq);
 const events = chunks.flatMap((c) => c.events).sort((a, b) => a.timestamp - b.timestamp);
 
 // The player, cached once per version.
-const cache = join(homedir(), ".cache/netnyahoo/rrweb-player", PLAYER_VERSION);
+const cache = join(homedir(), ".cache/arcadia/rrweb-player", PLAYER_VERSION);
 mkdirSync(cache, { recursive: true });
 const asset = async (path) => {
   const file = join(cache, path.replaceAll("/", "_"));
@@ -98,7 +98,7 @@ const width = Math.min(window.innerWidth - 32, 1280);
 const Player = rrwebPlayer.Player ?? rrwebPlayer.default ?? rrwebPlayer;
 new Player({ target: document.getElementById("player"), props: { events, width, height: Math.round(width * 0.6), autoPlay: false } });
 </script></body></html>`;
-const out = join(tmpdir(), `netnyahoo-replay-${session}.html`);
+const out = join(tmpdir(), `arcadia-replay-${session}.html`);
 writeFileSync(out, html);
 console.log(out);
 if (args.includes("--open")) execFileSync("open", [out]);

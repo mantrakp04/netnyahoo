@@ -1,6 +1,6 @@
-# Music brief: Netnyahoo launch film
+# Music brief: Arcadia launch film
 
-A one-page brief for a composer replacing or re-producing the score. The edit is locked to the beat grid below; `src/lib/nn-launch/cuts.json` is the source of truth for every beat (this page was generated from it).
+A one-page brief for a composer replacing or re-producing the score. The edit is locked to the beat grid below; `src/lib/ac-launch/cuts.json` is the source of truth for every beat (this page was generated from it).
 
 ## Tempo, key, feel
 

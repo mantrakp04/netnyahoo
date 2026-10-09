@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import NetnyahooImportCore
+@testable import ArcadiaImportCore
 
 // Cookie values are secrets: they're read into SecretBytes, never into Strings, and only leave as wire JSON.
 final class CookieTests: XCTestCase {

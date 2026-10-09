@@ -9,7 +9,7 @@ import { sendFeedback } from "./appIntegration";
 
 export const CHECK_IN_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
-export const CHECK_IN_COPY = { title: "How are you liking Netnyahoo?", action: "Leave us feedback" } as const;
+export const CHECK_IN_COPY = { title: "How are you liking Arcadia?", action: "Leave us feedback" } as const;
 
 type CheckIn = { trialStartedAt: number | null; doneAt: number | null };
 
@@ -38,4 +38,4 @@ export function useDefaultBrowserCheckIn(windowId: string) {
   };
 }
 
-if (__DEV__) (globalThis as { nnCheckIn?: unknown }).nnCheckIn = { store: useCheckIn, due: () => checkInDue(useCheckIn.getState()) };
+if (__DEV__) (globalThis as { acCheckIn?: unknown }).acCheckIn = { store: useCheckIn, due: () => checkInDue(useCheckIn.getState()) };

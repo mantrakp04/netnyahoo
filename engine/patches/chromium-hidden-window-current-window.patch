@@ -4,9 +4,9 @@
  
  static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
  
-+// Netnyahoo: NNCore (engine/nncore); defined in
++// Arcadia: ArcadiaCore (engine/arcadiacore); defined in
 +// browser_extension_window_controller.cc.
-+extern bool (*g_netnyahoo_hidden_from_extensions)(
++extern bool (*g_arcadia_hidden_from_extensions)(
 +    const BrowserWindowInterface* browser);
 +
  namespace extensions {
@@ -18,11 +18,11 @@
        if (!window_controller->GetBrowserWindowInterface()
 -               ->IsDeleteScheduled()) {
 +               ->IsDeleteScheduled() &&
-+          // Netnyahoo: extension pages NNCore shows outside any tab strip
++          // Arcadia: extension pages ArcadiaCore shows outside any tab strip
 +          // (its popups, side panels) sit in hidden windows: their "current
 +          // window" is the last active one, as for Chrome's popups.
-+          !(g_netnyahoo_hidden_from_extensions &&
-+            g_netnyahoo_hidden_from_extensions(
++          !(g_arcadia_hidden_from_extensions &&
++            g_arcadia_hidden_from_extensions(
 +                window_controller->GetBrowserWindowInterface()))) {
          return window_controller;
        }
@@ -31,9 +31,9 @@
    WindowController* window_controller = nullptr;
    ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
        [&](BrowserWindowInterface* browser) {
-+        // Netnyahoo: NNCore's hidden windows.
-+        if (g_netnyahoo_hidden_from_extensions &&
-+            g_netnyahoo_hidden_from_extensions(browser)) {
++        // Arcadia: ArcadiaCore's hidden windows.
++        if (g_arcadia_hidden_from_extensions &&
++            g_arcadia_hidden_from_extensions(browser)) {
 +          return true;  // Continue iterating.
 +        }
          if (browser->GetProfile() == profile ||

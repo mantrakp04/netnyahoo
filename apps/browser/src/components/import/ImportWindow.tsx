@@ -1,5 +1,5 @@
-import type { BrowserProfile, BrowserSource, DiaAutomationStatus, DiaTabsResult, ImportedExtension, ImportKind, ImportResult, SpaceSummary } from "@netnyahoo/import";
-import { closeWindow, confirm, Symbol, VisualEffect, WindowDragRegion } from "@netnyahoo/shell";
+import type { BrowserProfile, BrowserSource, DiaAutomationStatus, DiaTabsResult, ImportedExtension, ImportKind, ImportResult, SpaceSummary } from "@arcadia/import";
+import { closeWindow, confirm, Symbol, VisualEffect, WindowDragRegion } from "@arcadia/shell";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Animated, AppState, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
@@ -13,7 +13,7 @@ import { IMPORT_WINDOW_ID } from "../settings/windows";
 import { applyResult, applySafari, emptyCounts, importArcSpace, importBookmarks, importDiaProfile, openInWebStore, profileColorFor, type ImportCounts } from "./apply";
 import { importModule } from "./module";
 
-const APP = "Netnyahoo";
+const APP = "Arcadia";
 
 type Step = "loading" | "choose" | "profiles" | "safari" | "access" | "unlock" | "dia" | "progress" | "done";
 type Status = "pending" | "active" | "done" | "failed";
@@ -384,7 +384,7 @@ export function ImportWindow() {
       setStep("safari");
       setError(
         (e as { code?: string }).code === "locked"
-          ? "Netnyahoo still doesn't have Full Disk Access. Grant it above, or use the export file below."
+          ? "Arcadia still doesn't have Full Disk Access. Grant it above, or use the export file below."
           : "Couldn't read Safari's data. Try the export file below.",
       );
       setFullDiskAccess(api.safariHasFullDiskAccess());
@@ -412,8 +412,8 @@ export function ImportWindow() {
 
   useEffect(() => {
     if (!__DEV__) return;
-    const g = globalThis as { nnImport?: object };
-    g.nnImport = {
+    const g = globalThis as { acImport?: object };
+    g.acImport = {
       select: (id: string) => {
         const b = browsers.find((x) => x.id === id);
         if (b) choose(b);
@@ -435,7 +435,7 @@ export function ImportWindow() {
       takeDiaResult,
       setSourceProfiles,
     };
-    return () => void delete g.nnImport;
+    return () => void delete g.acImport;
   });
 
   let body: ReactNode = null;
@@ -610,7 +610,7 @@ export function ImportWindow() {
   } else if (step === "safari") {
     body = fullDiskAccess ? (
       <>
-        <Title title="Import from Safari" subtitle={`Netnyahoo can read Safari directly. Bring your bookmarks, history, Reading List, open tabs and sign-ins into ${APP}.`} />
+        <Title title="Import from Safari" subtitle={`Arcadia can read Safari directly. Bring your bookmarks, history, Reading List, open tabs and sign-ins into ${APP}.`} />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 18 }}>
           {source?.iconPath ? <Image source={{ uri: `file://${source.iconPath}` }} style={{ width: 40, height: 40 }} /> : null}
           <View style={{ flex: 1 }}>
@@ -630,7 +630,7 @@ export function ImportWindow() {
       </>
     ) : (
       <>
-        <Title title="Give Netnyahoo access to Safari" subtitle={`To import Safari's bookmarks, history and tabs directly, ${APP} needs Full Disk Access.`} />
+        <Title title="Give Arcadia access to Safari" subtitle={`To import Safari's bookmarks, history and tabs directly, ${APP} needs Full Disk Access.`} />
         <FullDiskAccessSteps onOpen={() => void api?.openFullDiskAccessSettings()} onRecheck={() => void recheckAccess()} />
         <Text style={{ fontSize: 12, fontWeight: "600", color: theme.textSecondary, marginBottom: 8 }}>
           Or import everything (including passwords) from an export file:

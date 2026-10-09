@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { FadeLabel } from "@netnyahoo/shell";
+import { FadeLabel } from "@arcadia/shell";
 import { Pressable, StyleSheet, View } from "react-native";
 import { layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";

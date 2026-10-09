@@ -1,14 +1,14 @@
 import AppKit
 import ExpoModulesCore
-import NetnyahooImport
+import ArcadiaImport
 import Security
 
 public class SyncModule: Module {
   private let state = KeyState()
-  private static let work = DispatchQueue(label: "netnyahoo.sync", qos: .utility)
+  private static let work = DispatchQueue(label: "arcadia.sync", qos: .utility)
 
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooSync")
+    Name("ArcadiaSync")
 
     AsyncFunction("folderInfo") { (path: String?) -> [String: Any] in
       let url = path.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? Self.defaultFolder
@@ -226,7 +226,7 @@ public class SyncModule: Module {
   }
 
   private func temporaryKit() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Netnyahoo Recovery Kit", isDirectory: true)
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Arcadia Recovery Kit", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let url = dir.appendingPathComponent(RecoveryKit.pdfName)
     try Self.kit(try words(), text: false).write(to: url, options: [.atomic])
@@ -255,13 +255,13 @@ public class SyncModule: Module {
   // MARK: Environment
 
   private static let environment = ProcessInfo.processInfo.environment
-  private static let dataDirectory = environment["NETNYAHOO_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-  private static let testFolder = environment["NETNYAHOO_SYNC_DEFAULT_FOLDER"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+  private static let dataDirectory = environment["ARCADIA_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+  private static let testFolder = environment["ARCADIA_SYNC_DEFAULT_FOLDER"].map { URL(fileURLWithPath: $0, isDirectory: true) }
 
   static var defaultFolder: URL {
     if let testFolder { return testFolder }
-    if let dataDirectory { return dataDirectory.appendingPathComponent("Netnyahoo Sync", isDirectory: true) }
-    return SyncFolder.iCloudDrive.appendingPathComponent("Netnyahoo Sync", isDirectory: true)
+    if let dataDirectory { return dataDirectory.appendingPathComponent("Arcadia Sync", isDirectory: true) }
+    return SyncFolder.iCloudDrive.appendingPathComponent("Arcadia Sync", isDirectory: true)
   }
 
   static let keyStore: SyncKeyStore = dataDirectory.map { FileKeyStore(directory: $0) } ?? KeychainKeyStore()
@@ -269,14 +269,14 @@ public class SyncModule: Module {
   static func profileDirectory(_ engineProfile: String) -> URL {
     let root = dataDirectory?.appendingPathComponent("Chromium", isDirectory: true)
       ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.netnyahoo.browser", isDirectory: true)
+      .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.arcadia.browser", isDirectory: true)
       .appendingPathComponent("Chromium", isDirectory: true)
     return root.appendingPathComponent(engineProfile.isEmpty ? "Default" : "Profile \(engineProfile)", isDirectory: true)
   }
 
   static func safeStorageSecret() throws -> Data {
     if dataDirectory != nil || !isTeamSigned { return Data("mock_password".utf8) }
-    return try SafeStorageKeychain.secret(service: "Netnyahoo Safe Storage", account: "Netnyahoo")
+    return try SafeStorageKeychain.secret(service: "Arcadia Safe Storage", account: "Arcadia")
   }
 
   static let isTeamSigned: Bool = {

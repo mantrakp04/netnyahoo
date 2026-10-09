@@ -9,7 +9,7 @@ import {
   type EngineInput,
   type ExtensionSearchEngine,
   type SearchEngine,
-} from "@netnyahoo/core";
+} from "@arcadia/core";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 
@@ -56,8 +56,8 @@ export type Settings = {
 
   shortcuts: Record<string, string[]>;
 
-  openLinksInSmallYahu: boolean;
-  smallYahuSize: [number, number];
+  openLinksInLittleArcadia: boolean;
+  littleArcadiaSize: [number, number];
 };
 
 export const DEFAULT_PROFILE_ID = "default";
@@ -96,8 +96,8 @@ export const DEFAULT_SETTINGS: Settings = {
   addressBar: "toolbar",
   defaultProfileId: DEFAULT_PROFILE_ID,
   shortcuts: {},
-  openLinksInSmallYahu: true,
-  smallYahuSize: [900, 640],
+  openLinksInLittleArcadia: true,
+  littleArcadiaSize: [900, 640],
 };
 
 const NO_CUSTOM_ENGINES: CustomSearchEngine[] = [];

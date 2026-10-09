@@ -1,0 +1,145 @@
+# Copyright 2026 Arcadia. Apache-2.0.
+#
+# //chrome/browser/arcadia: Arcadia's own code in the Chromium tree. Plain
+# Chromium code over Chrome's services, exported as plain C (public/ac_engine.h)
+# and linked into ArcadiaCore's //chrome:chrome_dll (chromium-arcadia-layer.patch;
+# engine/chromium/apply.sh copies it in). The repo copy is engine/chromium/src;
+# never edit the tree's copy.
+#
+# One source_set: add your ac_<domain>.{h,cc} to `sources` (sorted) and the
+# deps it needs. Nothing in //chrome depends on this target.
+
+assert(is_mac)
+
+source_set("arcadia") {
+  sources = [
+    "ac_autofill.cc",
+    "ac_autofill.h",
+    "ac_bookmarks.cc",
+    "ac_browsing_data.cc",
+    "ac_browsing_data.h",
+    "ac_cookies.cc",
+    "ac_cookies.h",
+    "ac_downloads.cc",
+    "ac_downloads.h",
+    "ac_downloads_mac.mm",
+    "ac_engine.cc",
+    "ac_engine.h",
+    "ac_extensions.cc",
+    "ac_extensions.h",
+    "ac_external_apps.h",
+    "ac_external_apps.mm",
+    "ac_favicons.cc",
+    "ac_history.cc",
+    "ac_omnibox.cc",
+    "ac_omnibox.h",
+    "ac_passwords.cc",
+    "ac_passwords.h",
+    "ac_prefs.cc",
+    "ac_prefs.h",
+    "ac_process.cc",
+    "ac_process.h",
+    "ac_reauth.cc",
+    "ac_reauth.h",
+    "ac_search_engines.cc",
+    "ac_search_engines.h",
+    "ac_sensitive_args.cc",
+    "ac_sensitive_args.h",
+    "ac_site_settings.cc",
+    "ac_site_settings.h",
+    "ac_tab_restore.cc",
+    "ac_tabs.cc",
+    "ac_tabs.h",
+    "ac_zoom.cc",
+    "ac_zoom.h",
+    "pip/ac_pip_controls.cc",
+    "pip/ac_pip_controls.h",
+    "pip/ac_pip_mac.h",
+    "pip/ac_pip_mac.mm",
+    "pip/ac_pip_window.cc",
+    "pip/ac_pip_window.h",
+    "public/ac_engine.h",
+  ]
+
+  deps = [
+    "//base",
+    "//cc/paint",
+    "//chrome/app:generated_resources",
+    "//chrome/browser",
+    "//chrome/browser/autofill",
+    "//chrome/browser/browsing_data:constants",
+    "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/device_reauth",
+    "//chrome/browser/download",
+    "//chrome/browser/extensions",
+    "//chrome/browser/extensions/api/passwords_private",
+    "//chrome/browser/picture_in_picture",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/search_engines",
+    "//chrome/browser/task_manager",
+    "//chrome/browser/ui",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views/overlay",
+    "//chrome/common",
+    "//chrome/common/extensions/api",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//components/bookmarks/browser",
+    "//components/bookmarks/common",
+    "//components/browsing_data/core",
+    "//components/component_updater",
+    "//components/content_settings/core/browser",
+    "//components/content_settings/core/common",
+    "//components/device_reauth",
+    "//components/download/content/public",
+    "//components/download/public/common:public",
+    "//components/favicon/core",
+    "//components/favicon_base",
+    "//components/history/core/browser",
+    "//components/keyed_service/core",
+    "//components/password_manager/core/browser",
+    "//components/password_manager/core/common",
+    "//components/prefs",
+    "//components/search_engines",
+    "//components/sessions",
+    "//components/strings",
+    "//components/update_client",
+    "//components/tab_groups",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//extensions/browser",
+    "//extensions/common",
+    "//net",
+    "//services/media_session/public/cpp",
+    "//services/network/public/mojom",
+    "//skia",
+    "//third_party/blink/public/common",
+    "//third_party/boringssl",
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/views",
+    "//url",
+  ]
+
+  # pip/: the Picture in Picture window's Core Animation fade.
+  frameworks = [ "QuartzCore.framework" ]
+
+  # ac_downloads_mac.mm: the quarantine record (LSQuarantine);
+  # ac_external_apps.mm: the app that opens a scheme, and its icon.
+  frameworks += [
+    "AppKit.framework",
+    "CoreServices.framework",
+  ]
+}
+
+# Chrome's framework exports only what its lists name; ArcadiaCore's framework also
+# exports every ac_* call (//chrome:chrome_dll depends on this).
+config("exports_config") {
+  ldflags = [ "-Wl,-exported_symbols_list," +
+              rebase_path("ac_engine.exports", root_build_dir) ]
+}
+
+group("exports") {
+  all_dependent_configs = [ ":exports_config" ]
+  public_deps = [ ":arcadia" ]
+}

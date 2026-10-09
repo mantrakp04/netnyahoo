@@ -1,4 +1,4 @@
-import { confirm } from "@netnyahoo/shell";
+import { confirm } from "@arcadia/shell";
 import { create } from "zustand";
 import { focus, openWindow } from "../../lib/actions";
 import { folderLinks } from "../../store/bookmarks";

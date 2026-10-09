@@ -1,6 +1,6 @@
-import { AreaLight, EdgeLight, PowerUp } from "@netnyahoo/shaders";
+import { AreaLight, EdgeLight, PowerUp } from "@arcadia/shaders";
 import { useEffect, useState } from "react";
-import { Surface, VisualEffect } from "@netnyahoo/shell";
+import { Surface, VisualEffect } from "@arcadia/shell";
 import { AccessibilityInfo, Animated, StyleSheet, View } from "react-native";
 import { hex, layout, useTheme } from "../lib/theme";
 import { springParams } from "./layout/swipeMotion";
@@ -9,12 +9,12 @@ import { Omnibox } from "./Omnibox";
 
 const REBRAND = true;
 const BAR_HEIGHT = 112;
-const YAHU = require("../../assets/ntp-yahu.png");
-const YAHU_SIZE = 100;
-const YAHU_ABOVE_BAR = 84.1;
-const YAHU_HIDDEN = 86;
-const YAHU_SPRING = springParams(0.34, 0.7);
-const YAHU_DELAY_MS = 80;
+const MASCOT = require("../../assets/ntp-mascot.png");
+const MASCOT_SIZE = 100;
+const MASCOT_ABOVE_BAR = 84.1;
+const MASCOT_HIDDEN = 86;
+const MASCOT_SPRING = springParams(0.34, 0.7);
+const MASCOT_DELAY_MS = 80;
 const DIA_OFFSET = 1;
 const NEGATE_ANGLE = true;
 
@@ -61,13 +61,13 @@ export function NewTabPage({ tabId, toolbar = true }: { tabId: string; toolbar?:
   };
   const [panelHeight, setPanelHeight] = useState(BAR_HEIGHT);
   const [playIntro] = useState(() => !introPlayed.has(tabId));
-  const [rise] = useState(() => new Animated.Value(playIntro && !reduceMotion ? YAHU_HIDDEN : 0));
+  const [rise] = useState(() => new Animated.Value(playIntro && !reduceMotion ? MASCOT_HIDDEN : 0));
   useEffect(() => {
     introPlayed.add(tabId);
   }, [tabId]);
   useEffect(() => {
     if (!playIntro || reduceMotion) return;
-    const timer = setTimeout(() => Animated.spring(rise, { toValue: 0, ...YAHU_SPRING, useNativeDriver: true }).start(), YAHU_DELAY_MS);
+    const timer = setTimeout(() => Animated.spring(rise, { toValue: 0, ...MASCOT_SPRING, useNativeDriver: true }).start(), MASCOT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [playIntro, rise]);
 
@@ -117,23 +117,23 @@ export function NewTabPage({ tabId, toolbar = true }: { tabId: string; toolbar?:
         pointerEvents="none"
         style={{
           position: "absolute",
-          left: size.width / 2 + DIA_OFFSET - YAHU_SIZE / 2,
-          top: top - YAHU_ABOVE_BAR,
-          width: YAHU_SIZE,
-          height: YAHU_ABOVE_BAR,
+          left: size.width / 2 + DIA_OFFSET - MASCOT_SIZE / 2,
+          top: top - MASCOT_ABOVE_BAR,
+          width: MASCOT_SIZE,
+          height: MASCOT_ABOVE_BAR,
           overflow: "hidden",
         }}
       >
         <Animated.Image
-          source={YAHU}
+          source={MASCOT}
           style={{
-            width: YAHU_SIZE,
-            height: YAHU_SIZE,
+            width: MASCOT_SIZE,
+            height: MASCOT_SIZE,
             transform: [
               { translateY: rise },
-              { translateY: YAHU_SIZE / 2 },
-              { rotate: rise.interpolate({ inputRange: [-4, 0, YAHU_HIDDEN], outputRange: ["-3deg", "0deg", "0deg"], extrapolate: "clamp" }) },
-              { translateY: -YAHU_SIZE / 2 },
+              { translateY: MASCOT_SIZE / 2 },
+              { rotate: rise.interpolate({ inputRange: [-4, 0, MASCOT_HIDDEN], outputRange: ["-3deg", "0deg", "0deg"], extrapolate: "clamp" }) },
+              { translateY: -MASCOT_SIZE / 2 },
             ],
           }}
         />

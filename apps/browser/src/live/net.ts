@@ -1,9 +1,9 @@
-import { keychainDelete, keychainGet, keychainSet, launchEnvironment } from "@netnyahoo/shell";
+import { keychainDelete, keychainGet, keychainSet, launchEnvironment } from "@arcadia/shell";
 import { LiveError, type LiveSourceId } from "./types";
 
 const mock = (() => {
   try {
-    return (typeof __DEV__ !== "undefined" && __DEV__ && launchEnvironment("NETNYAHOO_LIVE_MOCK")) || null;
+    return (typeof __DEV__ !== "undefined" && __DEV__ && launchEnvironment("ARCADIA_LIVE_MOCK")) || null;
   } catch {
     return null;
   }

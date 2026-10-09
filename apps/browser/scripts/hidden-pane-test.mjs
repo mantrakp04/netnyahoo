@@ -2,11 +2,11 @@
 // toolbar's mode are read while it's shown), and the card mounts panes from memoized lists (861b3b73): what changed while
 // a tab was hidden is on screen the moment it's shown, and the mounted panes follow tabs opening, sleeping and closing.
 //
-//   node apps/browser/scripts/hidden-pane-test.mjs <Netnyahoo.app> [--bundle <main.jsbundle>] [--out <dir>]
+//   node apps/browser/scripts/hidden-pane-test.mjs <Arcadia.app> [--bundle <main.jsbundle>] [--out <dir>]
 //
 // A hidden instance on a small session; while tab B is hidden it gets a new page (URL and title), loading state, zoom,
 // an open find bar and a permission prompt; then B is shown and the rendered components (the perf probe's fiber lookup,
-// nnPerf.findFibers) must show each. One line per check; exits 1 on any failure.
+// acPerf.findFibers) must show each. One line per check; exits 1 on any failure.
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,14 +16,14 @@ import { evaluate, launch, quit } from "./perf/js-bench.mjs";
 
 const { values: flags, positionals } = parseArgs({ allowPositionals: true, options: { bundle: { type: "string" }, out: { type: "string" }, port: { type: "string" } } });
 if (!positionals[0]) {
-  console.error("usage: node hidden-pane-test.mjs <Netnyahoo.app> [--bundle <main.jsbundle>] [--out <dir>]");
+  console.error("usage: node hidden-pane-test.mjs <Arcadia.app> [--bundle <main.jsbundle>] [--out <dir>]");
   process.exit(2);
 }
-const out = resolve(flags.out ?? join(tmpdir(), "nn-hidden-pane"));
+const out = resolve(flags.out ?? join(tmpdir(), "ac-hidden-pane"));
 mkdirSync(out, { recursive: true });
 let app = resolve(positionals[0]);
 if (flags.bundle) {
-  const clone = join(out, "app", "Netnyahoo.app");
+  const clone = join(out, "app", "Arcadia.app");
   rmSync(dirname(clone), { recursive: true, force: true });
   mkdirSync(dirname(clone), { recursive: true });
   execFileSync("cp", ["-cR", app, clone]);
@@ -62,7 +62,7 @@ writeFileSync(join(data, "onboarding.json"), JSON.stringify({ version: 1, comple
 writeFileSync(join(data, "perf-probe"), "");
 
 const { pid } = await launch(app, data, Number(flags.port ?? 9795));
-const nn = (body, ms) => evaluate(data, pid, body, ms);
+const ac = (body, ms) => evaluate(data, pid, body, ms);
 const results = [];
 const check = (name, ok, detail = "") => {
   results.push(ok);
@@ -70,28 +70,28 @@ const check = (name, ok, detail = "") => {
 };
 try {
   let ready = false;
-  for (let i = 0; i < 60 && !ready; i++) ready = await nn("return !!nn.store.getState().windows.w1;", 2000).then((v) => v, () => false);
+  for (let i = 0; i < 60 && !ready; i++) ready = await ac("return !!ac.store.getState().windows.w1;", 2000).then((v) => v, () => false);
   if (!ready) throw new Error("the dev harness never answered");
   // Helpers in the app (Hermes evaluates no async functions: promise chains).
-  await nn(`
+  await ac(`
     globalThis.audit = {
       frames: (n) => new Promise((r) => { let k = n || 2; const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }),
-      props: (name, tabId) => nnPerf.findFibers(name, 500).filter((f) => !tabId || f.memoizedProps?.tabId === tabId || f.memoizedProps?.tab?.id === tabId).map((f) => ({ props: f.memoizedProps, rendered: !!f.child })),
+      props: (name, tabId) => acPerf.findFibers(name, 500).filter((f) => !tabId || f.memoizedProps?.tabId === tabId || f.memoizedProps?.tab?.id === tabId).map((f) => ({ props: f.memoizedProps, rendered: !!f.child })),
       until: (test, ms) => new Promise((r) => { const end = Date.now() + (ms || 15000); const poll = () => (test() ? r(true) : Date.now() > end ? r(false) : setTimeout(poll, 50)); poll(); }),
     };
     return true;`);
-  const S = "const S = () => nn.store.getState();";
+  const S = "const S = () => ac.store.getState();";
 
   // B loads once (shown), then is hidden behind A with its pane mounted.
-  const loaded = await nn(`${S}
+  const loaded = await ac(`${S}
     S().activate("b");
-    return audit.until(() => S().tabs.b.title === "Tab-b" && nn.webviews.has("b"))
+    return audit.until(() => S().tabs.b.title === "Tab-b" && ac.webviews.has("b"))
       .then(() => { S().activate("a"); return audit.frames(3); })
-      .then(() => ({ b: nn.webviews.has("b"), shown: S().windows.w1.activeTabIds.default }));`, 60_000);
+      .then(() => ({ b: ac.webviews.has("b"), shown: S().windows.w1.activeTabIds.default }));`, 60_000);
   check("tab B's pane stays mounted while hidden", loaded.b && loaded.shown === "a", JSON.stringify(loaded));
 
   // While B is hidden: a new page (URL and title through its own tab), zoom, loading, find, a permission prompt.
-  const hiddenChanges = await nn(`${S}
+  const hiddenChanges = await ac(`${S}
     const url = ${JSON.stringify(page("HiddenLoad"))};
     S().updateTab("b", { navigation: { url, seq: Date.now() } });
     let ok = false;
@@ -99,14 +99,14 @@ try {
       ok = loadedIt;
       S().updateTab("b", { zoom: 1.5 });
       S().setFind("b", { open: true, query: "findme" });
-      nn.pageState.setState((p) => ({ pages: { ...p.pages, b: { ...(p.pages.b || {}), permission: { id: "audit", browserId: 0, origin: "https://example.com", permissions: ["notifications"] } } } }));
+      ac.pageState.setState((p) => ({ pages: { ...p.pages, b: { ...(p.pages.b || {}), permission: { id: "audit", browserId: 0, origin: "https://example.com", permissions: ["notifications"] } } } }));
       S().updateLive("b", { isLoading: true });
       return audit.frames(3);
     }).then(() => ({ ok, url: S().tabs.b.url, title: S().tabs.b.title, renderedB: audit.props("UrlField", "b").length }));`, 60_000);
   check("a hidden tab loads what it's sent to (its own tab's navigation)", hiddenChanges.ok, `${hiddenChanges.url} "${hiddenChanges.title}"`);
   check("nothing of B's toolbar renders while it's hidden", hiddenChanges.renderedB === 0);
 
-  const shown = await nn(`${S}
+  const shown = await ac(`${S}
     S().activate("b");
     return audit.frames(3).then(() => ({
       url: audit.props("UrlField", "b")[0]?.props.tab.url,
@@ -122,9 +122,9 @@ try {
   check("shown: the permission prompt that came while hidden", shown.prompt === true);
 
   // The mounted panes follow tabs: one opened (with a page) mounts, a closed one goes, a switch keeps the rest.
-  const panes = await nn(`${S}
+  const panes = await ac(`${S}
     const want = () => S().windows.w1.tabIds.filter((id) => S().tabs[id]?.navigation || S().tabs[id]?.adoptId).sort().join(",");
-    const have = () => [...nn.webviews.keys()].filter((id) => S().tabs[id]?.windowId === "w1").sort().join(",");
+    const have = () => [...ac.webviews.keys()].filter((id) => S().tabs[id]?.windowId === "w1").sort().join(",");
     const steps = [];
     let e;
     const settle = (name) => audit.until(() => want() === have(), 8000).then(() => steps.push([name, want(), have()]));

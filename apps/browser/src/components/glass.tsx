@@ -1,4 +1,4 @@
-import { GlassEffect, isLiquidGlass } from "@netnyahoo/shell";
+import { GlassEffect, isLiquidGlass } from "@arcadia/shell";
 import { memo } from "react";
 import { useTheme, type Theme } from "../lib/theme";
 

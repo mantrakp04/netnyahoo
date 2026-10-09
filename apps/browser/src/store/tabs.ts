@@ -1,4 +1,4 @@
-import { resolveInput } from "@netnyahoo/core";
+import { resolveInput } from "@arcadia/core";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { leaveGroups, syncGroupOrder } from "./groups";
@@ -295,14 +295,14 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
   newTab(windowId, options) {
     const small = get().windows[windowId];
     if (small?.kind === "small" && small.tabIds.length) {
-      // Small Yahu keeps its one page; new tabs go to a main window of that profile.
+      // Little Arcadia keeps its one page; new tabs go to a main window of that profile.
       const profileId = options?.profileId ?? small.profileId;
       const main = mainWindowFor(get(), profileId);
       if (!main) {
         const created = get().createWindow({ profileId, url: options?.url, adoptId: options?.adoptId ?? options?.wakeAdoptId, background: options?.background });
         return activeTabId(get(), created) ?? "";
       }
-      // The Small Yahu page stays the opener, so the tabs it sends keep their order.
+      // The Little Arcadia page stays the opener, so the tabs it sends keep their order.
       return get().newTab(main, { ...options, profileId, index: undefined });
     }
     if (options?.url && !options.adoptId && openOutsideTab(resolveInput(options.url, searchUrlPrefix(get().settings)), windowId)) return "";

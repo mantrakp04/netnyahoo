@@ -1,6 +1,6 @@
 # Performance benchmarks
 
-How to measure Netnyahoo and gate a release on it. Every script prints its flags with `--help`, and its header
+How to measure Arcadia and gate a release on it. Every script prints its flags with `--help`, and its header
 documents the same flags, so you don't need to read the rest of a script to run it. Results from past
 comparisons: [0.2.19 → 0.2.20](0.2.19-to-0.2.20.md), [0.2.22 → 0.2.23](0.2.22-to-0.2.23.md), [0.2.23 → 0.2.24](0.2.23-to-0.2.24.md), [0.2.24 → 0.2.25](0.2.24-to-0.2.25.md), [0.2.25 → 0.2.26](0.2.25-to-0.2.26.md), [0.2.26 → 0.2.27](0.2.26-to-0.2.27.md).
 
@@ -12,11 +12,11 @@ All of them are in `apps/browser/scripts/perf/`.
 |---|---|---|
 | `native-bench.mjs` | native | Launch, idle CPU and wakeups, memory, tab and window latency, throttling, on a Release app in hidden instances. Its header maps every section and output row to the function that measures it. |
 | `nnperf.swift` | native | Process probes (rusage, phys_footprint, window on screen, quit) and `postkeys` (real key events posted to one pid with `CGEventPostToPid`), built on demand with swiftc. |
-| `nnmark.m` | native | Injected into the bench's copy of the app: marks when a window's React content commits, and (`NN_BENCH_KEYLOG=1`) every key down the app's event loop sees. |
+| `nnmark.m` | native | Injected into the bench's copy of the app: marks when a window's React content commits, and (`AC_BENCH_KEYLOG=1`) every key down the app's event loop sees. |
 | `nnframes.m`, `frames-phase.mjs`, `frames-phase.test.mjs` | native | The frame rig (`native-bench.mjs --only frames`, `framecounts`): `nnframes.m` is injected like `nnmark.m` and records display-link ticks, main- and JS-thread run-loop busy time and layout counters; `frames-phase.mjs` drives the interactions and reads them; the test checks the window arithmetic. Rows: [What the frame rows measure](#what-the-frame-rows-measure). |
 | `launch-trace.mjs` | native | Where the engine's start goes, two sides compared: Chrome's startup traces (`native-bench.mjs --only launch --trace-startup <categories>`), milestones from the process's creation (ChromeMain, BrowserMain, each process's first event) and the browser main thread's slices by name. |
 | `nnsample.c`, `launch-samples.mjs` | native | The stretch the trace doesn't cover (ChromeMain → BrowserMain, ~100 ms): `nnsample.c`, injected with `--env DYLD_INSERT_LIBRARIES`, samples the main thread every ~1 ms from before `main`; `launch-samples.mjs` symbolizes the samples against the unstripped framework (`dist/<v>/symbols`) and compares the functions in a window of two sides. How to run: its header. It found 0.2.31's +20 ms: the platform policy loader waiting on `/usr/bin/profiles`. |
-| `bench-entry.js`, `bench-channel.js`, `bench-offline.js` | native | The JS entry of the bench bundle: the app's `index.js` plus the command channel (`nn.journeys()` is the field timing's own view). `bench-offline.js` answers every non-local `fetch` itself when the data folder holds a `bench-offline` file, so nothing is uploaded while sharing is on. |
+| `bench-entry.js`, `bench-channel.js`, `bench-offline.js` | native | The JS entry of the bench bundle: the app's `index.js` plus the command channel (`ac.journeys()` is the field timing's own view). `bench-offline.js` answers every non-local `fetch` itself when the data folder holds a `bench-offline` file, so nothing is uploaded while sharing is on. |
 | `js-bench.mjs` | JS | React commits, renders, store updates and JS tasks per interaction, on a production bundle. |
 | `bench-app.js` | JS, render | The scenarios js-bench and render-bench run inside the app. **Not** part of native-bench. |
 | `seed.mjs` | JS, render | The big profile those runs start from: 200 tabs, 5000 history entries, 1000 bookmarks. |
@@ -30,13 +30,13 @@ All of them are in `apps/browser/scripts/perf/`.
 The app side of the JS benches is `apps/browser/src/lib/perfProbe.ts`. It only turns on in an isolated instance
 whose data folder holds a `perf-probe` file.
 
-Each bench drives the app through files in the instance's `NETNYAHOO_DATA_DIR`:
+Each bench drives the app through files in the instance's `ARCADIA_DATA_DIR`:
 
 | Files | Used by | Written by |
 |---|---|---|
 | `bench-cmd.js` → `bench-result.json` | native-bench | bench-channel.js (first line `// <id>`; the result carries the same id) |
 | `bench-boot.json` | native-bench | bench-channel.js as it loads (the "JS running" mark) |
-| `bench-marks.jsonl` | native-bench | nnmark.m (`content`/`committed` epoch ms per window; `keydown`/`made`/`window`/`char` per key with `NN_BENCH_KEYLOG`) |
+| `bench-marks.jsonl` | native-bench | nnmark.m (`content`/`committed` epoch ms per window; `keydown`/`made`/`window`/`char` per key with `AC_BENCH_KEYLOG`) |
 | `telemetry.json`, `bench-offline` | native-bench `newtabkey`, `navigate` | the phase: diagnostics sharing on (the app times journeys only then) and the file that makes `bench-offline.js` guard `fetch` |
 | `dev-eval.js` → `dev-eval-result.json` | js-bench, render-bench | the dev harness (`src/lib/devHarness.ts`) |
 | `perf-probe` | js-bench, render-bench | the seed. Its contents turn on the probe's options: `selectors`, `renders`, `listeners` |
@@ -46,7 +46,7 @@ Each bench drives the app through files in the instance's `NETNYAHOO_DATA_DIR`:
 The previous release is the control and the new release candidate is the candidate. The gate passes when every
 row is the same or better.
 
-1. **Build the candidate with `scripts/release.sh <v> --rc`.** That gives you `dist/<v>-rc/export/Netnyahoo.app`.
+1. **Build the candidate with `scripts/release.sh <v> --rc`.** That gives you `dist/<v>-rc/export/Arcadia.app`.
    A local Release build is a different app: it's unstripped (about 18 MB against 8.9 MB) and has no secure
    timestamp or notarization ticket, so its launch numbers don't stand for what ships.
 2. **Give each app a bench bundle that matches its `NATIVE_API_VERSION`.** native-bench swaps its own bundle
@@ -89,11 +89,11 @@ V=0.2.23 PREV=0.2.22 OUT=<your scratch dir>/gate
 scripts/release.sh $V --rc
 # Native. Omit --control-bundle when both apps share NATIVE_API_VERSION.
 node apps/browser/scripts/perf/native-bench.mjs --out $OUT/nb --port 9478 \
-  --app dist/$V-rc/export/Netnyahoo.app --label rc \
-  --control dist/$PREV/export/Netnyahoo.app --control-label $PREV --control-bundle dist/$PREV/bench/main.jsbundle \
+  --app dist/$V-rc/export/Arcadia.app --label rc \
+  --control dist/$PREV/export/Arcadia.app --control-label $PREV --control-bundle dist/$PREV/bench/main.jsbundle \
   --only launch,session,windows --launch-runs 6 --runs 2
 # JS: alternate the apps one run at a time.
-for i in 1 2 3; do for app in $PREV:dist/$PREV/export/Netnyahoo.app rc:dist/$V-rc/export/Netnyahoo.app; do
+for i in 1 2 3; do for app in $PREV:dist/$PREV/export/Arcadia.app rc:dist/$V-rc/export/Arcadia.app; do
   node apps/browser/scripts/perf/js-bench.mjs run --app ${app#*:} --bundle ${app#*:}/Contents/Resources/main.jsbundle \
     --label ${app%%:*} --runs 1 --append 1 --out $OUT/js
 done; done
@@ -133,7 +133,7 @@ raised only by hand, with the reason in the commit. Nothing runs in CI, so the c
 ```sh
 node apps/browser/scripts/perf/ratchet.mjs run            # 90 s: bundle the tree, run the journeys once, count the Node hot paths, check
 node apps/browser/scripts/perf/ratchet.mjs run --instr    # the same, plus the instruction counter
-node apps/browser/scripts/perf/ratchet.mjs run --own --app dist/<v>-rc/export/Netnyahoo.app   # a release candidate's own bundle
+node apps/browser/scripts/perf/ratchet.mjs run --own --app dist/<v>-rc/export/Arcadia.app   # a release candidate's own bundle
 node apps/browser/scripts/perf/ratchet.mjs check <report.json>          # a js-bench report you already have (several runs: the median run)
 node apps/browser/scripts/perf/ratchet.mjs lower <report.json>          # lock in the counts a change cut; prints the diff
 node apps/browser/scripts/perf/ratchet.mjs baseline       # rebuild ratchet.json (8 runs of each session, about 13 minutes, a quiet machine)
@@ -151,7 +151,7 @@ The scenarios run in a fixed order (`ratchet.mjs` header says why): `startup`, `
 once it has stopped), `idle`, `typing`, `switchTabs`, `scroll`, `hover`, `pageLoad`, `openClose`, with
 `--options '{"seconds":5}'`, followed by a second launch from a one-tab session (`js-bench.mjs --seed small`, counts
 prefixed `small.`). `launch.firstCommitMounts` (and `small.launch.firstCommitMounts`) is what the launch's first React
-commit mounted (`nnPerf.firstCommitMounts`): the first frame waits for all of it. The census behind `ratchet.json` is 8 launches of 0.2.27's Release app with the tree's
+commit mounted (`acPerf.firstCommitMounts`): the first frame waits for all of it. The census behind `ratchet.json` is 8 launches of 0.2.27's Release app with the tree's
 bundle.
 
 Group totals per scenario over the 16 baseline runs (two batches of 8): a bare number repeated in every run is gated
@@ -225,7 +225,7 @@ again shows up here at once: `switchTabs.subNotified` grows by the row count per
 
 ### In the release gate
 
-Step 4b of the release skill: `ratchet.mjs run --own --app dist/<v>-rc/export/Netnyahoo.app` must print `ratchet: ok` before
+Step 4b of the release skill: `ratchet.mjs run --own --app dist/<v>-rc/export/Arcadia.app` must print `ratchet: ok` before
 publishing. Counts need no perflab lock (they aren't timings), but run it on a Mac that isn't busy with someone's timing
 run. After a release that cut counts, `ratchet.mjs lower` and commit.
 
@@ -353,7 +353,7 @@ delivered. `--frames-n` repetitions (default 8; `framecounts` at most 3) per run
 with `--control`. They need the display on: `nnperf display` is checked before and after, a run on an asleep or
 locked display is left out ("runs skipped"), because macOS stops giving windows display-link frames then.
 
-The probe (`nnframes.m`, loaded with `NN_BENCH_FRAMES=1`) links a `CADisplayLink` of the window's screen, asked for the
+The probe (`nnframes.m`, loaded with `AC_BENCH_FRAMES=1`) links a `CADisplayLink` of the window's screen, asked for the
 screen's maximum rate (`NSScreen.maximumFramesPerSecond`: 120 on a ProMotion built-in display, 60 on an external
 one; the "screen ..., maximum refresh rate" row says which). A tick is the main thread getting to a vsync. Each
 interaction's window starts at the interaction (a real key event for the command bar, the store call otherwise; the
@@ -398,9 +398,9 @@ shape.
 
 | Row | Why | Compare instead |
 |---|---|---|
-| launch → window shown, new window → on screen | CEF builds put a window on screen empty and fill it after. NNCore keeps it transparent until its content commits. The same row times an empty window on one engine and a full one on the other. | the "with its content" rows |
-| launch → first page painted, new tab → first paint, new window → first paint | CEF stamps first-contentful-paint with the start of the frame. Chrome (NNCore) stamps it with the frame on screen, about a frame later. | the "first frame" rows |
-| main-thread samples `engineWork` | The engine's main-thread work goes through different functions: CEF's `CefDoMessageLoopWork` against NNCore's `RunWorkSource`. | treat as indicative only |
+| launch → window shown, new window → on screen | CEF builds put a window on screen empty and fill it after. ArcadiaCore keeps it transparent until its content commits. The same row times an empty window on one engine and a full one on the other. | the "with its content" rows |
+| launch → first page painted, new tab → first paint, new window → first paint | CEF stamps first-contentful-paint with the start of the frame. Chrome (ArcadiaCore) stamps it with the frame on screen, about a frame later. | the "first frame" rows |
+| main-thread samples `engineWork` | The engine's main-thread work goes through different functions: CEF's `CefDoMessageLoopWork` against ArcadiaCore's `RunWorkSource`. | treat as indicative only |
 | js-bench `taskMs`, `tasks`, `otherJsMs`, `startup.*` task counts | Probe revision 1 (0.2.21) didn't time Expo module events as tasks. Revision 2 (6232fa43) does. | numbers from bundles of one probe revision |
 
 The JS reports stamp `probeRevision` (from `PERF_PROBE_REVISION` in `perfProbe.ts`, inferred for older bundles)

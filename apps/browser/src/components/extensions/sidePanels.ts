@@ -1,4 +1,4 @@
-import { extensionSidePanelUrl } from "@netnyahoo/nncore";
+import { extensionSidePanelUrl } from "@arcadia/arcadiacore";
 import { useBrowser } from "../../store/browser";
 import { activeBrowserId, extensionProfile, isPrivate, pageProfile, shownIn, useExtensions } from "./store";
 

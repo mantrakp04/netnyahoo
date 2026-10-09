@@ -1,4 +1,4 @@
-import { setSwitcherCapture } from "@netnyahoo/shell";
+import { setSwitcherCapture } from "@arcadia/shell";
 import { useBrowser } from "../../store/browser";
 import { recentTabIds } from "../../store/organize";
 import { setSidebarUi, sidebarUi } from "./state";

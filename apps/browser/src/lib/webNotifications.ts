@@ -1,4 +1,4 @@
-import type { WebNotification } from "@netnyahoo/nncore";
+import type { WebNotification } from "@arcadia/arcadiacore";
 import {
   confirm,
   notificationPermission,
@@ -7,7 +7,7 @@ import {
   removeNotifications,
   requestNotificationPermission,
   type NotificationResponse,
-} from "@netnyahoo/shell";
+} from "@arcadia/shell";
 import { useBrowser } from "../store/browser";
 import { focus, switchToTab } from "./actions";
 import { webviews } from "./webviews";
@@ -92,8 +92,8 @@ export async function ensureNotificationPermission(windowId?: string): Promise<b
   if (asked) return false;
   asked = true;
   const { confirmed } = await confirm({
-    title: "Netnyahoo Needs Notifications Permission",
-    message: "You need to open System Settings to give Netnyahoo permission to show you Notifications.",
+    title: "Arcadia Needs Notifications Permission",
+    message: "You need to open System Settings to give Arcadia permission to show you Notifications.",
     confirmTitle: "Open System Settings",
     cancelTitle: "Not Now",
     windowId,
@@ -102,4 +102,4 @@ export async function ensureNotificationPermission(windowId?: string): Promise<b
   return false;
 }
 
-if (__DEV__) (globalThis as { nnNotifications?: unknown }).nnNotifications = { shown };
+if (__DEV__) (globalThis as { acNotifications?: unknown }).acNotifications = { shown };

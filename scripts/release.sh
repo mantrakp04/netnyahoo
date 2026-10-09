@@ -12,20 +12,20 @@
 # Archives the Release configuration of apps/browser/macos (arm64), exports it with Developer ID, signs Chrome's
 # framework inside out the way Chrome signs its own (chrome/installer/mac/signing/parts.py), checks the signatures and
 # what an in-place update from an earlier copy depends on, launches the app once hidden and checks its bundle is still
-# sealed, notarizes and staples the app and the DMG, and writes Netnyahoo-<version>.dmg, Netnyahoo-<version>.zip
+# sealed, notarizes and staples the app and the DMG, and writes Arcadia-<version>.dmg, Arcadia-<version>.zip
 # (Sparkle's update archive), appcast.xml (signed with the Sparkle EdDSA key in the login keychain) and
 # release-notes.md (the GitHub release's notes, from docs/release-notes/<version>.md). When engine/ changed since the
-# last prebuilt engine, also NNCore-<engine tree>.tar.xz and its line for packages/nncore/prebuilt-engines.tsv
-# (prebuilt-engine.tsv), so the app builds without a Chromium tree (packages/nncore/scripts/fetch-engine.sh).
+# last prebuilt engine, also ArcadiaCore-<engine tree>.tar.xz and its line for packages/arcadiacore/prebuilt-engines.tsv
+# (prebuilt-engine.tsv), so the app builds without a Chromium tree (packages/arcadiacore/scripts/fetch-engine.sh).
 #
 # A release needs the notes file, MARKETING_VERSION set to <version> (and CURRENT_PROJECT_VERSION bumped) and a
 # clean tree under apps/browser, packages and engine. A candidate needs none of those: it builds the working tree as
 # <version> with the next build number, and uses the notes file if there is one.
 #
-# NOTARY_PROFILE      notarytool keychain profile (default netnyahoo), unless scripts/.notary.env sets an API key
+# NOTARY_PROFILE      notarytool keychain profile (default arcadia), unless scripts/.notary.env sets an API key
 # ALLOW_UNNOTARIZED=1 build anyway without notarizing
-# SPARKLE_ACCOUNT     keychain account of the Sparkle key (default netnyahoo)
-# NNCORE_FRAMEWORK    another Chromium Framework.framework than out/Release_GN_arm64's
+# SPARKLE_ACCOUNT     keychain account of the Sparkle key (default arcadia)
+# ARCADIACORE_FRAMEWORK    another Chromium Framework.framework than out/Release_GN_arm64's
 # RELEASE_BUILD_DIR   the derived data folder (default apps/browser/build-release)
 set -euo pipefail
 
@@ -49,10 +49,10 @@ done
 root="$(cd "$(dirname "$0")/.." && pwd -P)"
 app_dir="$root/apps/browser"
 macos="$app_dir/macos"
-nncore="$root/packages/nncore"
-repo="mantrakp04/netnyahoo"
+arcadiacore="$root/packages/arcadiacore"
+repo="mantrakp04/arcadia"
 notes_page="https://netnyahoo.com/release-notes"
-notary_profile="${NOTARY_PROFILE:-netnyahoo}"
+notary_profile="${NOTARY_PROFILE:-arcadia}"
 # App Store Connect API key for notarytool, when scripts/.notary.env (untracked) sets NOTARY_KEY (path to
 # AuthKey_<id>.p8), NOTARY_KEY_ID and NOTARY_ISSUER. Preferred over the keychain profile: notarytool keeps that
 # profile in the data-protection keychain, which reads as missing while the Mac's screen is locked.
@@ -62,23 +62,23 @@ if [ -n "${NOTARY_KEY:-}" ]; then
 else
   notary_auth=(--keychain-profile "$notary_profile")
 fi
-sparkle_account="${SPARKLE_ACCOUNT:-netnyahoo}"
+sparkle_account="${SPARKLE_ACCOUNT:-arcadia}"
 sparkle="$macos/Pods/Sparkle/bin"
 if [ "$rc" = 1 ]; then dist="$root/dist/$version-rc"; else dist="$root/dist/$version"; fi
 # A candidate can go elsewhere (RC_DIST=dist/final-<version>-rc; keep the -rc ending, unregister-builds keeps those registered) while a copy of the last one is still open from its folder.
 [ "$rc" = 1 ] && [ -n "${RC_DIST:-}" ] && dist="$(cd "$root" && mkdir -p "$RC_DIST" && cd "$RC_DIST" && pwd)"
 build="${RELEASE_BUILD_DIR:-$app_dir/build-release}"
-archive="$dist/Netnyahoo.xcarchive"
-app="$dist/export/Netnyahoo.app"
-zip="$dist/Netnyahoo-$version.zip"
-dmg="$dist/Netnyahoo-$version.dmg"
+archive="$dist/Arcadia.xcarchive"
+app="$dist/export/Arcadia.app"
+zip="$dist/Arcadia-$version.zip"
+dmg="$dist/Arcadia-$version.dmg"
 chromium_src="${CHROMIUM_SRC:-$HOME/chromium-build/chromium_git/chromium/src}"
-framework_src="${NNCORE_FRAMEWORK:-$chromium_src/out/Release_GN_arm64/Chromium Framework.framework}"
+framework_src="${ARCADIACORE_FRAMEWORK:-$chromium_src/out/Release_GN_arm64/Chromium Framework.framework}"
 die() { echo "error: $*" >&2; exit 1; }
 
 # The version ships from the tagged commit: bump it in the project first. A candidate is <version> with the next
 # build number, so it sorts after the published release in Sparkle.
-pbx="$macos/Netnyahoo.xcodeproj/project.pbxproj"
+pbx="$macos/Arcadia.xcodeproj/project.pbxproj"
 project_version="$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' "$pbx" | sort -u)"
 project_build="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \(.*\);/\1/p' "$pbx" | sort -u)"
 version_settings=()
@@ -100,7 +100,7 @@ if [ -f "$notes" ]; then
     || die "$notes needs 'date: YYYY-MM-DD' and 'headline:' frontmatter"
 elif [ "$rc" = 1 ]; then
   headline="Release candidate $version"
-  notes_body() { echo "A release candidate of Netnyahoo $version. Not published."; }
+  notes_body() { echo "A release candidate of Arcadia $version. Not published."; }
 else
   die "no release notes: write docs/release-notes/$version.md first"
 fi
@@ -114,18 +114,18 @@ if [ -n "$dirty" ]; then
   echo "$dirty" >&2
 fi
 
-# The engine must be built from this checkout's own Chromium code, NNCore's (engine/nncore) and the services it calls
+# The engine must be built from this checkout's own Chromium code, ArcadiaCore's (engine/arcadiacore) and the services it calls
 # (engine/chromium): each apply.sh puts its copy in the tree and gives a changed file a new mtime, so a framework older
 # than the tree's copy is stale. (The patches in engine/patches aren't checked here: they change only at a rebuild.)
-[ -d "$framework_src" ] || die "no NNCore framework at $framework_src (engine/nncore/apply.sh, then build chrome_framework)"
-if [ -z "${NNCORE_FRAMEWORK:-}" ]; then
-  for layer in nncore chromium; do
+[ -d "$framework_src" ] || die "no ArcadiaCore framework at $framework_src (engine/arcadiacore/apply.sh, then build chrome_framework)"
+if [ -z "${ARCADIACORE_FRAMEWORK:-}" ]; then
+  for layer in arcadiacore chromium; do
     "$root/engine/$layer/apply.sh" --check \
       || die "the Chromium tree differs from engine/$layer: run engine/$layer/apply.sh and rebuild chrome_framework"
   done
-  newest="$(find "$chromium_src/netnyahoo" "$chromium_src/chrome/browser/netnyahoo" -type f \
+  newest="$(find "$chromium_src/arcadia" "$chromium_src/chrome/browser/arcadia" -type f \
     -newer "$framework_src/Versions/Current/Chromium Framework" -print -quit)"
-  [ -z "$newest" ] || die "$newest is newer than the framework: rebuild chrome_framework (docs/nncore-spike.md)"
+  [ -z "$newest" ] || die "$newest is newer than the framework: rebuild chrome_framework (docs/arcadiacore-spike.md)"
 fi
 
 identity_name="Developer ID Application"
@@ -155,15 +155,15 @@ mkdir -p "$dist"
 
 echo "==> Content blocker"
 # The pinned uBlock Origin Lite, which embed.sh copies into the app.
-"$nncore/scripts/ubol.sh"
-[ -f "$nncore/vendor/ubol/ext/manifest.json" ] || die "uBlock Origin Lite isn't installed ($nncore/scripts/ubol.sh)"
+"$arcadiacore/scripts/ubol.sh"
+[ -f "$arcadiacore/vendor/ubol/ext/manifest.json" ] || die "uBlock Origin Lite isn't installed ($arcadiacore/scripts/ubol.sh)"
 
 echo "==> Archive"
 # The engine is staged into this build's own folder, so a development build restaging its copy can't change a
 # release mid-build. The pod lock too: a pod install rewriting Pods.xcodeproj under the archive breaks it.
-(cd "$app_dir" && NNCORE_FRAMEWORK="$framework_src" "$root/scripts/agent/locked" pod --wait 1800 -- \
-  "$root/scripts/agent/locked" xcodebuild --wait 1800 -- xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
-  -configuration Release -destination 'generic/platform=macOS' ARCHS=arm64 NNCORE_STAGE_DIR="$build/NNCoreFramework" \
+(cd "$app_dir" && ARCADIACORE_FRAMEWORK="$framework_src" "$root/scripts/agent/locked" pod --wait 1800 -- \
+  "$root/scripts/agent/locked" xcodebuild --wait 1800 -- xcodebuild -workspace macos/Arcadia.xcworkspace -scheme Arcadia-macOS \
+  -configuration Release -destination 'generic/platform=macOS' ARCHS=arm64 ARCADIACORE_STAGE_DIR="$build/ArcadiaCoreFramework" \
   ${version_settings[@]+"${version_settings[@]}"} \
   -derivedDataPath "$build" -archivePath "$archive" -allowProvisioningUpdates archive) \
   > "$dist/archive.log" 2>&1 || {
@@ -190,7 +190,7 @@ echo "==> Sign Chrome's framework"
 # hermes. Chrome's framework and its helpers are signed as Chrome signs them, inside out: the helpers under the
 # hardened runtime, the renderer and GPU ones (Aperitif's too) with their JIT entitlements and without library
 # validation (incompatible with JIT), then the framework, then the app again with what the export gave it.
-entitlements_dir="$nncore/scripts/signing"
+entitlements_dir="$arcadiacore/scripts/signing"
 sign() {
   local attempt
   for attempt in 1 2 3 4 5; do
@@ -204,7 +204,7 @@ fw="$app/Contents/Frameworks/Chromium Framework.framework"
 fwv="$(cd "$fw/Versions/Current" && pwd -P)" || die "no Chromium Framework.framework in the export"
 # Local symbols out (40% of the framework's bytes, which a new copy's first-launch Gatekeeper scan reads); the
 # unstripped files stay in dist/<version>/symbols for symbolicating crash reports. Keep that folder with the release.
-"$nncore/scripts/strip-engine.sh" "$app" "$dist/symbols"
+"$arcadiacore/scripts/strip-engine.sh" "$app" "$dist/symbols"
 for lib in "$fwv"/Libraries/*.dylib; do sign "$lib"; done
 for helper in "$fwv"/Helpers/*.app; do
   case "$(basename "$helper")" in
@@ -216,37 +216,37 @@ done
 sign --options restrict,library,kill,runtime "$fwv/Helpers/chrome_crashpad_handler"
 sign --options restrict,library,kill,runtime "$fwv/Helpers/app_mode_loader"
 [ -e "$fwv/Helpers/web_app_shortcut_copier" ] && sign --options restrict,library,kill,runtime \
-  --identifier com.netnyahoo.browser.web_app_shortcut_copier "$fwv/Helpers/web_app_shortcut_copier"
+  --identifier com.arcadia.browser.web_app_shortcut_copier "$fwv/Helpers/web_app_shortcut_copier"
 sign "$fw"
 sign --preserve-metadata=entitlements,requirements,flags,runtime "$app"
 
 echo "==> Verify"
 codesign --verify --deep --strict "$app"
 # Crash reports from users can only be symbolicated with the archive's dSYM (0.1.0/0.1.1 had none).
-[ -d "$archive/dSYMs/Netnyahoo.app.dSYM" ] || die "the archive has no Netnyahoo.app.dSYM"
+[ -d "$archive/dSYMs/Arcadia.app.dSYM" ] || die "the archive has no Arcadia.app.dSYM"
 entitlements() { codesign -d --entitlements - --xml "$1" 2>/dev/null; }
 info() { plutil -extract "$1" raw "$app/Contents/Info.plist" 2>/dev/null; }
 # What an in-place update from an earlier copy depends on: the same bundle id and executable (Sparkle), the
 # designated requirement (the keychain's Safe Storage item, TCC's grants), the feed and the update key.
-[ "$(info CFBundleIdentifier)" = com.netnyahoo.browser ] || die "bundle id is $(info CFBundleIdentifier)"
-[ "$(info CFBundleExecutable)" = Netnyahoo ] || die "executable is $(info CFBundleExecutable)"
+[ "$(info CFBundleIdentifier)" = com.arcadia.browser ] || die "bundle id is $(info CFBundleIdentifier)"
+[ "$(info CFBundleExecutable)" = Arcadia ] || die "executable is $(info CFBundleExecutable)"
 [ "$(info CFBundleShortVersionString)" = "$version" ] || die "CFBundleShortVersionString is $(info CFBundleShortVersionString)"
 for key in SUFeedURL SUPublicEDKey NSDockTilePlugIn NSCameraUsageDescription NSMicrophoneUsageDescription \
   NSBluetoothAlwaysUsageDescription NSLocationUsageDescription NSLocalNetworkUsageDescription; do
   [ -n "$(info "$key")" ] || die "Info.plist has no $key"
 done
 [ -d "$app/Contents/Frameworks/Sparkle.framework" ] || die "no Sparkle.framework"
-[ -d "$app/Contents/PlugIns/NetnyahooDockTile.plugin" ] || die "no dock tile plug-in"
+[ -d "$app/Contents/PlugIns/ArcadiaDockTile.plugin" ] || die "no dock tile plug-in"
 [ -f "$app/Contents/embedded.provisionprofile" ] || die "no Developer ID provisioning profile (keychain groups need it)"
 [ -f "$app/Contents/Resources/Extensions/ublock-lite/manifest.json" ] || die "no uBlock Origin Lite in the app"
 designated="$(codesign -d -r- "$app" 2>&1 | sed -n 's/^designated => //p')"
-[[ "$designated" == *'identifier "com.netnyahoo.browser"'* && "$designated" == *"subject.OU] = U5L5T3NGVV"* ]] \
+[[ "$designated" == *'identifier "com.arcadia.browser"'* && "$designated" == *"subject.OU] = U5L5T3NGVV"* ]] \
   || die "designated requirement: $designated"
 app_ents="$(entitlements "$app")"
 for group in webauthn unexportable-keys secure-payment-confirmation; do
-  [[ "$app_ents" == *"U5L5T3NGVV.com.netnyahoo.browser.$group"* ]] || die "the app lacks the keychain group …$group"
+  [[ "$app_ents" == *"U5L5T3NGVV.com.arcadia.browser.$group"* ]] || die "the app lacks the keychain group …$group"
 done
-# Apple hasn't granted the managed passkey capability (Netnyahoo-ICloudPasskeys.entitlements).
+# Apple hasn't granted the managed passkey capability (Arcadia-ICloudPasskeys.entitlements).
 [[ "$app_ents" != *web-browser.public-key-credential* ]] || die "the app is signed with com.apple.developer.web-browser.public-key-credential"
 for helper in "$fwv"/Helpers/*"Renderer).app" "$fwv"/Helpers/*"GPU).app"; do
   [[ "$(entitlements "$helper")" == *cs.allow-jit* ]] || die "$(basename "$helper") lost allow-jit"
@@ -260,14 +260,14 @@ while IFS= read -r -d '' code; do
 done < <(find "$app" \( -name "*.app" -o -name "*.framework" -o -name "*.dylib" -o -name "*.xpc" -o -name "*.plugin" \
   -o -path "*/Helpers/*" -type f -perm -u+x -o -path "*/MacOS/*" -type f \) -print0)
 
-# The engine for building without a Chromium tree (packages/nncore/scripts/fetch-engine.sh): this release's framework,
-# stripped and signed, as NNCore-<engine tree>.tar.xz, unless an earlier release already has this engine/. Packed in
+# The engine for building without a Chromium tree (packages/arcadiacore/scripts/fetch-engine.sh): this release's framework,
+# stripped and signed, as ArcadiaCore-<engine tree>.tar.xz, unless an earlier release already has this engine/. Packed in
 # the background while the launch check and notarization run; the release skill publishes it and the table line.
 engine_tree="$(git -C "$root" rev-parse HEAD:engine)"
-engine_archive="$dist/NNCore-${engine_tree:0:12}.tar.xz"
+engine_archive="$dist/ArcadiaCore-${engine_tree:0:12}.tar.xz"
 engine_pack=""
-if [ "$rc" = 0 ] && [ -z "${NNCORE_FRAMEWORK:-}" ] \
-  && ! awk -v t="$engine_tree" '$1 == t { found = 1 } END { exit !found }' "$nncore/prebuilt-engines.tsv"; then
+if [ "$rc" = 0 ] && [ -z "${ARCADIACORE_FRAMEWORK:-}" ] \
+  && ! awk -v t="$engine_tree" '$1 == t { found = 1 } END { exit !found }' "$arcadiacore/prebuilt-engines.tsv"; then
   echo "==> Pack the engine (background)"
   (
     set -e
@@ -286,9 +286,9 @@ echo "==> Launch check"
 # Running the app must leave its bundle as signed: anything written into it breaks the signature (Chrome indexing
 # uBlock's rulesets next to the extension did, in 0.1.0). Launch it hidden with a throwaway data dir, wait for the
 # rulesets to be indexed, quit, verify again.
-check_data="$(mktemp -d "${TMPDIR:-/tmp}/nn-release.XXXXXX")"
-before="$(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true)"
-open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR="$check_data" "$app"
+check_data="$(mktemp -d "${TMPDIR:-/tmp}/ac-release.XXXXXX")"
+before="$(pgrep -f "^$app/Contents/MacOS/Arcadia" | sort || true)"
+open -g -n --env ARCADIA_BACKGROUND=1 --env ARCADIA_DATA_DIR="$check_data" "$app"
 indexes="$check_data/Built-in Extensions/ublock-lite/_metadata/generated_indexed_rulesets"
 for _ in $(seq 1 90); do
   [ "$(ls "$indexes" 2>/dev/null | wc -l)" -ge 6 ] && break
@@ -298,10 +298,10 @@ sleep 5
 # The instance this launched: the one started with our data dir (a copy of the same build the owner is running
 # must never be the one quit or killed here).
 pid=""
-for p in $(pgrep -f "^$app/Contents/MacOS/Netnyahoo\$" || true); do
-  ps -E -ww -o command= -p "$p" 2>/dev/null | grep -qF "NETNYAHOO_DATA_DIR=$check_data" && { pid="$p"; break; }
+for p in $(pgrep -f "^$app/Contents/MacOS/Arcadia\$" || true); do
+  ps -E -ww -o command= -p "$p" 2>/dev/null | grep -qF "ARCADIA_DATA_DIR=$check_data" && { pid="$p"; break; }
 done
-[ -n "$pid" ] || pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true) | head -1)"
+[ -n "$pid" ] || pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Arcadia" | sort || true) | head -1)"
 [ -n "$pid" ] || die "the app didn't start (or quit)"
 kill -TERM "$pid"
 for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
@@ -327,9 +327,9 @@ echo "==> Package"
 ditto -c -k --keepParent "$app" "$zip"
 staging="$dist/dmg"
 mkdir -p "$staging"
-ditto "$app" "$staging/Netnyahoo.app"
+ditto "$app" "$staging/Arcadia.app"
 ln -s /Applications "$staging/Applications"
-hdiutil create -volname Netnyahoo -srcfolder "$staging" -format ULFO -ov "$dmg" >/dev/null
+hdiutil create -volname Arcadia -srcfolder "$staging" -format ULFO -ov "$dmg" >/dev/null
 rm -rf "$staging"
 sign "$dmg"
 if [ "$notarize" = 1 ]; then
@@ -342,7 +342,7 @@ echo "==> Release notes"
 if [ "$notarize" = 1 ]; then
   install_line="Apple Silicon, macOS 14 or later. Signed with Developer ID and notarized by Apple: download, drag it to Applications, open it."
 else
-  install_line="Apple Silicon, macOS 14 or later. Signed with Developer ID but not notarized: on first launch macOS refuses to open it. Click Done, then System Settings › Privacy & Security › Open Anyway. Or run \`xattr -dr com.apple.quarantine /Applications/Netnyahoo.app\`."
+  install_line="Apple Silicon, macOS 14 or later. Signed with Developer ID but not notarized: on first launch macOS refuses to open it. Click Done, then System Settings › Privacy & Security › Open Anyway. Or run \`xattr -dr com.apple.quarantine /Applications/Arcadia.app\`."
 fi
 {
   notes_body
@@ -352,7 +352,7 @@ fi
 
 $install_line
 
-Earlier versions update automatically (Netnyahoo › Check for Updates…). Every release's notes: $notes_page
+Earlier versions update automatically (Arcadia › Check for Updates…). Every release's notes: $notes_page
 EOF
 } > "$dist/release-notes.md"
 
@@ -362,7 +362,7 @@ updates="$dist/updates"
 mkdir -p "$updates"
 cp "$zip" "$updates/"
 # Next to the archive, generate_appcast embeds it in the item: Sparkle's update dialog shows it (Markdown).
-{ printf '**%s**\n\n' "$headline"; notes_body; } > "$updates/Netnyahoo-$version.md"
+{ printf '**%s**\n\n' "$headline"; notes_body; } > "$updates/Arcadia-$version.md"
 curl -fsL "https://github.com/$repo/releases/latest/download/appcast.xml" -o "$updates/appcast.xml" || rm -f "$updates/appcast.xml"
 # Only generate_keys (which created or imported the key) may read it without a keychain prompt, so hand
 # generate_appcast an exported copy.
@@ -390,7 +390,7 @@ fi
 
 echo
 [ "$notarize" = 1 ] && echo "Notarized and stapled." || echo "NOT notarized."
-[ -n "$engine_pack" ] && echo "New engine: publish $(basename "$engine_archive") with the release, then add prebuilt-engine.tsv's line to packages/nncore/prebuilt-engines.tsv."
+[ -n "$engine_pack" ] && echo "New engine: publish $(basename "$engine_archive") with the release, then add prebuilt-engine.tsv's line to packages/arcadiacore/prebuilt-engines.tsv."
 [ "$rc" = 1 ] && echo "Release candidate: never publish dist/$version-rc."
 [ -n "$phased" ] && echo "Phased rollout: $phased s between steps (the appcast item has phasedRolloutInterval; the whole release takes $((phased * 7)) s)."
 du -sh "$app" "$dmg" "$zip" "$dist/appcast.xml" "$dist/release-notes.md" ${engine_files[@]+"${engine_files[@]}"}

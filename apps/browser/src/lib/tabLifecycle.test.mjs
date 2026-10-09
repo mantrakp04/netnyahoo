@@ -7,9 +7,9 @@ globalThis.__DEV__ = false;
 
 // The battery saver's toast and Settings, and the internal pages, pull in the whole UI: stand-ins for them, and for the
 // engine's task and system calls.
-const nncore = new URL("../test-native-stub.mjs", import.meta.url).href;
+const arcadiacore = new URL("../test-native-stub.mjs", import.meta.url).href;
 const stubs = {
-  "@netnyahoo/nncore": `export * from ${JSON.stringify(nncore)};
+  "@arcadia/arcadiacore": `export * from ${JSON.stringify(arcadiacore)};
     export const listTasks = async () => [];
     export const onSystemState = () => ({ remove() {} });
     export const systemState = async () => null;

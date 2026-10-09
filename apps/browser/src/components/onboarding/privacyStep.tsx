@@ -57,7 +57,7 @@ function Receipt({ on }: { on: boolean }) {
       }}
     >
       <Text style={{ fontFamily: MONO, fontSize: 11, fontWeight: "700", letterSpacing: 1, textAlign: "center", color: colors.title }}>
-        NETNYAHOO
+        ARCADIA
       </Text>
       <Text style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: 0.6, textAlign: "center", marginTop: 3, color: colors.subtitle }}>
         ITEMIZED. UNLIKE SOME EXPENSES.

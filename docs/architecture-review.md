@@ -1,4 +1,4 @@
-# Netnyahoo architecture review
+# Arcadia architecture review
 
 Reviewed at `b885f89c` (main, 2026-10-01). Read-only: nothing in the repo was edited or committed.
 
@@ -15,7 +15,7 @@ as a fix ("no longer", "again", "crash", "stale", "fix"…). That is a rough pro
 The plan:
 - **Now:** fix the tab-state authority, stop keeping copies of data Chrome already stores, and delete the
   compatibility matrix.
-- **Next:** write new engine code as plain Chromium code (`chrome/browser/netnyahoo/`) instead of CEF API.
+- **Next:** write new engine code as plain Chromium code (`chrome/browser/arcadia/`) instead of CEF API.
 - **Then:** spike, and if the spike passes, replace CEF with a thin Chromium layer of our own, as Dia does with
   ArcCore.
 - **Keep React Native**, but trim it.
@@ -28,7 +28,7 @@ The plan:
 
 **What.** Split the tab model in two, and give each fact exactly one writer.
 - **Workspace facts. The store owns them** (already Node-tested): sidebar entries and their order, pinned tiles,
-  unloaded tiles and parked pins, groups, splits, Small Yahu, "load when shown" tabs.
+  unloaded tiles and parked pins, groups, splits, Little Arcadia, "load when shown" tabs.
 - **Live-tab facts. Chrome's `TabStripModel` owns them**: which `WebContents` exist in which Browser, their order
   in Chrome's strip, which one is active.
 - **How they talk.**
@@ -75,10 +75,10 @@ The plan:
 **What it deletes.**
 - `lib/tabStripEcho.ts` and its test.
 - The echo bookkeeping in `chromeTabs.ts` (about 60 of its 125 lines).
-- The `activated`/`byApp` plumbing in `NNClient.mm`, `NNWindowHost.mm` and `WebView.tsx`.
+- The `activated`/`byApp` plumbing in `ACClient.mm`, `ACWindowHost.mm` and `WebView.tsx`.
 - `ActivatingTab` and `PickedByClose`.
 - Bug classes gone: switch-back, ping-pong, lost extension moves and groups.
-- What stays: background-tab focus suppression (`NNClient.mm:1325`). It is product policy (opening a link behind
+- What stays: background-tab focus suppression (`ACClient.mm:1325`). It is product policy (opening a link behind
   must not take focus), not echo avoidance.
 
 **Effort and risk.**
@@ -91,7 +91,7 @@ The plan:
 
 **Status (2026-10-01): done** for history, closed tabs, favicons and bookmarks (`b79cb1c5`, `5e385337`, `7263d37a`;
 `docs/store-api.md`, `docs/sync.md`); zoom is with rec. 4. Chrome's services are reached through
-`//chrome/browser/netnyahoo` (`nn_history_*`, `nn_favicons_*`, `nn_tab_restore_*`, `nn_bookmarks_*`), so NNCore
+`//chrome/browser/arcadia` (`ac_history_*`, `ac_favicons_*`, `ac_tab_restore_*`, `ac_bookmarks_*`), so ArcadiaCore
 calls the same code. history.json and bookmarks.json move into Chrome once; bookmarks synced before keep their old
 ids as sync keys, so Macs on either version share one tree.
 
@@ -101,8 +101,8 @@ keeping parallel JSON copies:
 | Data | Ours today | Chrome's copy, running anyway | Move to |
 |---|---|---|---|
 | History | `store/history.ts` (5k entries × 50 visits, a 1.8 MB JSON file rewritten whole on each change, `lib/persist.ts`), recorded from a React component (`ContentCard.tsx:362`) | `HistoryService` records every visit (nothing disables it). Deleting one entry (`removeHistory`) doesn't remove it there. `chrome.history` disagrees with our History page. | `HistoryService` (query / delete) |
-| Closed tabs | `closedTabs` in `session.json` (URL only), plus an in-memory map of back/forward state (`NNBrowserView.mm:80-102`), lost on quit | `TabRestoreService` writes `Sessions/Tabs_*` with full navigation state | `TabRestoreService` (⇧⌘T, History › Recently Closed) |
-| Favicons | `lib/favicons.ts` (388 lines), `favicons-<profile>.json`, a PNG folder, and part of `NNBrowsingData.mm` | `FaviconService` database | `FaviconService`; keep our light/dark pick as a thin layer |
+| Closed tabs | `closedTabs` in `session.json` (URL only), plus an in-memory map of back/forward state (`ACBrowserView.mm:80-102`), lost on quit | `TabRestoreService` writes `Sessions/Tabs_*` with full navigation state | `TabRestoreService` (⇧⌘T, History › Recently Closed) |
+| Favicons | `lib/favicons.ts` (388 lines), `favicons-<profile>.json`, a PNG folder, and part of `ACBrowsingData.mm` | `FaviconService` database | `FaviconService`; keep our light/dark pick as a thin layer |
 | Zoom | `tab.zoom` in `session.json`, pushed back on restore (`persist.ts:249`) | `HostZoomMap` is already the source of truth | `HostZoomMap` only |
 | Bookmarks | `store/bookmarks.ts` and our JSON | `BookmarkModel` loads empty, so extensions' `chrome.bookmarks` returns nothing | `BookmarkModel` with our UI and sync on top (needs the profile-roots mapping) |
 
@@ -122,14 +122,14 @@ Keep what's ours on purpose:
 
 **What it deletes.**
 - About 900–1,300 lines: the history/closed-tab/favicon/zoom halves of `persist.ts`, `store/history.ts`, most of
-  `lib/favicons.ts`, the closed-tab state map in `NNBrowserView.mm`, `tab.zoom`, the JSON migrations, and the
+  `lib/favicons.ts`, the closed-tab state map in `ACBrowserView.mm`, `tab.zoom`, the JSON migrations, and the
   favicon/history perf code.
 - Bug classes gone: drift between our data and extensions' view of it, data lost on quit (closed tabs' history),
   and JS-thread stalls on saves.
 
 **Effort and risk.**
 - Effort: inside CEF, each of these needs engine API, because CEF exposes none of these services. That is about
-  300–600 patch lines through CEF's translator, or one new `chrome/browser/netnyahoo/` file per service exported as
+  300–600 patch lines through CEF's translator, or one new `chrome/browser/arcadia/` file per service exported as
   C (recommendation 4). About a week. In the fork (recommendation 5) these are direct calls.
 - Risk: medium. Sync's adapters key off store ids (`bm:<id>`), so bookmarks are the hard one: do history, closed
   tabs, favicons and zoom first.
@@ -142,13 +142,13 @@ Keep what's ours on purpose:
 owner's go-ahead.
 
 **What.**
-1. Drop the stock-CEF build. Remove `NN_CHROME_TABS=0`, its 24 `#if NN_CHROME_TABS` blocks and 9 `#else` branches
-   (`NNBrowserView.mm`, `NNWindowHost.mm`, `NNCef.mm`), and `CEF_PREBUILT=1` in `setup.sh`.
-2. Make every `CEF_NN_*` marker mandatory: one `#error` if `cef_netnyahoo.h` is missing, then delete the 14
-   `NN_*` feature macros in `NNCefInternal.h` and their `#if`s.
+1. Drop the stock-CEF build. Remove `AC_CHROME_TABS=0`, its 24 `#if AC_CHROME_TABS` blocks and 9 `#else` branches
+   (`ACBrowserView.mm`, `ACWindowHost.mm`, `ACCef.mm`), and `CEF_PREBUILT=1` in `setup.sh`.
+2. Make every `CEF_AC_*` marker mandatory: one `#error` if `cef_arcadia.h` is missing, then delete the 14
+   `AC_*` feature macros in `ACCefInternal.h` and their `#if`s.
 3. Stop JS from supporting older native builds:
    - delete the timed fallback in `tabStripEcho.ts` ("Older native builds say neither");
-   - delete the "older distribution" path in `NNClient.mm:970`;
+   - delete the "older distribution" path in `ACClient.mm:970`;
    - check which `requireOptionalNativeModule` guards (13 sites) exist only to tolerate skew, and remove those.
 4. Remove the cause of the skew with a JS/native API version handshake: native exports `apiVersion`, and the JS
    bundle refuses to start against a different one, with a clear log line.
@@ -167,9 +167,9 @@ one of the reasons for the shared-Metro rule in the agent brief.
 
 **Risk.** Low, once step 5 is in place. Do the handshake (step 4) first, then delete.
 
-### 4. Stop extending CEF's API: put new engine code in `chrome/browser/netnyahoo/` and export plain C/ObjC
+### 4. Stop extending CEF's API: put new engine code in `chrome/browser/arcadia/` and export plain C/ObjC
 
-**What.** New engine work goes into new files under `chrome/browser/netnyahoo/` (or `libcef/browser/netnyahoo/`).
+**What.** New engine work goes into new files under `chrome/browser/arcadia/` (or `libcef/browser/arcadia/`).
 Those files get direct access to `Browser`, `TabStripModel`, `HistoryService`, `PasswordStoreInterface`,
 `autofill::PersonalDataManager`, `ExtensionService`, `HostZoomMap` and `TemplateURLService`. They are exported as a
 small C or ObjC surface, looked up the way `cef-zzz-open-url-params.patch` already does (`dlsym`, outside CEF's
@@ -184,30 +184,30 @@ translator). Start by replacing the hidden-WebUI scripting.
   - autofill: `chrome://settings/`, `autofillPrivate`;
   - extensions: `chrome://extensions/`, `developerPrivate`;
   - zoom removal and search engines: `chrome.send` from `chrome://settings/`.
-- That is `NNChromePages.mm` (471 lines), `NNPasswords.mm` (138), `NNAutofill.mm` (173), `NNExtensions.mm` (304),
-  `NNZoom.mm` (219) and `NNSearchEngines.mm` (28).
+- That is `ACChromePages.mm` (471 lines), `ACPasswords.mm` (138), `ACAutofill.mm` (173), `ACExtensions.mm` (304),
+  `ACZoom.mm` (219) and `ACSearchEngines.mm` (28).
 - It needed a Chromium patch only so the hidden page could uninstall without a dialog
   (`chromium-zz-extensions-page-uninstall.patch`).
 - Those page APIs are private and change with Chromium releases. Every Chromium upgrade risks breaking settings
   silently.
 
 **What it deletes.**
-- `NNChromePages.mm`, plus the page-scripting halves of the five wrappers: about 1,000 lines.
+- `ACChromePages.mm`, plus the page-scripting halves of the five wrappers: about 1,000 lines.
 - `chromium-zz-extensions-page-uninstall.patch` and `cef-zz-quiet-uninstall.patch`.
 - Bug classes gone: settings that silently break on a Chromium upgrade, and timeouts in the hidden page.
 - It is also the first step of recommendation 5: the code written here is the fork's API layer.
 
 **Effort and risk.**
-- Effort: 3–5 days for the five services. The first one sets up the BUILD.gn hook and an `nn_engine.h` header that
+- Effort: 3–5 days for the five services. The first one sets up the BUILD.gn hook and an `ac_engine.h` header that
   `setup.sh` copies.
 - Risk: low to medium. Code in the Chromium tree has to follow Chromium's threading rules, and Chromium's own types
   make it easier to get right than page scripting.
 
-### 5. Big bet: replace CEF with a thin Chromium layer of our own (ArcCore-style "NNCore"), as a strangler, not a rewrite
+### 5. Big bet: replace CEF with a thin Chromium layer of our own (ArcCore-style "ArcadiaCore"), as a strangler, not a rewrite
 
 **What.**
-- Build Chromium's `//chrome` (with ungoogled, as now) plus our own `netnyahoo/browser/**` layer into
-  `NNCore.framework`. The app links it, as Dia links `ArcCore`.
+- Build Chromium's `//chrome` (with ungoogled, as now) plus our own `arcadia/browser/**` layer into
+  `ArcadiaCore.framework`. The app links it, as Dia links `ArcCore`.
 - Our layer provides:
   - its own `BrowserWindow` implementation, a plain object with no `BrowserView` and no Views frame (Dia's
     `arc/browser/ui/window.cc`). Several `Browser`s (one per profile) attach to the *same* `NSWindow`, and the tab's
@@ -224,21 +224,21 @@ translator). Start by replacing the hidden-WebUI scripting.
 **Why.** CEF forces three structural fights that patches can only paper over:
 1. **Windows.** A Chrome-style CEF browser *is* a Views widget window.
    - We patched our way into Chrome's window: `cef-zwindow-*` (5 patches) and `chromium-window-hosted`. Our RN root
-     sits inside `BridgedContentView` behind a `netnyahooEmbeddedView` hit-test override.
+     sits inside `BridgedContentView` behind a `arcadiaEmbeddedView` hit-test override.
    - Profiles force one Chrome window per profile, and paging moves the RN root between windows (`MoveRoot`: 15–25
      ms of main thread per switch). Full screen with two profiles needs an auxiliary child-window trick.
-   - Profile paging alone is about 4,600 lines: `NNSwipe.mm` 924, `SwipeModule.swift` 594, `NNChromeWindow.mm` 716,
+   - Profile paging alone is about 4,600 lines: `ACSwipe.mm` 924, `SwipeModule.swift` 594, `ACChromeWindow.mm` 716,
      `profilePager.ts` 555, `SwipeOverlay`/`ProfileSwipe`/`swipe.tsx` 563, and 1,914 lines of test scripts. Plus
      four research docs, and 16 commits this week.
-   - The window-hosting files (`NNWindowHost.mm`, `NNChromeWindow.mm`) are the two most-churned native files: 21 and
+   - The window-hosting files (`ACWindowHost.mm`, `ACChromeWindow.mm`) are the two most-churned native files: 21 and
      16 commits, 1,812 and 1,158 lines churned.
 2. **Tab creation.** Chrome creates tabs itself (`window.open`, links with a disposition, extensions,
    `chrome.windows.create`). CEF hands each one to us as a callback we must intercept, which leads to:
    - `OnBeforePopup` / `OnOpenURLFromTab` → emit to JS → the store makes a tab → the RN view adopts the browser by
-     `adoptId` (`NNClient.mm:722-830`, a 30 s orphan timer);
+     `adoptId` (`ACClient.mm:722-830`, a 30 s orphan timer);
    - a `StrayWindowClient` that hides and closes windows Chrome made on its own and replays their URL
-     (`NNWindowHost.mm:742`);
-   - a `TabRouter` with 13 handler interfaces (`NNWindowHost.mm:65`);
+     (`ACWindowHost.mm:742`);
+   - a `TabRouter` with 13 handler interfaces (`ACWindowHost.mm:65`);
    - and CEF dropping `OpenURLParams`, so POST bodies were lost until `cef-zzz-open-url-params.patch` (173 lines,
      with 4 follow-ups: `025ec948`, `94c5da42`, `bb8f0d70`, `b5395b1c`).
    - With our own `BrowserWindow`/`BrowserDelegate`, `Browser::AddNewContents` hands us the already-created,
@@ -249,11 +249,11 @@ translator). Start by replacing the hidden-WebUI scripting.
 **What it deletes.**
 - About 3,700 of the 4,400 patch lines (84%; table in § C): every CEF-layer patch, and the Chromium patches that
   exist only because of CEF's window model.
-- `libcef_dll_wrapper`, `make_distrib` / `06-distrib.sh`, most of `setup.sh` / `embed.sh`, the `CEF_NN_*` marker
+- `libcef_dll_wrapper`, `make_distrib` / `06-distrib.sh`, most of `setup.sh` / `embed.sh`, the `CEF_AC_*` marker
   matrix, and the 534 MB vendored CEF copy.
-- In `packages/cef/ios` (13.8k lines), I estimate 6–8k lines go: `NNChromeWindow` (716), most of `NNWindowHost`
-  (1,063), `NNPopupWindow`, the CEF handler plumbing in `NNClient` (1,430, of which ~60% is CEF handler routing),
-  `NNChromePages` (471) and the DevTools-protocol plumbing behind it, the pump in `NNCef.mm`, and much of `NNSwipe`
+- In `packages/cef/ios` (13.8k lines), I estimate 6–8k lines go: `ACChromeWindow` (716), most of `ACWindowHost`
+  (1,063), `ACPopupWindow`, the CEF handler plumbing in `ACClient` (1,430, of which ~60% is CEF handler routing),
+  `ACChromePages` (471) and the DevTools-protocol plumbing behind it, the pump in `ACCef.mm`, and much of `ACSwipe`
   once profiles are views in one window.
 - It adds about 6–9k lines of Chromium-side C++/ObjC++ (`BrowserWindow`, about 20 UI seams, the ObjC API, process
   bootstrap and renderer-side page-script injection that CEF gives us today).
@@ -277,9 +277,9 @@ translator). Start by replacing the hidden-WebUI scripting.
   - The renderer-side features CEF gives us (process messages, page script) need replacements.
 - Stage it so each step ships:
   - (a) recommendations 1 and 4 first; their code is reused as-is;
-  - (b) a spike: `NNCore.framework` from `//chrome` + one `BrowserWindow` that hosts one tab in a plain `NSWindow`,
+  - (b) a spike: `ArcadiaCore.framework` from `//chrome` + one `BrowserWindow` that hosts one tab in a plain `NSWindow`,
     in a standalone test app (the `packages/cef/patches/test/nativehost.mm` pattern);
-  - (c) swap `packages/cef/ios` behind the unchanged JS API, one window type at a time (Small Yahu first: one tab,
+  - (c) swap `packages/cef/ios` behind the unchanged JS API, one window type at a time (Little Arcadia first: one tab,
     one profile).
 - Go/no-go after (b). The spike must show:
   - a signed, RN-linked Chromium framework;
@@ -289,7 +289,7 @@ translator). Start by replacing the hidden-WebUI scripting.
   - docked DevTools;
   - one practice rebase.
 - Duties that survive the fork (Codex): window geometry and activation for Chrome (today in
-  `NNWindowHost.mm:458`), dialog ownership per profile, fullscreen and restoration. The `adoptId` mechanism goes, but
+  `ACWindowHost.mm:458`), dialog ownership per profile, fullscreen and restoration. The `adoptId` mechanism goes, but
   a popup's lifecycle (who owns it, when it closes) is still ours to manage.
 
 ### 6. Keep React Native; cut its cost instead of rewriting (ongoing)
@@ -300,9 +300,9 @@ translator). Start by replacing the hidden-WebUI scripting.
    spinners.
 2. Coalesce engine events natively: one `navigation` event per frame per tab, carrying title, url, loading, security,
    theme and favicon. Today `EmitNavigation` sends a full 7-field dictionary 4–6+ times per load with no dedup, and
-   `progress` isn't throttled (`NNClient.mm:676`).
-3. Keep one `netnyahoo://` ↔ `chrome://` mapping. It exists three times today (`core/appUrls.ts`, a regex copy in
-   `WebView.tsx:260`, `NNClient.mm:244`): keep the core one and have native ask it once at startup, or move it
+   `progress` isn't throttled (`ACClient.mm:676`).
+3. Keep one `arcadia://` ↔ `chrome://` mapping. It exists three times today (`core/appUrls.ts`, a regex copy in
+   `WebView.tsx:260`, `ACClient.mm:244`): keep the core one and have native ask it once at startup, or move it
    native.
 4. Move side effects out of components: `recordVisit` from `ContentCard.tsx` into the engine event handler (or
    delete it with recommendation 2).
@@ -329,7 +329,7 @@ Even then, a gradual move (new surfaces in AppKit, RN kept for the sidebar and s
 
 **What.**
 - Rewrite `chromium-zz-pip-dia-controls.patch` (1,012 lines; +484/-71 across 13 files of
-  `VideoOverlayWindowViews`) as a new `NetnyahooVideoOverlayWindow` class in new files, with a ~20-line hook where
+  `VideoOverlayWindowViews`) as a new `ArcadiaVideoOverlayWindow` class in new files, with a ~20-line hook where
   Chrome makes its overlay window.
 - Do the same for any patch over ~100 lines that edits Chrome's own files.
 - Name patches by concern and order them in a `series` file, instead of encoding order in name prefixes (`zz-`,
@@ -344,12 +344,12 @@ Codex would put this behind correctness work, and I agree: do it as part of the 
 
 ### 8. Split the god files along the seams that matter (ongoing, mostly falls out of 1, 4 and 5)
 
-- `NNClient.mm` (1,430 lines, 31 commits this week, the most-touched native file) implements 11 CEF handler
+- `ACClient.mm` (1,430 lines, 31 commits this week, the most-touched native file) implements 11 CEF handler
   interfaces in one class: popups, media/PiP, context menus, keys, downloads, permissions, find, app links. Split it
-  by handler (`NNClient+Popups.mm`, `+Media`, `+ContextMenu`, `+Keys`). Most of this disappears in recommendation 5.
+  by handler (`ACClient+Popups.mm`, `+Media`, `+ContextMenu`, `+Keys`). Most of this disappears in recommendation 5.
 - `CefModule.swift` defines 94 functions. Split it into per-domain modules, as `ExtensionsModule` and
   `ChromeUIModule` already are.
-- Shortcuts are defined in `Menus.swift` (102 items) and dispatched in `commands.ts`, and `NNClient.mm` keeps its
+- Shortcuts are defined in `Menus.swift` (102 items) and dispatched in `commands.ts`, and `ACClient.mm` keeps its
   own tables (`IsReservedShortcut`, `IsChromeShortcutCommand`, `MenuBarTakesChromeShortcut`). Generate the native
   table from one JSON list.
 
@@ -369,16 +369,16 @@ Per fight (commits touching the topic's own files; lines added and deleted in th
 
 | Fight | Commits | Lines churned | Fix-like | Code it lives in today |
 |---|---|---|---|---|
-| Chrome window hosting (ghost → `client_window`) | 34 | 4,272 | 7 | `NNWindowHost.mm` 1,063, `NNChromeWindow.mm` 716, `NNPopupWindow.mm` 125, `ChromeWindows.swift` 104, 6 patches (~330 lines) |
+| Chrome window hosting (ghost → `client_window`) | 34 | 4,272 | 7 | `ACWindowHost.mm` 1,063, `ACChromeWindow.mm` 716, `ACPopupWindow.mm` 125, `ChromeWindows.swift` 104, 6 patches (~330 lines) |
 | Tab mirroring (store ↔ `TabStripModel`) | 41 | 3,156 | 12 | `chromeTabs.ts` 125, `tabStripEcho.ts` 56, `openers.ts` 98, `windows.ts`/`tabs.ts` 841, `cef-chrome-tabs`/`cef-tab-state` patches |
 | Profile swipe / paging (one Chrome window per profile) | 16 | 4,658 | 5 | ~2,900 lines of code + 1,914 lines of test scripts + 4 research docs |
-| PiP / mini player | 12 | 2,294 | 2 | `NNPictureInPicture.mm` 653, PiP patches 1,043 |
-| Extensions, popups, side panels, blocker | 20 | 1,263 | 9 | `NNExtensions*` 486, `components/extensions` 1,288, `NNContentBlocker` 389 |
-| Keys / shortcuts in Chrome's window | 15 | 1,010 | 3 | `cef-zwindow-keys`, `Menus.swift`, `NNClient` key tables |
-| Popups / OpenURL params / POST | 6 | 654 | 4 | `cef-zzz-open-url-params.patch`, `NNClient.mm` popup path, `openers.ts` |
-| DevTools docking | 8 | 641 | 2 | 4 patches (~150 lines), `NNDevTools.mm` 292 |
-| Message pump | 2 | 141 | 0 | 2 patches, `NNCef.mm` `MessagePump` |
-| Focus stealing (test instances) | 5 | 176 | 2 | `NNActivation.mm` 241 (swizzles `activateWithOptions:`, `unhide:`, `setActivationPolicy:`) |
+| PiP / mini player | 12 | 2,294 | 2 | `ACPictureInPicture.mm` 653, PiP patches 1,043 |
+| Extensions, popups, side panels, blocker | 20 | 1,263 | 9 | `ACExtensions*` 486, `components/extensions` 1,288, `ACContentBlocker` 389 |
+| Keys / shortcuts in Chrome's window | 15 | 1,010 | 3 | `cef-zwindow-keys`, `Menus.swift`, `ACClient` key tables |
+| Popups / OpenURL params / POST | 6 | 654 | 4 | `cef-zzz-open-url-params.patch`, `ACClient.mm` popup path, `openers.ts` |
+| DevTools docking | 8 | 641 | 2 | 4 patches (~150 lines), `ACDevTools.mm` 292 |
+| Message pump | 2 | 141 | 0 | 2 patches, `ACCef.mm` `MessagePump` |
+| Focus stealing (test instances) | 5 | 176 | 2 | `ACActivation.mm` 241 (swizzles `activateWithOptions:`, `unhide:`, `setActivationPolicy:`) |
 
 Before 2026-09-25, according to the docs:
 - the ghost-window era: alpha-0 Chrome windows kept behind ours, lifted for dialogs; keycode tables for Chrome's
@@ -395,7 +395,7 @@ browser window is.
 |---|---|---|
 | **TabStripModel as truth, store as view** | Observe `TabStripModelObserver`, render from it | **No.** No `WebContents`-less tabs (unloaded pins, load-when-shown, parked pins), one Browser per profile per window, and groups/splits would need Chrome's models to fit Dia's semantics. It would also delete our Node-tested store logic (pinned close, parked pins, groups). |
 | **Split ownership: the store owns the workspace, Chrome owns live tabs** (rec. 1) | JS commands with ids → Chrome commits → revisioned transactions back | **Yes, now.** Keeps Chrome's synchronous extension contracts. Dia's app also owns its workspace (`ArcBrowserDelegate` calls back for tab groups). |
-| **Alloy-style** (no Chrome `Browser`) | Pre-0.1 architecture | **No.** It loses everything a real `Browser` gives us: `chrome.tabs`/`windows` for extensions, password and autofill filling, permission and passkey UI, Cast, side panels. The `NN_CHROME_TABS=0` gap list shows the cost. |
+| **Alloy-style** (no Chrome `Browser`) | Pre-0.1 architecture | **No.** It loses everything a real `Browser` gives us: `chrome.tabs`/`windows` for extensions, password and autofill filling, permission and passkey UI, Cast, side panels. The `AC_CHROME_TABS=0` gap list shows the cost. |
 | **Chrome UI layer with our own `BrowserWindow`** (rec. 5) | Dia/ArcCore: `//chrome` services, our window, no `BrowserView` | **The end-state.** It removes the window, adoption and pump fights at the root. |
 | **OWL-style out-of-process host** | ChatGPT Atlas | **No.** It needs everything rec. 5 needs plus input, IME and accessibility re-plumbing (`chromium-ui-layer.md` prototype). The only gain is crash isolation. |
 | **Native UI (SwiftUI/AppKit) instead of RN** | Rewrite the chrome UI | **Not now** (rec. 6). It doesn't touch any Chrome fight. |
@@ -442,7 +442,7 @@ Added lines are counted as `+` lines in the patch. "Fork" is what happens to eac
 | `cef-zz-quiet-uninstall` | +4 | 1 | Marker | Plumbing | Gone |
 | `chromium-zz-pip-dia-controls` | +484/-71 | 13 | Dia's PiP controls and motion | Our feature | **Stays**: move into new files |
 | `chromium-chrome-ui-hooks` | +86/-1 | 4 | Device chooser, Cast and side panel ask the client | Hooks | Becomes our seam implementation |
-| `chromium-neterror-yahu` | +71/-2 | 5 | Big Yahu offline page | Our feature | Stays |
+| `chromium-neterror-mascot` | +71/-2 | 5 | The mascot offline page | Our feature | Stays |
 | `chromium-webview-native-hosted` | +62/-1 | 4 | `views::WebView` must not attach our tabs | Fighting `BrowserView` | Gone (no `BrowserView`) |
 | `chromium-window-hosted` | +55 | 5 | RN root inside `BridgedContentView`; Browser survives with no tabs | Fighting CEF's window model | Gone |
 | `chromium-zz-extension-installed-bubble` | +44 | 3 | "Added" bubble without a toolbar | No toolbar | Our `ExtensionsContainer` |
@@ -497,7 +497,7 @@ Verdict: RN costs us a perf tax and quirks, but it isn't where Chrome fights com
 ## E. Code we shouldn't own
 
 Based on the subagent's survey and my own reading. Note: that subagent opened the Chrome databases in the owner's
-real Netnyahoo profile (read-only, `immutable=1`) to confirm Chrome's copies are populated. That breaks the
+real Arcadia profile (read-only, `immutable=1`) to confirm Chrome's copies are populated. That breaks the
 AGENTS.md rule against reading real profiles. I left the numbers it found out of this report, and every claim below
 stands on the code alone.
 
@@ -523,12 +523,12 @@ stands on the code alone.
 ## F. Module boundaries and maintenance
 
 - **Biggest files.**
-  - Native: `NNClient.mm` 1,430, `NNWindowHost.mm` 1,063, `NNCef.mm` 1,014, `ShellModule.swift` 930, `NNSwipe.mm`
-    924, `NNBrowserView.mm` 913.
+  - Native: `ACClient.mm` 1,430, `ACWindowHost.mm` 1,063, `ACCef.mm` 1,014, `ShellModule.swift` 930, `ACSwipe.mm`
+    924, `ACBrowserView.mm` 913.
   - JS: `ImportWindow.tsx` 1,053, `TopTabStrip.tsx` 805, `organize.ts` 597, `sync/engine.ts` 566,
     `profilePager.ts` 555.
-  - For a codebase this size these are acceptable. The problem is what they contain, not their size: `NNClient` and
-    `NNWindowHost` mix CEF routing with product rules.
+  - For a codebase this size these are acceptable. The problem is what they contain, not their size: `ACClient` and
+    `ACWindowHost` mix CEF routing with product rules.
 - **Cross-layer leakage.**
   - Product rules live in native code: which tab activates, popup blocking with replays, split-click detection,
     shortcut ownership tables.
@@ -557,18 +557,18 @@ stands on the code alone.
 
 | When | Item | Lines deleted (est.) | Bug classes removed | Risk |
 |---|---|---|---|---|
-| **Quick wins (≤1 day each)** | Rec. 3: drop the stock-CEF path, the `NN_*` macro matrix and older-native compat in JS; one Metro per agent or an embedded bundle | 400–600 | JS/native skew, dead `#else` paths | Low |
+| **Quick wins (≤1 day each)** | Rec. 3: drop the stock-CEF path, the `AC_*` macro matrix and older-native compat in JS; one Metro per agent or an embedded bundle | 400–600 | JS/native skew, dead `#else` paths | Low |
 | | Move `recordVisit` out of `ContentCard`; throttle `progress` and dedup `navigation` natively | 50–100 | JS-thread stalls during loads | Low |
 | | One URL mapping (`core/appUrls`) | ~40 | Mapping drift | Low |
 | | Fix `docs/research/chrome-hosted-window.md:89` (the pager is native now) | — | Stale docs | None |
 | **Medium (≤1 week each)** | Rec. 1: one writer per fact, commands with ids, revisioned live-tab transactions | 300–450 | Ping-pong, switch-back, lost extension moves and groups | Medium-low |
 | | Replace `external_message_pump` with `CefRunMessageLoop()` in `main.swift`. Termination must be redesigned as cefclient does it: intercept terminate, close browsers, quit the loop, `CefShutdown` after it returns. Test cancelled quits, beforeunload, downloads and modal loops. (Skip if rec. 5 is go.) | ~150 + 2 patches | Pump latency and wakeups, idle-work starvation | Medium |
-| | Rec. 4: `chrome/browser/netnyahoo/` C exports; replace hidden-WebUI scripting (passwords, autofill, extensions, zoom, search engines) | ~1,000 + 2 patches | Silent settings breakage on Chromium upgrade, eval timeouts | Low-medium |
+| | Rec. 4: `chrome/browser/arcadia/` C exports; replace hidden-WebUI scripting (passwords, autofill, extensions, zoom, search engines) | ~1,000 + 2 patches | Silent settings breakage on Chromium upgrade, eval timeouts | Low-medium |
 | | Rec. 2 (first half): history, closed tabs, favicons and zoom on Chrome's services | 900–1,300 | Data drift with extensions, lost closed-tab history, 1.8 MB rewrites | Medium |
 | | Rec. 7 (at the next Chromium bump): PiP patch into new files; patch `series`; clean-apply check | 0 (moves ~500) | Rebase conflicts | Low |
 | | Rec. 6 items 1–4: native-driver animations, event coalescing | 100–300 | JS-thread jank in animations | Low |
 | **Big bets** | Rec. 2 (second half): bookmarks on `BookmarkModel` (sync adapters re-keyed) | 400–600 | Blind `chrome.bookmarks` | Medium-high |
-| | Rec. 5: NNCore (ArcCore-style) replacing CEF, staged (spike → Small Yahu → main windows) | ~3,700 patch lines + 6–8k native − 6–9k new | Window hosting, ghost/hosted windows, adoption, lost OpenURLParams, pump, per-profile window swaps, translator plumbing | High |
+| | Rec. 5: ArcadiaCore (ArcCore-style) replacing CEF, staged (spike → Little Arcadia → main windows) | ~3,700 patch lines + 6–8k native − 6–9k new | Window hosting, ghost/hosted windows, adoption, lost OpenURLParams, pump, per-profile window swaps, translator plumbing | High |
 | | Revisit native UI only after rec. 5 | — | — | — |
 
 ## H. Codex second opinion
@@ -582,12 +582,12 @@ Codex (`gpt-6.1-sol`, high effort, read-only) reviewed the draft recommendations
    - Adopted: Chrome commits live-tab facts, JS sends commands with ids, native emits revisioned transactions.
    - Also: Arc's delegate names don't prove Swift commits first. That claim is softened in the report.
 2. **`store/openers.ts` stays.** It encodes product policy Chrome doesn't have (split rows, pinned-tile children,
-   successors that skip collapsed or unloaded tabs). The focus suppression in `NNClient.mm:1325` stays too, as
+   successors that skip collapsed or unloaded tabs). The focus suppression in `ACClient.mm:1325` stays too, as
    policy.
 3. **Skew fix (rec. 3).** Per-agent Metro ports don't help, because they serve the same working tree. Use an API
    version handshake or embedded bundles, and publish the pinned engine artifact before deleting the stock path.
-4. **`CefRunMessageLoop`.** Viable in principle (Chromium's AppKit pump calls `[NSApp run]`, and `NNApplication`
-   already implements `CefAppProtocol`). But it needs a termination redesign: today `NNCef.mm:832` shuts down
+4. **`CefRunMessageLoop`.** Viable in principle (Chromium's AppKit pump calls `[NSApp run]`, and `ACApplication`
+   already implements `CefAppProtocol`). But it needs a termination redesign: today `ACCef.mm:832` shuts down
    inside `WillTerminate`, while `Windows.swift:362` defers termination. It's a medium item, not a quick win.
 5. **Fork estimate.** Raised from 12–16 to 12–20+ engineer-weeks for parity. The spike's acceptance list now
    includes signing, two profiles in one window, popup ownership, WebAuthn/autofill anchoring, docked DevTools and

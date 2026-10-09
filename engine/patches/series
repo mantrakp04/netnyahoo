@@ -1,6 +1,6 @@
-# The order Netnyahoo's changes go into the Chromium tree (docs/engine-build.md › "The patch series").
+# The order Arcadia's changes go into the Chromium tree (docs/engine-build.md › "The patch series").
 # The tree is plain Chromium with ungoogled-chromium and domain substitution; CEF's own patches are gone, but for
-# the few NNCore relies on (chromium-cef-carryover.patch).
+# the few ArcadiaCore relies on (chromium-cef-carryover.patch).
 #
 #   chromium <patch>  a patch to chromium/src, after ungoogled-chromium and domain substitution (step 4)
 #   layer <dir>       our own files, copied in by <dir>/apply.sh (engine/<layer>/src mirrors chromium/src)
@@ -8,7 +8,7 @@
 # Lines run top to bottom; a patch is made against the tree as every line above it leaves it.
 # One concern per patch, named for it; a new patch goes where it belongs, not where its name sorts.
 
-# CEF's patches to Chrome whose behaviour NNCore relies on (each hunk's origin is in the patch's header).
+# CEF's patches to Chrome whose behaviour ArcadiaCore relies on (each hunk's origin is in the patch's header).
 chromium chromium-cef-carryover.patch
 chromium chromium-autofill-address-bubble-window.patch
 chromium chromium-device-chooser-hook.patch
@@ -20,11 +20,11 @@ chromium chromium-devtools-window-title.patch
 chromium chromium-extension-install-prompt-hook.patch
 chromium chromium-extension-updates.patch
 chromium chromium-extension-window-hidden.patch
-chromium chromium-neterror-yahu.patch
+chromium chromium-neterror-mascot.patch
 chromium chromium-branding.patch
 chromium chromium-icloud-keychain-window.patch
-# Load-bearing for every user's data: the Safe Storage item ("Netnyahoo Safe Storage" / "Netnyahoo") holds the key to
-# their saved passwords and cookies. It must survive any re-sync (plain Chromium for NNCore, a version bump), unchanged.
+# Load-bearing for every user's data: the Safe Storage item ("Arcadia Safe Storage" / "Arcadia") holds the key to
+# their saved passwords and cookies. It must survive any re-sync (plain Chromium for ArcadiaCore, a version bump), unchanged.
 chromium chromium-safe-storage-name.patch
 chromium chromium-password-bubble-hook.patch
 chromium chromium-password-generation-local.patch
@@ -36,7 +36,7 @@ chromium chromium-extension-installed-bubble.patch
 chromium chromium-pip-close-keeps-playing.patch
 chromium chromium-pip-overlay-window.patch
 chromium chromium-tab-sharing-capturer.patch
-chromium chromium-netnyahoo-layer.patch
+chromium chromium-arcadia-layer.patch
 
 layer engine/chromium
-layer engine/nncore
+layer engine/arcadiacore

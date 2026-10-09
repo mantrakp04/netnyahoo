@@ -2,7 +2,7 @@ import AppKit
 import ExpoModulesCore
 
 enum ChromeWindows {
-  private static let host = NSClassFromString("NNChromeWindowHost") as? NSObject.Type
+  private static let host = NSClassFromString("ACChromeWindowHost") as? NSObject.Type
 
   static func makeWindow(profile: String?) -> NSWindow? {
     guard let host else { return nil }
@@ -68,7 +68,7 @@ enum ChromeWindows {
 /// Swap profiles only after the React view-update batch lands.
 public class WindowProfileModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooWindowProfile")
+    Name("ArcadiaWindowProfile")
 
     View(WindowProfileView.self) {
       Prop("profile") { (view: WindowProfileView, value: String?) in view.profile = value ?? "" }

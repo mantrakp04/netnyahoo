@@ -4,7 +4,7 @@
                     uint64_t popup_parent_ns_view_id) override;
    void SetParentWebContentsNSView(uint64_t parent_ns_view_id) override;
    void DisableDisplay() override;
-+  // Netnyahoo: undoes DisableDisplay() (RenderWidgetHostViewMac::SetParentUiLayer
++  // Arcadia: undoes DisableDisplay() (RenderWidgetHostViewMac::SetParentUiLayer
 +  // with no parent layer): the NSView shows its own compositor's frames again.
 +  void EnableDisplay();
    void MakeFirstResponder() override;
@@ -39,7 +39,7 @@
      ns_view_->DisableDisplay();
 +  } else if (in_process_ns_view_bridge_ &&
 +             ns_view_ == in_process_ns_view_bridge_.get()) {
-+    // Netnyahoo: detached from Views (a WebView gave it up, e.g. DevTools
++    // Arcadia: detached from Views (a WebView gave it up, e.g. DevTools
 +    // docking back into a client window that hosts their NSView itself). Draw
 +    // with this view's own compositor into its own NSView again, as before it
 +    // was first attached; the next attach switches back.

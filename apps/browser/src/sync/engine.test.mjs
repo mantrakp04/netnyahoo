@@ -10,8 +10,8 @@ globalThis.__DEV__ = false;
 const folder = new Map();
 let onWrite = null;
 let ids = 0;
-globalThis.nnTestNativeModules = {
-  NetnyahooSync: {
+globalThis.acTestNativeModules = {
+  ArcadiaSync: {
     newDeviceId: () => `dev${++ids}`,
     deviceName: () => "Test Mac",
     createPhrase: async () => true,
@@ -37,7 +37,7 @@ globalThis.nnTestNativeModules = {
   },
 };
 
-const shell = await import("@netnyahoo/shell");
+const shell = await import("@arcadia/shell");
 const { useBrowser } = await import("../store/browser.ts");
 const S = () => useBrowser.getState();
 // Bookmarks are the store's alone here (lib/bookmarks.ts, which reads Chrome's, isn't running).

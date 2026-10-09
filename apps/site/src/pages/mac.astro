@@ -10,13 +10,13 @@ const target = `${base}/?ref=mac`;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Netnyahoo for Mac</title>
+    <title>Arcadia for Mac</title>
     <meta name="robots" content="noindex" />
     <link rel="canonical" href={new URL(`${base}/`, Astro.site)} />
     <meta http-equiv="refresh" content={`0; url=${target}`} />
     <script is:inline define:vars={{ target }}>location.replace(target + location.hash);</script>
   </head>
   <body style="background:#f1ece2;color:#16130f;font:16px/1.5 Georgia,serif;padding:24px">
-    <a href={target}>Netnyahoo for Mac</a>
+    <a href={target}>Arcadia for Mac</a>
   </body>
 </html>

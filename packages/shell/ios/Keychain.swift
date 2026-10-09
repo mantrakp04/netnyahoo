@@ -3,10 +3,10 @@ import Foundation
 import Security
 
 public class KeychainModule: Module {
-  private static let service = "Netnyahoo Connected Accounts"
+  private static let service = "Arcadia Connected Accounts"
 
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooKeychain")
+    Name("ArcadiaKeychain")
 
     AsyncFunction("get") { (account: String) -> String? in
       if let store = IsolatedSecrets.shared { return store.get(account) }
@@ -30,7 +30,7 @@ public class KeychainModule: Module {
       if status == errSecItemNotFound {
         var add = Self.query(account)
         add[kSecValueData as String] = data
-        add[kSecAttrLabel as String] = "Netnyahoo: \(account)"
+        add[kSecAttrLabel as String] = "Arcadia: \(account)"
         status = SecItemAdd(add as CFDictionary, nil)
       } else if status != errSecSuccess {
         SecItemDelete(Self.query(account) as CFDictionary)
@@ -55,7 +55,7 @@ public class KeychainModule: Module {
 
 // A test instance's connected accounts: a file in its data dir instead of items in the owner's login keychain.
 private final class IsolatedSecrets {
-  static let shared = NNIsolatedDataDirectory().map {
+  static let shared = ACIsolatedDataDirectory().map {
     IsolatedSecrets(URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("Connected Accounts.json"))
   }
 

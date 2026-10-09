@@ -64,7 +64,7 @@ function emptyWindow(id: string, profileId: string, incognito: boolean, frame: F
   return { id, profileId, incognito, tabIds: [], activeTabIds: {}, sidebarOpen: true, frame, createdAt: Date.now() };
 }
 
-// Small Yahu opens centred at its remembered size (packages/shell Windows.swift), so it keeps no frame.
+// Little Arcadia opens centred at its remembered size (packages/shell Windows.swift), so it keeps no frame.
 const smallWindow = (id: string, profileId: string): BrowserWindow => ({ ...emptyWindow(id, profileId, false), sidebarOpen: false, kind: "small" });
 
 // The window in front closing hands the last profile to the next one in focus order (it comes forward), unless it was
@@ -183,7 +183,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
       };
       closedWindows = [...closedWindows, entry].slice(-MAX_CLOSED_WINDOWS);
     }
-    // A Small Yahu page goes to Recently Closed as a tab, so ⇧⌘T brings it back in Small Yahu.
+    // A Little Arcadia page goes to Recently Closed as a tab, so ⇧⌘T brings it back in Little Arcadia.
     const next = removeTabs(s, w.tabIds, small);
     set({
       ...next,
@@ -208,10 +208,10 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
       if (!w || (w.frame && w.frame.every((v, i) => v === frame[i]))) return {};
       const windows = { ...s.windows, [id]: { ...w, frame } };
       if (!isSmallWindow(w)) return { windows };
-      // Small Yahu remembers its size, not its position: it always opens centred.
+      // Little Arcadia remembers its size, not its position: it always opens centred.
       const size: [number, number] = [Math.round(frame[2]), Math.round(frame[3])];
-      const [width, height] = s.settings.smallYahuSize ?? [];
-      return size[0] === width && size[1] === height ? { windows } : { windows, settings: { ...s.settings, smallYahuSize: size } };
+      const [width, height] = s.settings.littleArcadiaSize ?? [];
+      return size[0] === width && size[1] === height ? { windows } : { windows, settings: { ...s.settings, littleArcadiaSize: size } };
     });
   },
 

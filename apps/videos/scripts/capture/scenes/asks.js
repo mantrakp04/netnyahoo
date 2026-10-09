@@ -15,7 +15,7 @@ ASKS.forEach(([name, url]) => {
   let title;
   then(() => { id = st().newTab(W, { url }); opened.push(id); return sleep(4000).then(() => { title = st().tabs[id].title; }); });
   Array.from({ length: STEPS + 1 }, (_, i) => i).forEach((i) => then(() => {
-    const h = nn.webviews.get(id);
+    const h = ac.webviews.get(id);
     return Promise.resolve(h && h.executeJavaScript("window.__t && window.__t(" + i / STEPS + ")")).then(() => sleep(150))
       .then(() => pic(id, name + i + ":" + id))
       // The button the ask wants pressed, in window points (page frame + its rect): the film's pointer heads for it.

@@ -1,5 +1,5 @@
-import * as shell from "@netnyahoo/shell";
-import { readDocument, writeDocument } from "@netnyahoo/shell";
+import * as shell from "@arcadia/shell";
+import { readDocument, writeDocument } from "@arcadia/shell";
 import { omniboxDrivers } from "../components/omnibox/devDriver";
 import { pagesDrivers } from "../components/pages/devDrivers";
 import { usePages } from "../components/layout/pageState";
@@ -29,7 +29,7 @@ export function startDevHarness() {
     };
   }
 
-  const nn = {
+  const ac = {
     store: useBrowser, actions, runCommand, webviews, shell, omnibox: omniboxDrivers, pages: pagesDrivers,
     pageState: usePages,
     openSettings,
@@ -73,7 +73,7 @@ export function startDevHarness() {
       return { store: require("../live/store"), engine: require("../live/engine") };
     },
   };
-  (globalThis as { nn?: typeof nn }).nn = nn;
+  (globalThis as { ac?: typeof ac }).ac = ac;
   const scriptId = (source: string | null) => source?.match(/^\/\/ *(\S+)/)?.[1];
   let lastId = scriptId(readDocument("dev-eval.js")) ?? "";
   setInterval(function pollDevEval() {
@@ -83,8 +83,8 @@ export function startDevHarness() {
     lastId = id;
     const done = (body: object) => writeDocument("dev-eval-result.json", JSON.stringify({ id, ...body }));
     try {
-      const fn = new Function("nn", source) as (n: typeof nn) => unknown;
-      Promise.resolve(fn(nn)).then(
+      const fn = new Function("ac", source) as (n: typeof ac) => unknown;
+      Promise.resolve(fn(ac)).then(
         (result) => done({ result: result ?? null }),
         (error: unknown) => done({ error: String(error) }),
       );

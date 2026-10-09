@@ -14,7 +14,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   private weak var lastPlaced: NSWindow?
   private var legacyFrame = UserDefaults.standard.string(forKey: "NSWindow Frame BrowserWindow")
   private(set) var auxKinds: [String: String] = [:]
-  // Small Yahu windows (Arc's Little Arc): browser windows that open centred at their remembered size.
+  // Little Arcadia windows (Arc's Little Arc): browser windows that open centred at their remembered size.
   private(set) var smallIds = Set<String>()
 
   private func isBrowserWindow(_ window: NSWindow?) -> Bool {
@@ -134,7 +134,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     } else if let behind, let above = windows[behind], above !== window, above.isVisible {
       window.order(.below, relativeTo: above.windowNumber)
     } else if let key = NSApp.keyWindow, key !== window {
-      // A window opened without focus (tabs Small Yahu sends behind with no main window open) goes behind the
+      // A window opened without focus (tabs Little Arcadia sends behind with no main window open) goes behind the
       // key window instead of over it.
       window.order(.below, relativeTo: key.windowNumber)
     } else {
@@ -363,8 +363,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
     window.delegate = self
     auxKinds[id] = kind
     windows[id] = window
-    if !window.setFrameUsingName("Netnyahoo\(kind.capitalized)") { window.center() }
-    window.setFrameAutosaveName("Netnyahoo\(kind.capitalized)")
+    if !window.setFrameUsingName("Arcadia\(kind.capitalized)") { window.center() }
+    window.setFrameAutosaveName("Arcadia\(kind.capitalized)")
     window.makeKeyAndOrderFront(nil)
   }
 
@@ -554,7 +554,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   // MARK: App lifecycle
 
-  // A quit is NNCore's (nn_lifetime's QuitPhase): every quit, ⌘Q, the Dock or logout, asks shouldTerminate once per
+  // A quit is ArcadiaCore's (ac_lifetime's QuitPhase): every quit, ⌘Q, the Dock or logout, asks shouldTerminate once per
   // attempt, JS saves and answers willQuit with replyToTerminate, and when the quit is cancelled after all (a page's
   // beforeunload said Stay) JS hears quitCancelled and goes on saving. All this keeps of an attempt is the wait for that
   // answer, which asks the user when it runs long.
@@ -602,7 +602,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   // on-timeout: ask the user (Wait / Quit Without Saving)
   private var saveWait: Timer?
   private var lateSaveAlert: NSAlert?
-  private let background = ProcessInfo.processInfo.environment["NETNYAHOO_BACKGROUND"] == "1"
+  private let background = ProcessInfo.processInfo.environment["ARCADIA_BACKGROUND"] == "1"
 
   private func waitForSave() {
     let timer = Timer(timeInterval: 5, repeats: false) { [weak self] _ in self?.saveIsLate() }
@@ -648,7 +648,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     return alert.runModal() == .alertFirstButtonReturn
   }
 
-  /// JS's answer to willQuit. NNCore takes only the answer to the quit it asked about.
+  /// JS's answer to willQuit. ArcadiaCore takes only the answer to the quit it asked about.
   func replyToTerminate(_ ok: Bool) {
     saveWait?.invalidate()
     saveWait = nil
@@ -667,7 +667,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
 /// The dragged tab as Dia shows it once it leaves its list: a small picture of the window under the pointer
 /// (over the page, outside the window, over other apps), after a moment as a tab-shaped pill. A borderless,
 /// non-activating panel that takes no mouse events, so the drag keeps going to the window it started in and no
-/// app is activated. In a hidden instance (NETNYAHOO_BACKGROUND) it stays just above its window instead of
+/// app is activated. In a hidden instance (ARCADIA_BACKGROUND) it stays just above its window instead of
 /// floating over every app.
 final class DragPreview {
   static let shared = DragPreview()
@@ -708,7 +708,7 @@ final class DragPreview {
   private var lastPoint = NSPoint.zero
   private var shownAt = 0.0
   private var generation = 0
-  private let background = ProcessInfo.processInfo.environment["NETNYAHOO_BACKGROUND"] == "1"
+  private let background = ProcessInfo.processInfo.environment["ARCADIA_BACKGROUND"] == "1"
   // A frame and alpha animation driven here: AppKit's animator doesn't run for a panel of an app that isn't active
   // (a hidden instance, or a drag that started in a window behind another app's). It heads for `desired`, which
   // follows the pointer.

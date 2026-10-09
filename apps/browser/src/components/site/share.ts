@@ -1,5 +1,5 @@
-import { cleanUrl } from "@netnyahoo/core";
-import { sharePage, sharePageVia, type ShareAnchor } from "@netnyahoo/shell";
+import { cleanUrl } from "@arcadia/core";
+import { sharePage, sharePageVia, type ShareAnchor } from "@arcadia/shell";
 import type { Tab } from "../../store/types";
 
 export const canShare = (tab: Pick<Tab, "url"> | undefined) => /^https?:/i.test(tab?.url ?? "");

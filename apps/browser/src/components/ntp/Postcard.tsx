@@ -1,5 +1,5 @@
-import { WindowBackdrop } from "@netnyahoo/shaders";
-import { Surface, Symbol, VisualEffect } from "@netnyahoo/shell";
+import { WindowBackdrop } from "@arcadia/shaders";
+import { Surface, Symbol, VisualEffect } from "@arcadia/shell";
 import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { hex, PROFILE_COLORS, useTheme } from "../../lib/theme";
@@ -98,7 +98,7 @@ export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes
             transform: [{ rotate: `${CARD.tilt}deg` }, { scale }],
           }}
         >
-          <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel="What's new in Netnyahoo" style={{ flex: 1 }}>
+          <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel="What's new in Arcadia" style={{ flex: 1 }}>
             <Surface
               style={StyleSheet.absoluteFill}
               cornerRadius={CARD.radius}
@@ -170,7 +170,7 @@ function Artwork({ notes, radius, titleSize, hidden }: { notes: ReleaseNotes; ra
     <View style={{ flex: 1, borderRadius: radius, overflow: "hidden", backgroundColor: mix(colors[0], colors[1], 0.5) }}>
       <WindowBackdrop colors={colors} angle={150} grainOpacity={0.1} style={StyleSheet.absoluteFill} />
       <View style={{ flex: 1, padding: pad, paddingTop: pad + (hidden?.top ?? 0), paddingRight: pad + (hidden?.right ?? 0), justifyContent: "space-between" }}>
-        <Text style={{ fontSize: 11.5 * k, fontWeight: "700", letterSpacing: 1.4 * k, color: "#FFFFFFCC" }}>{`NETNYAHOO ${notes.version}`}</Text>
+        <Text style={{ fontSize: 11.5 * k, fontWeight: "700", letterSpacing: 1.4 * k, color: "#FFFFFFCC" }}>{`ARCADIA ${notes.version}`}</Text>
         <Text style={{ fontSize: titleSize, fontWeight: "300", fontStyle: "italic", letterSpacing: -1.1 * k, color: "#FFFFFF" }}>{"What's new"}</Text>
       </View>
     </View>

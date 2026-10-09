@@ -1,4 +1,4 @@
-import { completeInline } from "@netnyahoo/shell";
+import { completeInline } from "@arcadia/shell";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { findNodeHandle, type TextInput } from "react-native";
 import { acceptsCompletion, completionToWrite, fieldChange, withoutFirst, type EditContext, type FieldChange, type Inline, type PendingInline, type Selection } from "./inline";

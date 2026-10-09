@@ -1,8 +1,8 @@
-# Shared environment for the Netnyahoo engine build: plain Chromium + ungoogled-chromium + our
+# Shared environment for the Arcadia engine build: plain Chromium + ungoogled-chromium + our
 # series (docs/engine-build.md). Source this file.
 export CB=~/chromium-build
-# The Netnyahoo checkout (yahu-resource.sh reads the offline game from it).
-export NN_REPO="${NN_REPO:-$HOME/Documents/netnyahoo}"
+# The Arcadia checkout (game-resource.sh reads the offline game from it).
+export AC_REPO="${AC_REPO:-$HOME/Documents/arcadia}"
 export DEPOT_TOOLS_UPDATE=0
 export PATH="$CB/depot_tools:$PATH"
 # The Chromium tag step 1 checks out, and the ungoogled-chromium tags made for exactly it

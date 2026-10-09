@@ -18,7 +18,7 @@ Ours passes `MayBegin` through without preparing the pager. It waits for a
 cumulative **4 pt** horizontal displacement and its axis/arbitration checks
 before emitting `began`. No 4 pt or 1.5 multiplier appears in the inspected
 Dia controller entry; an external delegate may still impose additional rules.
-The comment in `NNSwipe.mm` calling these values a Dia threshold is therefore
+The comment in `ACSwipe.mm` calling these values a Dia threshold is therefore
 not established by this controller's binary.
 
 **Inference:** waiting for 4 pt may delay visible feedback on light, short
@@ -38,7 +38,7 @@ At `0x100597ba0` it reads `scrollingDeltaX`, multiplies by **−0.5** at
 `0x100597ba4`, adds it to the current native position, and publishes that position
 without a JavaScript bridge.
 
-Netnyahoo 0.2.17 still sends each event through `NNSwipe.mm` →
+Arcadia 0.2.17 still sends each event through `ACSwipe.mm` →
 `SwipeArea.swipeEvent` / Expo `EventDispatcher` → `ProfileSwipeArea.onSwipe` →
 `ProfilePager.track` → `Animated.Value.setValue` → native animation graph.
 Only the settle animation was moved fully native. Native-driven `Animated.Value`
@@ -55,7 +55,7 @@ and `0x100597fbc` enters the selection/settle function `0x100598c30`.
 That function invokes `pageSelectionHandler` synchronously at `0x100598eb0`,
 then starts the settle through `0x100596e30` at `0x100598ec4`.
 
-Netnyahoo commits a swipe's target in `ProfilePager.settled()` after the native
+Arcadia commits a swipe's target in `ProfilePager.settled()` after the native
 spring's completion callback. Its response parameter **0.25 s is a spring
 parameter, not a fixed duration**. With zero release velocity, the current
 rest thresholds finish a 0.3 / 0.6 / 1-page displacement at approximately
@@ -72,7 +72,7 @@ advance selection during motion. The callback body is not decoded here; its
 early invocation is verified, not the timing of all downstream state changes.
 Ours continues to identify the old profile until completion, so reversal may
 be based on a different selected page.
-Netnyahoo moves its React root between separate Chrome profile windows, so simply
+Arcadia moves its React root between separate Chrome profile windows, so simply
 moving `finish()` earlier needs verification of window ownership and visual
 continuity; Dia's callback ordering alone does not prove that change safe.
 
@@ -158,4 +158,4 @@ xcrun llvm-objdump --disassemble --start-address=0x10059733c \
 
 `llvm-objdump --macho --disassemble` ignores those address limits here and dumps
 the whole executable. Scratch evidence for this run is in
-`/tmp/nn-dia-swipe-binary/` and `/tmp/nn-dia-swipe-agent/`.
+`/tmp/ac-dia-swipe-binary/` and `/tmp/ac-dia-swipe-agent/`.

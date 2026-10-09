@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-  name: "NetnyahooSyncCore",
+  name: "ArcadiaSyncCore",
   platforms: [.macOS(.v14)],
-  products: [.library(name: "NetnyahooSyncCore", targets: ["NetnyahooSyncCore"])],
+  products: [.library(name: "ArcadiaSyncCore", targets: ["ArcadiaSyncCore"])],
   targets: [
-    .target(name: "NetnyahooSyncCore", path: "ios/Core"),
-    .testTarget(name: "NetnyahooSyncCoreTests", dependencies: ["NetnyahooSyncCore"], path: "tests"),
+    .target(name: "ArcadiaSyncCore", path: "ios/Core"),
+    .testTarget(name: "ArcadiaSyncCoreTests", dependencies: ["ArcadiaSyncCore"], path: "tests"),
   ]
 )

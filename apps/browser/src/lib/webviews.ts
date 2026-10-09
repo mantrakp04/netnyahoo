@@ -1,4 +1,4 @@
-import type { WebViewHandle } from "@netnyahoo/nncore";
+import type { WebViewHandle } from "@arcadia/arcadiacore";
 
 export const webviews = new Map<string, WebViewHandle>();
 

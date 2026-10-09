@@ -5,13 +5,13 @@
 export const PRODUCTION_HOSTS = ["netnyahoo.com", "www.netnyahoo.com"];
 
 /** `localStorage.setItem(key, "dev")` makes any other host (localhost, a preview) report too. */
-export const DEV_OPT_IN = ["nn:telemetry", "nn:posthog"];
+export const DEV_OPT_IN = ["ac:telemetry", "ac:posthog"];
 
 /** Same path on whatever origin serves the page. */
 export const LOGS_PATH = "/otel/v1/logs";
 export const REPLAY_PATH = "/otel/replay";
 
-export const SERVICE_NAME = "netnyahoo-site";
+export const SERVICE_NAME = "arcadia-site";
 
 /** PostHog's project token, only to find the visitor id posthog-js stored (ph_<token>_posthog), so a returning
  * visitor stays the same visitor across the switch. */
@@ -31,8 +31,8 @@ export const REPLAY_SAMPLE_RATE = 1;
 /** A gzipped chunk goes up this often. */
 export const REPLAY_CHUNK_MS = 5000;
 /** rrweb masks the text of anything matching this, and blocks (draws a placeholder for) BLOCK. */
-export const PRIVATE_SELECTOR = ".nn-private, [data-private]";
-export const BLOCK_SELECTOR = ".nn-block, [data-private-block]";
+export const PRIVATE_SELECTOR = ".ac-private, [data-private]";
+export const BLOCK_SELECTOR = ".ac-block, [data-private-block]";
 
 /** Feature flags, bucketed on the visitor id with PostHog's algorithm, so visitors keep their variant.
  * The id, version and reason are what PostHog reported for this flag, kept for continuity. */

@@ -6,7 +6,7 @@ import { test } from "node:test";
 const { useBrowser } = await import("../../store/browser.ts");
 const { noteScroll, revealToolbar, setToolbarPeek, toolbarMode, useToolbarAutoHide } = await import("./toolbarAutoHide.ts");
 
-const script = readFileSync(new URL("../../../../../packages/nncore/ios/page_script.js", import.meta.url), "utf8");
+const script = readFileSync(new URL("../../../../../packages/arcadiacore/ios/page_script.js", import.meta.url), "utf8");
 const source = script.match(/const scrollDirection = (\(\) => \{[\s\S]*?\n {2}\});\n/)?.[1];
 assert.ok(source, "page_script.js defines scrollDirection");
 const scrollDirection = new Function(`return ${source}`)();

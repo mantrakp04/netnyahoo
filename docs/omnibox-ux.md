@@ -1,4 +1,4 @@
-# Omnibox / command bar: Chrome's defaults vs Dia vs Netnyahoo
+# Omnibox / command bar: Chrome's defaults vs Dia vs Arcadia
 
 Audit of 2026-10-08. Not a spec: a map of what users expect from Chrome's address bar, what Dia does (Dia runs Chromium's
 `AutocompleteController` behind its own Swift UI: its binary has `ArcAutocompleteMatch`, `autocomplete:cursorPosition:preventInlineAutocomplete:`,
@@ -7,24 +7,24 @@ Audit of 2026-10-08. Not a spec: a map of what users expect from Chrome's addres
 
 Sources. Chrome 154 tree under `~/chromium-build/chromium_git/chromium/src`: `EM` = `chrome/browser/ui/omnibox/omnibox_edit_model.cc`,
 `OV` = `chrome/browser/ui/omnibox/omnibox_view.cc`, `OVV` = `chrome/browser/ui/views/omnibox/omnibox_view_views.cc`, and `components/omnibox/browser/*`.
-Dia: the owner's recording (`/tmp/nn-omni/f/003-014.png`, Dia) and the binary's strings; "?" = not observable from either.
+Dia: the owner's recording (`/tmp/ac-omni/f/003-014.png`, Dia) and the binary's strings; "?" = not observable from either.
 Ours: line numbers are the working tree on 2026-10-08 (another agent was editing `inline.ts`, `suggest.ts`, `useSuggestions.ts`, `Omnibox.tsx`
 for the Backspace fix at the same time; "HEAD" marks what the commit had).
 
-How ours was checked: "pure" = node scripts over `packages/core` and `inline.ts` (`/tmp/nn-omni-audit/t*.mjs`); "live" = a hidden Debug instance
-(`build-train` app, data dir `/tmp/nn-omni-audit-data`, quit afterwards) with real key events through `nn.shell.devTypeKeys`/`devKeyEquivalent` into the hero and panel bars,
-and the omnibox dev driver for logic keys (`nn.omnibox.get(id).key(...)`). Synthetic `devTypeKeys` arrows/Tab/End do **not** reach RN's `onKeyDown` (they move the caret natively),
+How ours was checked: "pure" = node scripts over `packages/core` and `inline.ts` (`/tmp/ac-omni-audit/t*.mjs`); "live" = a hidden Debug instance
+(`build-train` app, data dir `/tmp/ac-omni-audit-data`, quit afterwards) with real key events through `ac.shell.devTypeKeys`/`devKeyEquivalent` into the hero and panel bars,
+and the omnibox dev driver for logic keys (`ac.omnibox.get(id).key(...)`). Synthetic `devTypeKeys` arrows/Tab/End do **not** reach RN's `onKeyDown` (they move the caret natively),
 so keys marked "read" were checked by reading the code and by driving `onKeyDown` directly.
 
-Status: ✅ compliant, ❌ gap, ⚠️ unsure or a deliberate Dia/Netnyahoo choice.
+Status: ✅ compliant, ❌ gap, ⚠️ unsure or a deliberate Dia/Arcadia choice.
 
 ## Behavior table
 
-| Behavior | Chrome (file:function) | Dia | Netnyahoo (file:line, how checked) | |
+| Behavior | Chrome (file:function) | Dia | Arcadia (file:line, how checked) | |
 |---|---|---|---|---|
 | Inline completion when | Any edit that isn't a deletion/paste: `EM::StartAutocomplete` sets `prevent_inline_autocomplete = prevent \|\| just_deleted_text_ \|\| paste_state_ != kNone`; one term, caret at end | Types `gi` → `gi`+selected `thub.com`, search row second (recording f003) | `suggest.ts:433` `completes` (one word, website-first, no scope, `!preventInline` in working tree); native guard `InlineCompletion.swift:18-20` (caret at end, no marked text). Live ✅ | ✅ |
 | Eligible targets | `HistoryURLProvider` `CanPromoteMatchForInlineAutocomplete` (typed_count ≥ 1 for host-only, ≥ 2 otherwise); `scored_history_match.cc` `likely_can_inline` (single term, no trailing space); bookmarks/open tabs are not inlined | Chromium's providers, so Chrome's rule; the recording only shows a typed-and-visited host (`github.com`), so it neither confirms nor contradicts a looser rule | `suggest.ts` `inlineMatch` + `c.visits > 0` (2026-10-08): host prefix of a **visited** page, or path prefix when the typed text has `/` and the page has no `?#`. A bookmark-only or open-tab-only host no longer completes (still listed). No typed-count gate (needs the typed count from Chrome's history, not in the store) | ⚠️ visited-only now, no typed count |
-| Hosts vs paths | Host first; deeper URL only when typed ≥ 2 (`ConvertToHostOnly`, `PromoteOrCreateShorterSuggestion`) | same | host, then path when typed has `/` (`suggest.ts:541-550`). Pure: `github.com/m`→`antrakp04/netnyahoo`, `google.com/s`→none | ✅ |
+| Hosts vs paths | Host first; deeper URL only when typed ≥ 2 (`ConvertToHostOnly`, `PromoteOrCreateShorterSuggestion`) | same | host, then path when typed has `/` (`suggest.ts:541-550`). Pure: `github.com/m`→`antrakp04/arcadia`, `google.com/s`→none | ✅ |
 | Case of what was typed | Typed prefix kept, completion appended in URL's case (`autocomplete_match.cc`, `OnInlineAutocompleteTextMaybeChanged`) | ? | typed text is never rewritten; `GIT`→`GIThub.com` (pure) | ✅ |
 | Never on paste | `OnPaste` → `paste_state_ = kPasting/kPasted` → prevent inline until the next edit (`EM::OnAfterPossibleChange`) | ? (`handlePaste`, `classifyPasteAndGoInput` exist) | `inline.ts` `preventsInline`: an edit that puts in more than one character at once suppresses inline for that change; the next typed key completes again (was: pasting `git` showed `hub.com`) | ✅ (#4) |
 | After deleting (⌫, ⌦, ⌥⌫, ⌘⌫, cut) | `OV::GetStateChanges`: `just_deleted_text = old.size > new.size && caret_after <= selection_min_before` → no inline | recording: ⌫ on `git`+`hub.com` → `git`, search row first, no completion; ⌫ again `gi`, `g`: no completion; typing again completes (f004-f012) | `inline.ts:19-30` `onlyRemoved` + `preventInline` (working tree; HEAD only handled tail deletes). Live ✅ for ⌫ on the selected completion and ⌫ after; ⌫ right after **accepting** with → re-completes (see below) | ✅ fixed 2026-10-08 (live with real ⌫/⌦ keys; see gaps 2, 3) |
@@ -70,7 +70,7 @@ Status: ✅ compliant, ❌ gap, ⚠️ unsure or a deliberate Dia/Netnyahoo choi
 | `münchen.de`, `яндекс.рф`, `例え.jp` | URL (IDN host, known TLD) | fixed: labels take any non-ASCII character (`omnibox.ts` `HOST`), typed text goes to the engine as typed (it punycodes); `münchen.zzzz`, `café` stay searches | ✅ |
 | `user@host.com`, `foo.zzzz` | UNKNOWN → search | search | ✅ |
 | `foo.zzzz/x` | UNKNOWN (one non-host part) → search | fixed: search; `foo.zzzz/`, `foo.zzzz/x?y`, `foo.zzzz:80` and anything with a scheme navigate | ✅ |
-| `chrome://settings` | URL | `netnyahoo://settings` | ✅ |
+| `chrome://settings` | URL | `arcadia://settings` | ✅ |
 | `javascript:alert(1)` | typed runs; paste strips `javascript:` | search | ⚠️ intended |
 | `git.new`, `docs.new` | `.new` TLD → URL | fixed: `KNOWN_TLDS` now includes the whole ICANN part of Chromium's public suffix list (`tlds.ts`, generated from `net/base/registry_controlled_domains/effective_tld_names.dat`; the old hand list stays) | ✅ |
 | scheme | `omnibox::kDefaultTypedNavigationsToHttps` (`ChromeOmniboxClient::ShouldDefaultTypedNavigationsToHttps`): the scheme-less URL is http and `TypedNavigationUpgradeThrottle` upgrades the typed navigation to https, falling back to http when it fails; hosts that can't have a public certificate (single label, localhost, IPs, `.local`) are not upgraded | `https://` for dotted hosts, `http://` for single labels, localhost, IPs and `.local/.test/.internal/.lan` (`omnibox.ts` `isLocalHost`). No fallback in JS. Not changed: our URL already says https, so Chrome's throttle (which upgrades http) never sees a typed http one; whether the engine would upgrade and fall back for a typed `http://` URL is unchecked. An http-only public site typed without a scheme fails here | ⚠️ |

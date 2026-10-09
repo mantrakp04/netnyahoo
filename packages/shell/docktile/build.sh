@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Xcode "Run Script" phase for the app target: builds the Dock tile plug-in
-# (Contents/PlugIns/NetnyahooDockTile.plugin, named by Info.plist's NSDockTilePlugIn) and
+# (Contents/PlugIns/ArcadiaDockTile.plugin, named by Info.plist's NSDockTilePlugIn) and
 # signs it. It keeps the app icon chosen in Settings › Appearance in the Dock after the app
 # quits. Sources: DockTilePlugIn.swift + the app's own ../ios/AppIcon.swift (the variants).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-name="NetnyahooDockTile"
-bundle_id="${PRODUCT_BUNDLE_IDENTIFIER:-com.netnyahoo.browser}.DockTilePlugIn"
+name="ArcadiaDockTile"
+bundle_id="${PRODUCT_BUNDLE_IDENTIFIER:-com.arcadia.browser}.DockTilePlugIn"
 plugin="$TARGET_BUILD_DIR/${PLUGINS_FOLDER_PATH:-$CONTENTS_FOLDER_PATH/PlugIns}/$name.plugin"
 work="${DERIVED_FILE_DIR:-$here/build}/docktile"
 identity="${EXPANDED_CODE_SIGN_IDENTITY:--}"
@@ -49,7 +49,7 @@ cat > "$plugin/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>${MARKETING_VERSION:-1.0}</string>
   <key>CFBundleVersion</key><string>${CURRENT_PROJECT_VERSION:-1}</string>
   <key>LSMinimumSystemVersion</key><string>$min_os</string>
-  <key>NSPrincipalClass</key><string>NNDockTilePlugIn</string>
+  <key>NSPrincipalClass</key><string>ACDockTilePlugIn</string>
 </dict>
 </plist>
 PLIST

@@ -257,9 +257,9 @@ enum MainMenu {
       cmd("New Tab in Group", "newTabInGroup", "t", [.command, .option]),
       cmd("New Window", "newWindow", "n"),
       cmd("New Incognito Window", "newIncognitoWindow", "n", [.command, .shift]),
-      cmd("New Small Yahu Window", "newSmallYahu", "n", [.command, .option]),
+      cmd("New Little Arcadia Window", "newLittleArcadia", "n", [.command, .option]),
       // Its title says where links from other apps will go once chosen (JS sets it from the setting).
-      cmd("Open Links from Other Apps in Main Window", "toggleOpenLinksInSmallYahu"),
+      cmd("Open Links from Other Apps in Main Window", "toggleOpenLinksInLittleArcadia"),
       cmd("Reopen Closed Tab", "reopenClosedTab", "t", [.command, .shift]),
       cmd("Reopen Closed Window", "reopenClosedWindow"),
       cmd("Open File…", "openFile", "o"),
@@ -490,14 +490,14 @@ enum MainMenu {
 
   private static func videoTourItem() -> NSMenuItem {
     let item = CommandItem("Video Tour", "videoTour", key: "")
-    let url = Bundle.main.object(forInfoDictionaryKey: "NNVideoTourURL") as? String ?? ""
+    let url = Bundle.main.object(forInfoDictionaryKey: "ACVideoTourURL") as? String ?? ""
     item.isHidden = URL(string: url)?.scheme?.hasPrefix("http") != true
     return item
   }
 
   private static func releaseNotesItem() -> NSMenuItem {
     let item = CommandItem("Release Notes", "releaseNotes", key: "")
-    let url = Bundle.main.object(forInfoDictionaryKey: "NNReleaseNotesURL") as? String ?? ""
+    let url = Bundle.main.object(forInfoDictionaryKey: "ACReleaseNotesURL") as? String ?? ""
     item.isHidden = URL(string: url)?.scheme?.hasPrefix("http") != true
     return item
   }
@@ -740,7 +740,7 @@ enum MainMenu {
     let incognito = CommandItem("New Incognito Window", "newIncognitoWindow")
     incognito.windowless = true
     menu.addItem(incognito)
-    let small = CommandItem("New Small Yahu Window", "newSmallYahu")
+    let small = CommandItem("New Little Arcadia Window", "newLittleArcadia")
     small.windowless = true
     menu.addItem(small)
     return menu

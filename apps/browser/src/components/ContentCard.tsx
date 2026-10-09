@@ -1,4 +1,4 @@
-import { WebView, type OpenWindowRequest } from "@netnyahoo/nncore";
+import { WebView, type OpenWindowRequest } from "@arcadia/arcadiacore";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
@@ -52,7 +52,7 @@ import { NavigationOverlays } from "./layout/SwipeOverlay";
 import "./layout/devExpose";
 import { closeWebNotification, showWebNotification } from "../lib/webNotifications";
 import { isSmallWindow } from "../store/small";
-import { closeSmallYahuOnEscape } from "./smallYahu/actions";
+import { closeLittleArcadiaOnEscape } from "./littleArcadia/actions";
 
 export function ContentCard() {
   const windowId = useWindowId();
@@ -61,7 +61,7 @@ export function ContentCard() {
   const fullscreenTab = useFullscreenTab(windowId);
   const tabLayout = useTabLayout();
   const addressInSidebar = useAddressBarInSidebar();
-  // Small Yahu draws its own bar above the card (components/smallYahu).
+  // Little Arcadia draws its own bar above the card (components/littleArcadia).
   const small = useBrowser((s) => isSmallWindow(s.windows[windowId]));
   const hideWhileScrolling = useBrowser((s) => s.settings.hideToolbarWhileScrolling);
   const barMode = useBookmarksBarMode(windowId);
@@ -592,7 +592,7 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
       onCommand={({ command, text, modifiers }) => {
         if (command === "search") searchSelection(tabId, text, modifiers);
         else if (command === "copyLinkToHighlight") void copyLinkToSelection(tabId);
-        else if (command === "escape") closeSmallYahuOnEscape(tabId);
+        else if (command === "escape") closeLittleArcadiaOnEscape(tabId);
       }}
       onPageMessage={(kind, data) => {
         if (kind === "selection") setPageSelection(tabId, data as PageSelection | null);

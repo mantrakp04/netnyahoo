@@ -1,4 +1,4 @@
-import type { BrowserCommand, MenuEntry } from "@netnyahoo/shell";
+import type { BrowserCommand, MenuEntry } from "@arcadia/shell";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId, plural } from "../../store/model";
 import { awayFromPin, groupOf, selectedTabIds } from "../../store/organize";

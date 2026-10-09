@@ -1,4 +1,4 @@
-import { showMenu, type MenuItem } from "@netnyahoo/shell";
+import { showMenu, type MenuItem } from "@arcadia/shell";
 import { create } from "zustand";
 import { closeTab } from "../../lib/actions";
 import { useBrowser } from "../../store/browser";

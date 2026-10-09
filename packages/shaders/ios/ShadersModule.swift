@@ -2,7 +2,7 @@ import ExpoModulesCore
 
 public class AreaLightModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooAreaLight")
+    Name("ArcadiaAreaLight")
 
     Function("debugState") { AreaLightView.lastState }
 
@@ -50,7 +50,7 @@ public class AreaLightModule: Module {
 
 public class WindowBackdropModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooWindowBackdrop")
+    Name("ArcadiaWindowBackdrop")
 
     View(WindowBackdropView.self) {
       Prop("colors") { (view: WindowBackdropView, colors: [String]) in view.setColors(colors) }
@@ -71,7 +71,7 @@ public class WindowBackdropModule: Module {
 
 public class EdgeLightModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooEdgeLight")
+    Name("ArcadiaEdgeLight")
 
     View(EdgeLightView.self) {
       Prop("rectFrame") { (view: EdgeLightView, v: [Double]) in if v.count == 4 { view.rectFrame = SIMD4(v.map(Float.init)) } }
@@ -89,7 +89,7 @@ public class EdgeLightModule: Module {
 
 public class PowerUpModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooPowerUp")
+    Name("ArcadiaPowerUp")
 
     View(PowerUpView.self) {
       Prop("palette") { (view: PowerUpView, v: [String]) in view.setPalette(v) }

@@ -1,12 +1,12 @@
 import AppKit
 
-@objc(NNDockTilePlugIn)
-final class NNDockTilePlugIn: NSObject, NSDockTilePlugIn {
+@objc(ACDockTilePlugIn)
+final class ACDockTilePlugIn: NSObject, NSDockTilePlugIn {
   private var dockTile: NSDockTile?
   private var observer: NSObjectProtocol?
 
   private lazy var app: Bundle? = {
-    let url = Bundle(for: NNDockTilePlugIn.self).bundleURL
+    let url = Bundle(for: ACDockTilePlugIn.self).bundleURL
       .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     return Bundle(url: url)
   }()

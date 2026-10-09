@@ -4,7 +4,7 @@ env.sh; check those tags out in ~/chromium-build/ungoogled{,-macos} first) to a 
 checkout.
 
 Reproduces the patch set this build ships (logs/ungoogled-patches.tsv; the
-Netnyahoo repo's docs/engine-build.md explains each exception). The exceptions
+Arcadia repo's docs/engine-build.md explains each exception). The exceptions
 first made for CEF are kept as the CEF-era build had them (a behaviour decision
 for later, not a build need any more):
   - SKIP: not applied, with the reason;
@@ -40,14 +40,14 @@ SKIP = {
     'core/ungoogled-chromium/move-js-optimizer-unfamiliar-sites.patch': SB,
     'extra/ungoogled-chromium/fix-building-without-mdns-and-service-discovery.patch':
         'build fix for enable_mdns/enable_service_discovery=false (kept enabled, as in the CEF-era build)',
-    # Netnyahoo needs the Chrome Web Store (install + extension auto-updates).
+    # Arcadia needs the Chrome Web Store (install + extension auto-updates).
     'core/ungoogled-chromium/disable-webstore-urls.patch':
-        'disables the Web Store and extension update checks (Netnyahoo needs both)',
+        'disables the Web Store and extension update checks (Arcadia needs both)',
     'extra/ungoogled-chromium/enable-extra-locales.patch':
         'not privacy-related; kept out as in the CEF-era build (it broke CEF\'s strings); revisit',
 }
 PARTIAL_EXCLUDE = {
-    # Its webstore_installer.cc hunks stub out Web Store installs; Netnyahoo
+    # Its webstore_installer.cc hunks stub out Web Store installs; Arcadia
     # needs them. The default component extensions stay disabled.
     'core/inox-patchset/0005-disable-default-extensions.patch': ['extensions/browser/webstore_installer.cc'],
     # enable_rlz stays true, as in the CEF-era build (CEF required it); revisit.
@@ -60,7 +60,7 @@ PARTIAL_EXCLUDE = {
 # Small edits after the series: (file, old text, new text).
 FIXUPS = [
     # 0006-modify-default-prefs turns off saving/filling passwords, addresses
-    # and cards by default; Netnyahoo uses Chrome's password manager and
+    # and cards by default; Arcadia uses Chrome's password manager and
     # autofill (local only). Autosign-in stays off.
     ('components/password_manager/core/browser/password_manager.cc',
      '      prefs::kCredentialsEnableService, false,', '      prefs::kCredentialsEnableService, true,'),

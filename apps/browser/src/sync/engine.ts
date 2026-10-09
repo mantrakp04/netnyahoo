@@ -1,4 +1,4 @@
-import { readDocument, saveDocument, writeDocument } from "@netnyahoo/shell";
+import { readDocument, saveDocument, writeDocument } from "@arcadia/shell";
 import {
   Clock,
   emptyScope,
@@ -13,7 +13,7 @@ import {
   type LogFile,
   type PhraseResult,
   type ScopeState,
-} from "@netnyahoo/sync";
+} from "@arcadia/sync";
 import { create } from "zustand";
 import { useBrowser } from "../store/browser";
 import { isIncognitoProfile } from "../store/model";
@@ -551,7 +551,7 @@ export function startSync() {
     if (s.bookmarks !== prev.bookmarks || s.settings !== prev.settings || s.profiles !== prev.profiles || s.groups !== prev.groups) scheduleSync();
   });
   if (__DEV__) {
-    (globalThis as { nnSync?: object }).nnSync = {
+    (globalThis as { acSync?: object }).acSync = {
       useSync, syncNow, turnOnSync, enterRecoveryPhrase, stopSync, setTypeSynced, setProfileSynced, addRemoteProfile, setSyncFolder, folderInfo,
       doc: () => doc,
       native: SyncNative,

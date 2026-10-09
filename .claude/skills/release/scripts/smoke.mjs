@@ -1,5 +1,5 @@
 // usage: SMOKE_DATA=<data dir> node smoke.mjs <version> <windowsTool> <pagesOrigin>
-//   Drives the instance smoke.sh launched (scripts/agent/nn launch: recorded in $SMOKE_DATA/instance.json).
+//   Drives the instance smoke.sh launched (scripts/agent/ac launch: recorded in $SMOKE_DATA/instance.json).
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { attach, sleep } from "../../../../scripts/lib/instance.mjs";
@@ -65,7 +65,7 @@ check("a web page loads", (await evaluate("document.title")) === "Example Domain
 
 // What became of the ad script's request while `run` ran, judged by the network: "blocked" when uBlock failed it
 // (ERR_BLOCKED_BY_CLIENT, as on CEF) or redirected it to its no-op stand-in inside the extension (uBOL's optimal mode
-// on NNCore: the stand-in loads, so the page's onload fires, but nothing left the browser), "loaded" when the ad
+// on ArcadiaCore: the stand-in loads, so the page's onload fires, but nothing left the browser), "loaded" when the ad
 // server answered.
 const adScript = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js";
 async function adFate(run) {
@@ -190,7 +190,7 @@ check("chrome://version", (await evaluate("document.body.innerText")).includes("
 await send("Network.enable");
 await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
 await go("https://example.org/");
-check("offline page is Where's Big Yahu?", /No internet/.test(await evaluate("document.title")));
+check("offline page is Where's the mascot?", /No internet/.test(await evaluate("document.title")));
 await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 await go(`${pages}/form.html`);
 
@@ -262,7 +262,7 @@ check(
   logged ? `logged: ${logged.slice(0, 80)}` : menu ? `layer ${menu.layer}` : "no menu",
 );
 
-// smoke.sh launches with NETNYAHOO_PIP_SELFTEST=close: the app clicks Chrome's own close button (X) on the first
+// smoke.sh launches with ARCADIA_PIP_SELFTEST=close: the app clicks Chrome's own close button (X) on the first
 // Picture in Picture window. Closing the mini player must leave the video playing (Chrome paused it).
 await go(`${pages}/video.html`);
 await send("Runtime.evaluate", { expression: "v.play().then(() => v.requestPictureInPicture())", awaitPromise: true, userGesture: true });
@@ -309,7 +309,7 @@ check("Personal's pages run in Personal's profile when Work was the last used", 
 // session's busy tab isn't captured, so the check passes on 0.2.20 too: it guards hang reporting, not that case. The app's side is read through the dev
 // harness's perf probe (smoke.sh writes perf-probe), which counts every event that reaches the app's JS.
 const hangEvents = async () =>
-  Object.entries((await instance.eval("return globalThis.nnPerf.read().tasks", { timeout: 10000 })) ?? {}).filter(([k]) => /Unresponsive/.test(k)).reduce((n, [, c]) => n + c, 0);
+  Object.entries((await instance.eval("return globalThis.acPerf.read().tasks", { timeout: 10000 })) ?? {}).filter(([k]) => /Unresponsive/.test(k)).reduce((n, [, c]) => n + c, 0);
 let hang;
 try {
   const { targetId: busyId } = await browserCall("Target.createTarget", { url: `${pages}/busy.html` });
@@ -333,12 +333,12 @@ check("a page that stops responding is reported (Page Unresponsive)", !!hang, ha
 
 // ⌘T makes the new tab's page ahead, on about:blank under the New Tab page (lib/preload.ts), so Enter only navigates it.
 // That blank page must not stay in the tab's history: Back from the first page opened there has nowhere to go
-// (nncore_api.mm loadURL replaces the blank entry). Before that fix Back landed on a raw about:blank.
+// (arcadiacore_api.mm loadURL replaces the blank entry). Before that fix Back landed on a raw about:blank.
 const newTabId = await (async () => {
-  const before = await instance.eval(`return nn.store.getState().tabs ? Object.keys(nn.store.getState().tabs) : [];`).catch(() => []);
+  const before = await instance.eval(`return ac.store.getState().tabs ? Object.keys(ac.store.getState().tabs) : [];`).catch(() => []);
   execFileSync(process.env.SMOKE_KEYS, [pid, "17", "c"]); // ⌘T
   for (const end = Date.now() + 5000; Date.now() < end; await sleep(200)) {
-    const now = await instance.eval(`return Object.keys(nn.store.getState().tabs);`).catch(() => []);
+    const now = await instance.eval(`return Object.keys(ac.store.getState().tabs);`).catch(() => []);
     const added = now.filter((id) => !before.includes(id));
     if (added.length) return added[0];
   }
@@ -348,23 +348,23 @@ await sleep(1500);
 const firstUrl = `${pages}/form.html?from-new-tab`;
 let newTabHistory = null;
 if (newTabId) {
-  await instance.eval(`nn.store.getState().navigate(${JSON.stringify(newTabId)}, ${JSON.stringify(firstUrl)}); return true;`).catch(() => null);
+  await instance.eval(`ac.store.getState().navigate(${JSON.stringify(newTabId)}, ${JSON.stringify(firstUrl)}); return true;`).catch(() => null);
   for (const end = Date.now() + 10000; !newTabHistory && Date.now() < end; await sleep(250)) {
     const t = (await instance.targets()).find((x) => x.type === "page" && x.url === firstUrl);
     if (t) newTabHistory = (await onPage(t, "Page.getNavigationHistory")).entries ?? null;
   }
 }
-const newTabBack = newTabId ? await instance.eval(`return !!nn.store.getState().live[${JSON.stringify(newTabId)}]?.canGoBack;`).catch(() => null) : null;
+const newTabBack = newTabId ? await instance.eval(`return !!ac.store.getState().live[${JSON.stringify(newTabId)}]?.canGoBack;`).catch(() => null) : null;
 check("the first page opened from ⌘T has no Back (the prewarmed about:blank isn't in its history)",
   newTabHistory?.length === 1 && newTabBack === false,
   newTabId ? `${newTabHistory ? newTabHistory.map((e) => e.url.replace(/^.*\//, "")).join(" → ") : "page never loaded"}; canGoBack ${newTabBack}` : "⌘T made no tab");
-if (newTabId) await instance.eval(`nn.store.getState().closeTab(${JSON.stringify(newTabId)}); return true;`).catch(() => null);
+if (newTabId) await instance.eval(`ac.store.getState().closeTab(${JSON.stringify(newTabId)}); return true;`).catch(() => null);
 
-// A link from another app (Discord, Mail; the app is the default browser) opens in Small Yahu: a real GURL Apple Event
+// A link from another app (Discord, Mail; the app is the default browser) opens in Little Arcadia: a real GURL Apple Event
 // to this instance's pid, as Launch Services sends it. 0.2.22 and 0.2.23 dropped every one (AppKit installed no GURL
-// handler: NNCoreHost.mm's bootstrap delegate came after -finishLaunching registered them).
+// handler: ArcadiaCoreHost.mm's bootstrap delegate came after -finishLaunching registered them).
 const linkUrl = `${pages}/form.html?from-another-app`;
-const linkWindow = `const s = nn.store.getState();
+const linkWindow = `const s = ac.store.getState();
   return Object.values(s.windows).find((w) => w.kind === "small" && s.tabs[w.tabIds[0]]?.url === ${JSON.stringify(linkUrl)})?.id ?? null;`;
 let linked = null;
 let linkedPage = false;
@@ -377,8 +377,8 @@ try {
 } catch (error) {
   console.log(`note: ${error.message}`);
 }
-check("a link from another app (a GURL Apple Event) opens in Small Yahu", !!linked && linkedPage,
-  linked ? `${linked}${linkedPage ? "" : ", but no page loaded"}` : "no Small Yahu within 10 s");
+check("a link from another app (a GURL Apple Event) opens in Little Arcadia", !!linked && linkedPage,
+  linked ? `${linked}${linkedPage ? "" : ", but no page loaded"}` : "no Little Arcadia within 10 s");
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

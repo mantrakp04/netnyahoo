@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// JS/React benchmark for Netnyahoo on a production (Hermes) bundle: what each interaction costs the JS thread
+// JS/React benchmark for Arcadia on a production (Hermes) bundle: what each interaction costs the JS thread
 // (React commits and renders, store updates, native→JS tasks, timers, document writes), counted by the opt-in probe
 // in src/lib/perfProbe.ts. Gate recipe and the other benches: docs/perf/README.md.
 //
@@ -7,7 +7,7 @@
 //       Builds the production JS bundle of the current tree (metro, --dev false) and compiles it with
 //       hermesc, as the Release build does. Prints sizes and the biggest packages. --profiling 1 bundles
 //       React's profiling renderer, which times each component's render (render-bench.mjs uses it).
-//   node js-bench.mjs run --app <Release Netnyahoo.app> --bundle <main.jsbundle> --label <name> [flags]
+//   node js-bench.mjs run --app <Release Arcadia.app> --bundle <main.jsbundle> --label <name> [flags]
 //       Clones the app (APFS clone), swaps in the bundle, and for each run seeds a fresh data folder
 //       (seed.mjs: 200 tabs, 5000 history entries, 1000 bookmarks), launches a hidden instance, runs
 //       the scenarios of bench-app.js through the dev harness and quits it. Writes <out>/<label>.json.
@@ -16,7 +16,7 @@
 //         --scenarios <a,b>    of: startup, persistence, idle, typing, switchTabs, openClose, scroll, pageLoad, hover,
 //                              profileSwipe, storeUpdate, idleLate (default all, in that order; startup must stay first)
 //         --port <n>           the test page server's port (default 47817); instance CDP ports are 9500 + run + …
-//         --out <dir>          default $NN_PERF_OUT or /tmp/nn-perf-js
+//         --out <dir>          default $AC_PERF_OUT or /tmp/ac-perf-js
 //         --append 1           add these runs to an existing <label>.json (to interleave two builds' runs: alternate
 //                              `run --runs 1 --append 1` between them)
 //         --probe <options>    the probe's slower options, written into the perf-probe file: selectors (every store
@@ -37,17 +37,17 @@
 //
 // Report (<out>/<label>.json):
 //   { label, version (the app's CFBundleShortVersionString), bundle, bundleSize (bytes), when,
-//     probeRevision   nnPerf.revision of the bundle (PERF_PROBE_REVISION in perfProbe.ts; inferred for bundles from
+//     probeRevision   acPerf.revision of the bundle (PERF_PROBE_REVISION in perfProbe.ts; inferred for bundles from
 //                     before it existed: 2 if the probe counts commitTasks, else 1). Mixed after --append: an array.
 //     benchRevision   BENCH_REVISION below: this script's seed and scenarios
-//     results: [{ run, launchedAt (epoch ms before `open`), probeRevision, <scenario>: what nnBench.run returned }]
+//     results: [{ run, launchedAt (epoch ms before `open`), probeRevision, <scenario>: what acBench.run returned }]
 //       startup      { marks: { bundleStart, bundleEnd, firstCommit, firstWindow, processStart }, stats }
 //       idle, scroll, idleLate               { stats }
 //       typing       { keys: [ms per key], items, stats }       switchTabs, hover, storeUpdate   { steps: [ms], stats }
 //       openClose    { open: [ms], close: [ms], openStats, closeStats }
 //       pageLoad     { runs: [{ loadMs, stats }] }              profileSwipe   { runs: [{ ms, stats }] }
 //       persistence  { history|session|bookmarks: { ms, bytes } }
-//       stats        nnPerf.read(): counters keyed by name (commits, renders, mounts, hostUpdates, storeUpdates,
+//       stats        acPerf.read(): counters keyed by name (commits, renders, mounts, hostUpdates, storeUpdates,
 //                    listenerMs, tasks, taskMs, timers, timerMs, writes, writeBytes, writeMs, commitTasks, …)
 //     summary: { lines: { "<scenario>.<metric>": { median, min, max, n } }, detail: { <scenario>: top offenders } } }
 
@@ -61,7 +61,7 @@ import { writeSeed } from "./seed.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "../..");
 const repo = resolve(appDir, "../..");
-const defaultOut = process.env.NN_PERF_OUT ?? "/tmp/nn-perf-js";
+const defaultOut = process.env.AC_PERF_OUT ?? "/tmp/ac-perf-js";
 // Bump when the seed or bench-app.js scenarios change what the numbers count.
 //   1  until e282ac6e: the seed wrote a favicon index (favicons-default.json) the app deleted at startup
 //   2  e282ac6e: no favicon index
@@ -103,7 +103,7 @@ export function bundle(outDir, { profiling = false } = {}) {
       "--minify", "false", "--bundle-output", js, "--sourcemap-output", `${js}.map`, "--assets-dest", join(outDir, "assets"),
       "--config-cmd", `'${process.execPath}' '${join(rn, "cli.js")}' config`,
     ],
-    { cwd: appDir, stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, ...(profiling ? { NN_REACT_PROFILING: "1" } : {}) } },
+    { cwd: appDir, stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, ...(profiling ? { AC_REACT_PROFILING: "1" } : {}) } },
   );
   const hermesc = join(appDir, "macos/Pods/hermes-engine/destroot/bin/hermesc");
   execFileSync(hermesc, ["-emit-binary", "-max-diagnostic-width=80", "-O", "-out", hbc, js], { stdio: "inherit" });
@@ -249,7 +249,7 @@ const alive = (pid) => {
   }
 };
 
-// NETNYAHOO_SWITCHES ("name=off,other=on") as the switches file a launch reads: a Release build's JS ignores the
+// ARCADIA_SWITCHES ("name=off,other=on") as the switches file a launch reads: a Release build's JS ignores the
 // variable (launchEnvironment is DEBUG-only), so a bench of a Release app sets its switches this way.
 export function writeSwitches(dataDir, text) {
   if (!text) return;
@@ -263,15 +263,15 @@ export function writeSwitches(dataDir, text) {
 
 export async function launch(app, dataDir, port) {
   // realpath: ps shows the resolved path (/private/var/… for a clone under tmpdir()'s /var/…).
-  const binary = join(realpathSync(app), "Contents/MacOS/Netnyahoo");
-  writeSwitches(dataDir, process.env.NETNYAHOO_SWITCHES);
+  const binary = join(realpathSync(app), "Contents/MacOS/Arcadia");
+  writeSwitches(dataDir, process.env.ARCADIA_SWITCHES);
   if (pidsOf(binary).length) throw new Error(`an instance of ${app} is already running`);
   const launchedAt = Date.now();
   execFileSync("open", [
-    "-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${dataDir}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
-    // Kill switches for this run (docs/kill-switches.md): NETNYAHOO_SWITCHES=name=off node ratchet.mjs run …
-    ...(process.env.NETNYAHOO_SWITCHES ? ["--env", `NETNYAHOO_SWITCHES=${process.env.NETNYAHOO_SWITCHES}`] : []),
+    "-g", "-n", "--env", "ARCADIA_BACKGROUND=1", "--env", `ARCADIA_DATA_DIR=${dataDir}`,
+    "--env", `ARCADIA_REMOTE_DEBUGGING_PORT=${port}`,
+    // Kill switches for this run (docs/kill-switches.md): ARCADIA_SWITCHES=name=off node ratchet.mjs run …
+    ...(process.env.ARCADIA_SWITCHES ? ["--env", `ARCADIA_SWITCHES=${process.env.ARCADIA_SWITCHES}`] : []),
     app,
   ]);
   for (let i = 0; i < 200; i++) {
@@ -349,7 +349,7 @@ async function run() {
   const { app, bundle: jsbundle, label, runs = "5", port = "47817", out = defaultOut } = flags;
   if (!app || !jsbundle || !label) throw new Error("run needs --app, --bundle and --label");
   const scenarios = flags.scenarios ? flags.scenarios.split(",") : ALL;
-  const clone = join(out, "apps", label, "Netnyahoo.app");
+  const clone = join(out, "apps", label, "Arcadia.app");
   rmSync(dirname(clone), { recursive: true, force: true });
   mkdirSync(dirname(clone), { recursive: true });
   execFileSync("cp", ["-cR", app, clone]);
@@ -384,11 +384,11 @@ async function run() {
           // --options '{"slowMs":300}' passes scenario options.
           const options = JSON.stringify({ ...(flags.options ? JSON.parse(flags.options) : {}), origin, scenario: name });
           const entry = flags.trace && name !== "startup" ? "traced" : name;
-          result[name] = await evaluate(dataDir, pid, `return nnBench.run(${JSON.stringify(entry)}, ${options});`);
+          result[name] = await evaluate(dataDir, pid, `return acBench.run(${JSON.stringify(entry)}, ${options});`);
         }
-        // Asked last, so startup's counts don't include it. Bundles from before nnPerf.revision: 6232fa43 (revision 2)
+        // Asked last, so startup's counts don't include it. Bundles from before acPerf.revision: 6232fa43 (revision 2)
         // added commitTasks.
-        result.probeRevision = await evaluate(dataDir, pid, `return nnPerf.revision ?? ("commitTasks" in nnPerf.read() ? 2 : 1);`);
+        result.probeRevision = await evaluate(dataDir, pid, `return acPerf.revision ?? ("commitTasks" in acPerf.read() ? 2 : 1);`);
       } finally {
         await quit(pid);
       }
@@ -416,7 +416,7 @@ async function run() {
 // MARK: Summary
 
 // Host wrappers render whenever their parent does; the detail lists the app's own components.
-const HOST = /^(View|Text|Pressable|Image|ScrollView|TextInput|InternalTextInput|Animated\(.*\)|Netnyahoo.*|Surface|Symbol|MouseArea|ContextMenuArea|FadeLabel|VirtualizedList.*|CellRenderer.*)$/;
+const HOST = /^(View|Text|Pressable|Image|ScrollView|TextInput|InternalTextInput|Animated\(.*\)|Arcadia.*|Surface|Symbol|MouseArea|ContextMenuArea|FadeLabel|VirtualizedList.*|CellRenderer.*)$/;
 const appOnly = (counter) => Object.fromEntries(Object.entries(counter ?? {}).filter(([k]) => !HOST.test(k)));
 
 const top = (counter, n = 6) =>

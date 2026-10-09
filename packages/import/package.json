@@ -1,5 +1,5 @@
 {
-  "name": "@netnyahoo/import",
+  "name": "@arcadia/import",
   "version": "0.0.0",
   "private": true,
   "description": "Import bookmarks, history, tabs, passwords and Arc spaces from other browsers",
@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/netnyahoo-import-swiftpm\"",
+    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/arcadia-import-swiftpm\"",
     "fixtures": "python3 fixtures/generate.py"
   },
   "peerDependencies": {

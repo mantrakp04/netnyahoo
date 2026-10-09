@@ -1,6 +1,6 @@
-import { FadeLabel, Surface } from "@netnyahoo/shell";
+import { FadeLabel, Surface } from "@arcadia/shell";
 import { Pressable, Text, View } from "react-native";
-import { displayUrl } from "@netnyahoo/core";
+import { displayUrl } from "@arcadia/core";
 import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { tabTitle } from "./actions";

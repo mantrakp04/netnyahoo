@@ -172,9 +172,9 @@
       }
     },
     {
-      "id": "nags-yahu",
+      "id": "nags-mascot",
       "definition": "window",
-      "label": "nags · yahu",
+      "label": "nags · mascot",
       "parentId": null,
       "values": {
         "x": 1300,
@@ -185,9 +185,9 @@
       }
     },
     {
-      "id": "nags-yahu-peek",
+      "id": "nags-mascot-peek",
       "definition": "window",
-      "label": "nags · yahu-peek",
+      "label": "nags · mascot-peek",
       "parentId": null,
       "values": {
         "x": 1270,
@@ -398,9 +398,9 @@
       }
     },
     {
-      "id": "title-yahu",
+      "id": "title-mascot",
       "definition": "window",
-      "label": "title · yahu",
+      "label": "title · mascot",
       "parentId": null,
       "values": {
         "x": 1300,
@@ -413,10 +413,10 @@
     {
       "id": "title-name",
       "definition": "type",
-      "label": "title · NETNYAHOO",
+      "label": "title · ARCADIA",
       "parentId": null,
       "values": {
-        "text": "NETNYAHOO",
+        "text": "ARCADIA",
         "size": 230,
         "color": "#16130F",
         "fill": "#00000000",
@@ -603,9 +603,9 @@
       }
     },
     {
-      "id": "split-yahu",
+      "id": "split-mascot",
       "definition": "window",
-      "label": "split · yahu",
+      "label": "split · mascot",
       "parentId": null,
       "values": {
         "x": 1380,
@@ -983,9 +983,9 @@
       }
     },
     {
-      "id": "end-yahu",
+      "id": "end-mascot",
       "definition": "window",
-      "label": "end · yahu",
+      "label": "end · mascot",
       "parentId": null,
       "values": {
         "x": 1240,
@@ -1028,10 +1028,10 @@
     {
       "id": "end-name",
       "definition": "type",
-      "label": "end · NETNYAHOO",
+      "label": "end · ARCADIA",
       "parentId": null,
       "values": {
-        "text": "NETNYAHOO",
+        "text": "ARCADIA",
         "size": 190,
         "color": "#16130F",
         "fill": "#00000000",

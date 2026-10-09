@@ -1,4 +1,4 @@
-import { translation } from "@netnyahoo/shell";
+import { translation } from "@arcadia/shell";
 import { create } from "zustand";
 import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";

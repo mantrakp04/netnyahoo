@@ -1,4 +1,4 @@
-import { FadeLabel, Surface } from "@netnyahoo/shell";
+import { FadeLabel, Surface } from "@arcadia/shell";
 import { Animated, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";

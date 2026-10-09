@@ -29,7 +29,7 @@ export function insertionIndex(s: BrowserState, w: BrowserWindow, tab: Tab, back
       : afterFamily(s, w, tab, firstRegular(s, w, tab), opener.id);
   } else {
     index = listStart(s, w, tab);
-    // An opener in another window (Small Yahu) still keeps its tabs in order.
+    // An opener in another window (Little Arcadia) still keeps its tabs in order.
     if (opener) index = afterFamily(s, w, tab, index, opener.id);
   }
   return outsideSplit(s, w, index);

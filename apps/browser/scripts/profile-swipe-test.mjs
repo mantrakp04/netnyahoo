@@ -1,6 +1,6 @@
-// Profile swipes in the sidebar and swipes on web pages, through the native gesture path (NetnyahooSwipe devSimulate)
+// Profile swipes in the sidebar and swipes on web pages, through the native gesture path (ArcadiaSwipe devSimulate)
 // in a hidden instance with two profiles.
-//   node apps/browser/scripts/profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]
+//   node apps/browser/scripts/profile-swipe-test.mjs <Debug Arcadia.app> [--port=<DevTools port>] [--keep-data]
 //     [--stale-window] [--only=<case name substring>] [--bundle-port=<Metro port>]
 // One line per case; the details go to profile-swipe.log and the evidence (native traces) to
 // profile-swipe-results.json beside the instance's data; both are kept with --keep-data or after a failure.
@@ -21,7 +21,7 @@ if (args.includes("--self-test")) {
 }
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data] [--stale-window] [--only=<case name substring>] [--bundle-port=<Metro port>] | --self-test");
+  console.error("usage: node profile-swipe-test.mjs <Debug Arcadia.app> [--port=<DevTools port>] [--keep-data] [--stale-window] [--only=<case name substring>] [--bundle-port=<Metro port>] | --self-test");
   process.exit(2);
 }
 const app = resolve(appArg);
@@ -37,7 +37,7 @@ const keep = args.includes("--keep-data");
 const stale = args.includes("--stale-window");
 const only = args.find((a) => a.startsWith("--only="))?.slice("--only=".length).toLowerCase();
 let matched = 0;
-const scratch = mkdtempSync(join(tmpdir(), "nn-profile-swipe-"));
+const scratch = mkdtempSync(join(tmpdir(), "ac-profile-swipe-"));
 const data = join(scratch, "data");
 const rep = reporter(join(scratch, "profile-swipe.log"), { name: "profile-swipe-test" });
 const evidence = { app, data, stale, cases: [] };
@@ -60,11 +60,11 @@ const server = createServer((req, res) => {
   res.end('<!doctype html><title>Swipe scroll fixture</title><body style="margin:0"><div style="width:2600px;height:4000px;background:linear-gradient(120deg,#ffd9dd,#addbff)">Native scroll fixture</div>');
 });
 
-const tab = (id, profileId) => ({ id, profileId, url: "netnyahoo://newtab", title: "New Tab" });
+const tab = (id, profileId) => ({ id, profileId, url: "arcadia://newtab", title: "New Tab" });
 const fixture = session({ profiles: ["Personal", "Work"], tabs: [tab("t1", "default"), tab("t2", "work")] });
 
-const nn = (body, timeout = 15000) => owned.eval(body, { timeout });
-const profile = () => nn('return nn.store.getState().windows.w1.profileId;');
+const ac = (body, timeout = 15000) => owned.eval(body, { timeout });
+const profile = () => ac('return ac.store.getState().windows.w1.profileId;');
 async function waitProfile(expected) {
   for (let start = Date.now(); Date.now() - start < 1800;) {
     if (await profile() === expected) return;
@@ -73,16 +73,16 @@ async function waitProfile(expected) {
   assert.equal(await profile(), expected, "profile should switch within 1.8s");
 }
 async function reset() {
-  await nn('nn.store.getState().switchProfile("w1", "default"); return true;');
+  await ac('ac.store.getState().switchProfile("w1", "default"); return true;');
   await waitProfile("default");
   await sleep(250);
 }
-const windows = () => nn('return globalThis.expo.modules.NetnyahooCEF.chromeWindows();');
+const windows = () => ac('return globalThis.expo.modules.ArcadiaCEF.chromeWindows();');
 async function nativeWindow() {
   const all = await windows();
   return all.find((w) => w.hasRoot && w.profile === "" && w.group) ?? all.find((w) => w.hasRoot);
 }
-const action = (window, act) => nn(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${window}, ${JSON.stringify(act)});`);
+const action = (window, act) => ac(`return globalThis.expo.modules.ArcadiaCEF.devWindow(${window}, ${JSON.stringify(act)});`);
 const gesture = (sign, wobble = false, drift = false) => [
   { phase: "began", dx: wobble ? sign : 0, dy: wobble ? 5 : 0 },
   { phase: "changed", dx: 18 * sign, dy: 1 },
@@ -117,23 +117,23 @@ function fixtureFidelity(steps, result) {
   return { intendedMs, decodedMs, endedVelocity: ended?.velocity ?? null,
     maxLateMs: Math.max(0, ...events.map((e) => e.lateMs ?? 0)), errors };
 }
-const simulate = (steps, source) => nn(source
-  ? `return globalThis.expo.modules.NetnyahooSwipe.devSimulate(120, 400, ${source}, ${JSON.stringify(steps)}, true);`
-  : `return globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});`);
+const simulate = (steps, source) => ac(source
+  ? `return globalThis.expo.modules.ArcadiaSwipe.devSimulate(120, 400, ${source}, ${JSON.stringify(steps)}, true);`
+  : `return globalThis.acSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});`);
 function alternatingGestures(count, gapMs = 112) {
   return Array.from({ length: count }, (_, n) => gesture(n % 2 ? 1 : -1).map((step) => ({
     ...step, atMs: step.atMs + n * gapMs, timestampMs: step.timestampMs + n * gapMs,
   }))).flat();
 }
 async function nativeBatch(steps, blockedMs = 0) {
-  return nn(`
-    const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});
+  return ac(`
+    const simulation=globalThis.acSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});
     if (${blockedMs}) setTimeout(()=>{
       const until=performance.now()+${blockedMs}; while(performance.now()<until){}
     },20);
     return simulation.then(result=>new Promise(resolve=>setTimeout(()=>{
-      globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({result,state,
-        profile:nn.store.getState().windows.w1.profileId,pager:globalThis.nnPager("w1").debug()}));
+      globalThis.expo.modules.ArcadiaSwipe.devPagerState("w1").then(state=>resolve({result,state,
+        profile:ac.store.getState().windows.w1.profileId,pager:globalThis.acPager("w1").debug()}));
     },650)));
   `, 15000);
 }
@@ -176,7 +176,7 @@ try {
     // The app's Metro for this launch: pinned (the module's proxy, which refuses reloads and hot updates) unless
     // --bundle-port names another one.
     ...(bundlePort ? { js: `127.0.0.1:${bundlePort}` } : {}),
-    ready: 'return !!globalThis.nnSwipe?.sidebar("w1");',
+    ready: 'return !!globalThis.acSwipe?.sidebar("w1");',
   });
   evidence.owner = { pid: owned.pid, port: owned.port, binary: owned.binary, started: owned.started, js: owned.js };
   // For the log only (rep.log's lines would show under every later failure).
@@ -184,7 +184,7 @@ try {
   if (bundlePort) {
     // Freeze this instance's JS while other engineers edit that Metro's checkout (a pinned instance can't get
     // updates). Call the client locally; do not change the app's persisted developer settings.
-    evidence.liveUpdatesDisabled = await nn(`
+    evidence.liveUpdatesDisabled = await ac(`
       const entry=[...globalThis.__r.getModules()].find(([,m])=>m.verboseName?.endsWith("/Libraries/Utilities/HMRClient.js"));
       if (!entry) throw new Error("HMR client missing");
       globalThis.__r(entry[0]).default.disable();
@@ -212,7 +212,7 @@ try {
         // Keep every completed native trace and the state at the failure; a dead app yields null, not a new error.
         error.evidence = { iteration: i, expected, results, fidelity,
           profile: await profile().catch(() => null),
-          pager: await nn('return globalThis.nnPager("w1").debug();').catch(() => null) };
+          pager: await ac('return globalThis.acPager("w1").debug();').catch(() => null) };
         throw error;
       }
     }
@@ -279,10 +279,10 @@ try {
   });
   await test("rapid profile shortcuts count every queued press", async () => {
     await reset();
-    await nn('nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); return true;');
+    await ac('ac.runCommand({command:"nextProfile",windowId:"w1"}); ac.runCommand({command:"nextProfile",windowId:"w1"}); ac.runCommand({command:"nextProfile",windowId:"w1"}); return true;');
     await waitProfile("work");
     await sleep(450);
-    const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+    const result = await ac('return globalThis.expo.modules.ArcadiaSwipe.devPagerState("w1");');
     assert.equal(result.profileId, "work");
     assert.equal(result.selected, 1);
     assert.equal(result.phase, "idle");
@@ -291,13 +291,13 @@ try {
   await test("external profile selection interrupts a native drag without a late rewind", async () => {
     await reset();
     const steps=gesture(-1).map((s)=>({...s, atMs:s.atMs*3, timestampMs:s.timestampMs*3}));
-    const result = await nn(`
-      const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)},{ignorePreference:true});
-      setTimeout(()=>nn.store.getState().switchProfile("w1","work"),40);
-      setTimeout(()=>nn.store.getState().switchProfile("w1","default"),56);
+    const result = await ac(`
+      const simulation=globalThis.acSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)},{ignorePreference:true});
+      setTimeout(()=>ac.store.getState().switchProfile("w1","work"),40);
+      setTimeout(()=>ac.store.getState().switchProfile("w1","default"),56);
       return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
-        globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
-          profile:nn.store.getState().windows.w1.profileId}));
+        globalThis.expo.modules.ArcadiaSwipe.devPagerState("w1").then(state=>resolve({native,state,
+          profile:ac.store.getState().windows.w1.profileId}));
       },650)));
     `);
     assert.equal(result.profile,"default");
@@ -308,10 +308,10 @@ try {
   await test("latest profile dot cancels an in-flight native selection", async () => {
     await reset();
     await simulate(gesture(-1));
-    await nn('const p=globalThis.nnPager("w1"); p.switchTo("default"); p.switchTo("work"); return true;');
+    await ac('const p=globalThis.acPager("w1"); p.switchTo("default"); p.switchTo("work"); return true;');
     await waitProfile("work");
     await sleep(650);
-    const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+    const result = await ac('return globalThis.expo.modules.ArcadiaSwipe.devPagerState("w1");');
     assert.equal(result.selected, 1);
     assert.equal(result.phase, "idle");
     assert.ok(Math.abs(result.position - 1) < 0.003);
@@ -330,13 +330,13 @@ try {
   for (const surface of ["sidebar", "strip"]) {
     await test(`a ${surface} swipe's momentum stays with it, so a third swipe at the same point switches`, async () => {
       await reset();
-      if (surface === "strip") await nn('nn.store.getState().updateSettings({ tabLayout: "top" }); return true;');
+      if (surface === "strip") await ac('ac.store.getState().updateSettings({ tabLayout: "top" }); return true;');
       try {
-        for (let start = Date.now(); Date.now() - start < 3000 && !(await nn(`return !!globalThis.nnSwipe.${surface}("w1");`));) await sleep(50);
+        for (let start = Date.now(); Date.now() - start < 3000 && !(await ac(`return !!globalThis.acSwipe.${surface}("w1");`));) await sleep(50);
         await sleep(250);
         const results = [];
         for (const [sign, expected] of [[-1, "work"], [1, "default"], [-1, "work"]]) {
-          const result = await nn(`return globalThis.nnSwipe.${surface}("w1").devSimulate(${JSON.stringify(flick(sign))}, {ignorePreference:true});`, 15000);
+          const result = await ac(`return globalThis.acSwipe.${surface}("w1").devSimulate(${JSON.stringify(flick(sign))}, {ignorePreference:true});`, 15000);
           results.push(result);
           const leaked = (result.events ?? []).filter((e) => e.phase.startsWith("momentum") && e.monitorSwallowed !== true);
           try {
@@ -350,14 +350,14 @@ try {
         }
         return results.map((r) => r.events.map((e) => [e.phase, e.monitorSwallowed]));
       } finally {
-        if (surface === "strip") await nn('nn.store.getState().updateSettings({ tabLayout: "sidebar" }); return true;');
-        for (let start = Date.now(); Date.now() - start < 3000 && !(await nn('return !!globalThis.nnSwipe.sidebar("w1");'));) await sleep(50);
+        if (surface === "strip") await ac('ac.store.getState().updateSettings({ tabLayout: "sidebar" }); return true;');
+        for (let start = Date.now(); Date.now() - start < 3000 && !(await ac('return !!globalThis.acSwipe.sidebar("w1");'));) await sleep(50);
       }
     });
   }
 
   if (stale) {
-    // NNCore keeps one NSWindow per logical window across profile switches (chromeWindows reports its active
+    // ArcadiaCore keeps one NSWindow per logical window across profile switches (chromeWindows reports its active
     // profile and no group), so the source window stays current: the reverse must be recognized there, not in
     // the logical window ordered in front of it at the same point.
     await test("stale ordinary window cannot redirect into an overlapping logical window", async () => {
@@ -365,7 +365,7 @@ try {
       const source = (await nativeWindow()).window;
       const first = await simulate(gesture(-1), source);
       await waitProfile("work");
-      const otherId = await nn('return nn.store.getState().createWindow({profileId:"default", frame:[80,80,1280,800]});');
+      const otherId = await ac('return ac.store.getState().createWindow({profileId:"default", frame:[80,80,1280,800]});');
       try {
         await sleep(500);
         const all = await windows();
@@ -377,10 +377,10 @@ try {
         const reverse = await simulate(gesture(1), source);
         assert.equal(reverse.acks.find((a) => a.diag === "begin")?.window, source, "recognition should run in the source window");
         await waitProfile("default");
-        assert.equal(await nn(`return nn.store.getState().windows[${JSON.stringify(otherId)}].profileId;`), "default");
+        assert.equal(await ac(`return ac.store.getState().windows[${JSON.stringify(otherId)}].profileId;`), "default");
         return { source, first, reverse, other: other.window };
       } finally {
-        await nn(`nn.store.getState().closeWindow(${JSON.stringify(otherId)}); return true;`);
+        await ac(`ac.store.getState().closeWindow(${JSON.stringify(otherId)}); return true;`);
       }
     });
     await test("visible full-screen host accepts an immediate reverse through its moved root", async () => {
@@ -403,10 +403,10 @@ try {
   await test("web page horizontal and vertical scrolling retain renderer ownership", async () => {
     await reset();
     const url = `http://127.0.0.1:${server.address().port}/scroll-fixture`;
-    const fixtureState = await nn(`
-      nn.store.getState().activate("t1");
-      nn.store.getState().navigate("t1", ${JSON.stringify(url)});
-      const w = nn.store.getState().windows.w1;
+    const fixtureState = await ac(`
+      ac.store.getState().activate("t1");
+      ac.store.getState().navigate("t1", ${JSON.stringify(url)});
+      const w = ac.store.getState().windows.w1;
       return { profileId: w.profileId, activeTabId: w.activeTabIds.default };
     `);
     try {
@@ -423,22 +423,22 @@ try {
     await sleep(100);
     const before = await pageEval("({x:scrollX,y:scrollY,url:location.href})");
     // A loaded CDP target may still be an inactive tab. Keep UI/root state if its gesture area is absent.
-    const webState = await nn(`return {
-      window: nn.store.getState().windows.w1,
-      pager: globalThis.nnPager("w1").debug(),
-      pane: !!globalThis.nnSwipe.pane("t1")
+    const webState = await ac(`return {
+      window: ac.store.getState().windows.w1,
+      pager: globalThis.acPager("w1").debug(),
+      pane: !!globalThis.acSwipe.pane("t1")
     };`);
     if (!webState.pane) {
       const error = new Error("loaded web fixture has no visible t1 swipe pane");
       error.evidence = { fixtureState, webState, windows: await windows(), before };
       throw error;
     }
-    const horizontal = await nn(`return globalThis.nnSwipe.pane("t1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});`);
+    const horizontal = await ac(`return globalThis.acSwipe.pane("t1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});`);
     await sleep(250);
     const afterHorizontal = await pageEval("({x:scrollX,y:scrollY,url:location.href})");
     assert.ok(afterHorizontal.x > before.x, "horizontal page scroll must still move web content");
     assert.equal(afterHorizontal.url, before.url, "horizontal scrolling must not navigate history");
-    const vertical = await nn('return globalThis.nnSwipe.pane("t1").devSimulate([{phase:"began"},{phase:"changed",dy:-18},{phase:"changed",dy:-24},{phase:"ended"}], {ignorePreference:true});');
+    const vertical = await ac('return globalThis.acSwipe.pane("t1").devSimulate([{phase:"began"},{phase:"changed",dy:-18},{phase:"changed",dy:-24},{phase:"ended"}], {ignorePreference:true});');
     await sleep(250);
     const afterVertical = await pageEval("({x:scrollX,y:scrollY,url:location.href})");
     assert.ok(afterVertical.y > afterHorizontal.y, "vertical page scroll must still move web content");
@@ -469,7 +469,7 @@ try {
   await test("a real web hit inside the renderer keeps page ownership", async () => {
     await reset();
     const source = (await nativeWindow()).window;
-    const result = await nn(`return globalThis.expo.modules.NetnyahooSwipe.devSimulate(700, 400, ${source}, ${JSON.stringify(gesture(-1))}, true);`);
+    const result = await ac(`return globalThis.expo.modules.ArcadiaSwipe.devSimulate(700, 400, ${source}, ${JSON.stringify(gesture(-1))}, true);`);
     await sleep(600);
     assert.equal(routing(result)?.raw?.[0]?.class, "RenderWidgetHostViewCocoa", "the point should hit the page renderer");
     assert.equal(routing(result)?.fallback, false, "a hit inside the renderer must not fall back");
@@ -488,14 +488,14 @@ try {
   await test("a tracked swipe right after a discrete swipe goes back too", async () => {
     await reset();
     const base = `http://127.0.0.1:${server.address().port}/history`;
-    const url = () => nn('return nn.store.getState().tabs.t1.url;');
+    const url = () => ac('return ac.store.getState().tabs.t1.url;');
     async function waitUrl(expected, ms) {
       for (let start = Date.now(); Date.now() - start < ms && (await url()) !== expected;) await sleep(50);
       return url();
     }
-    await nn('nn.store.getState().activate("t1"); return true;');
+    await ac('ac.store.getState().activate("t1"); return true;');
     for (const n of [1, 2, 3]) {
-      await nn(`nn.store.getState().navigate("t1", ${JSON.stringify(base + n)}); return true;`);
+      await ac(`ac.store.getState().navigate("t1", ${JSON.stringify(base + n)}); return true;`);
       assert.equal(await waitUrl(base + n, 5000), base + n);
     }
     await sleep(500);
@@ -503,22 +503,22 @@ try {
     const steps = [{ phase: "swipe", dx: 3, atMs: 0 }, { phase: "began", dx: 0, dy: 0, atMs: 50, timestampMs: 50 }];
     for (let at = 66; at <= 258; at += 16) steps.push({ phase: "changed", dx: 10, dy: 0, atMs: at, timestampMs: at });
     steps.push({ phase: "ended", dx: 0, dy: 0, atMs: 274, timestampMs: 274 });
-    const result = await nn(`return globalThis.nnSwipe.pane("t1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});`);
+    const result = await ac(`return globalThis.acSwipe.pane("t1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});`);
     assert.equal(await waitUrl(base + 1, 3000), base + 1, "both swipes should go back");
     return { events: result.events?.map((e) => [e.phase, e.swallowed ?? e.state]) };
   });
   await test("reordering profiles preserves a native selection queued behind blocked JS", async () => {
     await reset();
     try {
-      const result = await nn(`
-        const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});
+      const result = await ac(`
+        const simulation=globalThis.acSwipe.sidebar("w1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});
         setTimeout(()=>{
           const until=performance.now()+180; while(performance.now()<until){}
-          nn.store.getState().reorderProfiles(["work","default"]);
+          ac.store.getState().reorderProfiles(["work","default"]);
         },20);
         return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
-          globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
-            profile:nn.store.getState().windows.w1.profileId,order:nn.store.getState().profileOrder}));
+          globalThis.expo.modules.ArcadiaSwipe.devPagerState("w1").then(state=>resolve({native,state,
+            profile:ac.store.getState().windows.w1.profileId,order:ac.store.getState().profileOrder}));
         },650)));
       `);
       assert.equal(result.profile, "work");
@@ -527,16 +527,16 @@ try {
       assert.ok(Math.abs(result.state.position) < 0.003);
       return result;
     } finally {
-      await nn('nn.store.getState().reorderProfiles(["default","work"]); return true;');
+      await ac('ac.store.getState().reorderProfiles(["default","work"]); return true;');
     }
   });
   await test("removing the other profile keeps the remaining sidebar at its origin", async () => {
-    await nn('nn.store.getState().switchProfile("w1","work"); return true;');
+    await ac('ac.store.getState().switchProfile("w1","work"); return true;');
     await waitProfile("work");
     await sleep(350);
-    await nn('nn.store.getState().deleteProfile("default"); return true;');
+    await ac('ac.store.getState().deleteProfile("default"); return true;');
     await sleep(350);
-    const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+    const result = await ac('return globalThis.expo.modules.ArcadiaSwipe.devPagerState("w1");');
     assert.equal(await profile(), "work");
     assert.equal(result.count, 1);
     assert.equal(result.selected, 0);
@@ -547,7 +547,7 @@ try {
   });
   stage = "the snapshot";
   evidence.snapshot = { path: join(data, "profile-swipe.png"),
-    saved: await nn(`return nn.shell.devSnapshotWindow("w1", ${JSON.stringify(join(data, "profile-swipe.png"))});`) };
+    saved: await ac(`return ac.shell.devSnapshotWindow("w1", ${JSON.stringify(join(data, "profile-swipe.png"))});`) };
 } catch (error) {
   evidence.error = String(error);
   if (!error.reported) rep.record(`stopped at ${stage}`, { error });

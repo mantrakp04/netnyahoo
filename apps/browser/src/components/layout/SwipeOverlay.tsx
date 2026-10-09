@@ -1,5 +1,5 @@
-import { SwipeArea, swipeHaptic, type SwipeAreaHandle, type SwipeEvent } from "@netnyahoo/nncore";
-import { Surface, Symbol, VisualEffect } from "@netnyahoo/shell";
+import { SwipeArea, swipeHaptic, type SwipeAreaHandle, type SwipeEvent } from "@arcadia/arcadiacore";
+import { Surface, Symbol, VisualEffect } from "@arcadia/shell";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
@@ -315,6 +315,6 @@ function useSwipeDevHandle(tabId: string, area: React.RefObject<SwipeAreaHandle 
   }, [tabId]);
 }
 if (__DEV__) {
-  const g = globalThis as { nnSwipe?: Record<string, unknown> };
-  g.nnSwipe = { ...g.nnSwipe, pane: (tabId: string) => devPanes.get(tabId)?.current ?? null, history: { items: historyItems, open: openHistoryMenu, menu: useHistoryMenu, go: goToHistoryItem } };
+  const g = globalThis as { acSwipe?: Record<string, unknown> };
+  g.acSwipe = { ...g.acSwipe, pane: (tabId: string) => devPanes.get(tabId)?.current ?? null, history: { items: historyItems, open: openHistoryMenu, menu: useHistoryMenu, go: goToHistoryItem } };
 }

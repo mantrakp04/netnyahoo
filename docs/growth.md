@@ -14,7 +14,7 @@ ClickHouse (see **Telemetry** below; before that, PostHog Cloud EU, whose histor
 | Macs | 33% | 3.35% click Download. 164 of 176 reach the "In office" screenshot, only 42 reach the closing Download. |
 | Windows / Linux | ~15% | Can't use it: the app is Mac-only (Apple Silicon, macOS 14+). |
 
-The Big Yahu game button is the most-clicked element on the page.
+The mascot game button is the most-clicked element on the page.
 
 Readings: phones are half the traffic and can't install anything, so a phone "Download" is a dead end. Macs
 look at the product shot and then most of them leave before the next Download button, which is a whole page
@@ -76,7 +76,7 @@ takes effect with the first release after 0.2.13):
   (`infra/site/nginx.conf`) answers every request with a 302 to
   `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml` and, beside it, mirrors a
   telemetry event `update_check { version, first }` with the day as its timestamp. Only requests whose
-  User-Agent is the app's Sparkle (`Netnyahoo/<version> Sparkle/…`) count. Nothing else is passed on: no IP
+  User-Agent is the app's Sparkle (`Arcadia/<version> Sparkle/…`) count. Nothing else is passed on: no IP
   (so no country), no headers, no cookie, a fixed `distinct_id` (`update-check`). The redirect never waits on
   the count; if the collector is down or slow, the update still works.
 - **First launch:** the app adds `first=1` to its first check ever (`packages/shell/ios/Updater.swift`,
@@ -85,7 +85,7 @@ takes effect with the first release after 0.2.13):
   offline isn't retried as first.
 - **Still running:** a running copy checks at launch (once 8 h have passed since the last check) and every
   8 h, so 1 to 3 checks a day. Copies running on a day are between checks/3 and checks.
-- **Test instances** (`NETNYAHOO_BACKGROUND=1` or `NETNYAHOO_DATA_DIR` set: smoke tests, agents) poll GitHub
+- **Test instances** (`ARCADIA_BACKGROUND=1` or `ARCADIA_DATA_DIR` set: smoke tests, agents) poll GitHub
   directly, so they aren't counted.
 - **Copies from 0.2.13 and earlier** still poll GitHub directly. They show up only as the latest release's
   `appcast.xml` download count (all versions together, no days).
@@ -94,7 +94,7 @@ Where it's disclosed: Settings › General › "Check for updates automatically"
 Settings › Privacy & Security, and the site's Q&A ("What does it collect?").
 
 **Read the counts:** `node scripts/update-checks.mjs [days]` (reads ClickHouse with the credentials in
-`~/.config/netnyahoo/telemetry.env`, see Telemetry). It prints, per version, DMG downloads, first launches,
+`~/.config/arcadia/telemetry.env`, see Telemetry). It prints, per version, DMG downloads, first launches,
 first/DMG, update downloads and GitHub feed fetches, then checks and first launches per day and version.
 Without the env file it prints the GitHub columns. The same query with `node scripts/telemetry-sql.mjs`:
 
@@ -137,14 +137,14 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   `otel_logs` (new data) and `posthog_events` (PostHog Cloud history, 2026-09-29 09:04 → 2026-09-30).
   `telemetry.logs` holds plain warnings/errors from the site and app (kept 90 days).
   `telemetry.replay_sessions` has one row per recorded session. Events are kept; replays 30 days.
-- **Reading it:** `~/.config/netnyahoo/telemetry.env` (not in git, mode 600) has the read-only ClickHouse user
+- **Reading it:** `~/.config/arcadia/telemetry.env` (not in git, mode 600) has the read-only ClickHouse user
   and the replay token. Use `node scripts/telemetry-sql.mjs "<SQL>"`, `node scripts/update-checks.mjs`, and
   `node scripts/replay.mjs --list` / `<session-id>`. The stats skill's queries are in
   `.claude/skills/stats/queries.md`. Secrets are Hexclave project secrets (`TELEMETRY_*`); a backup is in
-  `~/.config/netnyahoo/telemetry-secrets.env`.
+  `~/.config/arcadia/telemetry-secrets.env`.
   hekuto reads the same tables as `reader` through a Composio ClickHouse connection (Basic auth, base URL
   `https://netnyahoo.com/_ch`); `/_ch/` takes Basic auth for `reader` only.
-- **Checks of the pipeline:** send with service `netnyahoo-selftest` (or version `0.0.0-selftest`); the views
+- **Checks of the pipeline:** send with service `arcadia-selftest` (or version `0.0.0-selftest`); the views
   leave those out.
 - **PostHog Cloud** (EU project 287835) is untouched. App versions released before the switch still send
   their opt-in events there. `infra/telemetry/import-posthog.py` loads a Cloud export into `posthog_events`
@@ -166,7 +166,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
 | Exceptions | `capture_exceptions` | `$exception` with `$exception_list`, `_types`, `_values`… (site and app) | thrown errors; app harness live |
 | Web vitals | `capture_performance` | `$web_vitals` (web-vitals 6.2.2, loaded after the page) | local run |
 | Console warnings/errors | PostHog Logs | `telemetry.logs` (site and app) | local run; app harness live |
-| Session replay | PostHog recordings, inputs masked | rrweb (@rrweb/record 2.1.6, loaded after the page): inputs and `.nn-private` text masked, no canvas, network or console; sessions over 4 s; kept 30 days | live session replayed with `scripts/replay.mjs` |
+| Session replay | PostHog recordings, inputs masked | rrweb (@rrweb/record 2.1.6, loaded after the page): inputs and `.ac-private` text masked, no canvas, network or console; sessions over 4 s; kept 30 days | live session replayed with `scripts/replay.mjs` |
 | Custom events and `data-track*` props | posthog.capture | same names and props | local run |
 | Referrer, UTM, device, OS, browser | posthog-js | same props; UA parsed in the page (matches PostHog on 849 real UAs) | offline check |
 | Country | PostHog GeoIP | collector GeoIP, IP dropped | live |
@@ -188,7 +188,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
     the "Copy link" retry, and none got the link.
   - Experiment: control 12/147 (8.2%), band 7/142 (4.9%), P(band wins) 7.7%. Nowhere near the stopping rule;
     no one has clicked the band's own button yet. Checked live: the band shows for `band` and is tagged.
-  - Dead clicks: 139 of 236 are on the Big Yahu canvas (WebGL, which PostHog can't see; `yahu_danced` tracks the
+  - Dead clicks: 139 of 236 are on the mascot canvas (WebGL, which PostHog can't see; `mascot_danced` tracks the
     real reaction). Not a bug.
   - **Shipped:** after a dismissed share sheet (or no share sheet and no clipboard), the link now appears in place:
     a select-all field, a Copy button (fresh tap), and "Email it to me" (mailto). Header taps show it under the
@@ -229,7 +229,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   - Experiment: control 21/369 (5.7%), band 20/336 (6.0%). Both arms past 300; day 1 of 7, so keep running.
   - App telemetry: 9 opted-in users in 24h (0.2.11 7, 0.2.9 1, 0.2.7 2). One app EXC_BAD_ACCESS report to look at;
     "Calling the <text> function has failed" 6 (needs the source map).
-  - Dead clicks: 230 of 267 have no element text (the Big Yahu canvas, as before). Rage clicks 7. Nothing shipped.
+  - Dead clicks: 230 of 267 have no element text (the mascot canvas, as before). Rage clicks 7. Nothing shipped.
 - **2026-09-30 03:05 UTC check:** 3,848 visitors all time, 558 since 01:52. Traffic is picking up again
   (152/h at 00:00, 254 at 02:00, 278 in the partial 03:00 hour), still almost all t.co. 59% phones.
   - Downloads: 79 people all time (60 Mac). Since 01:52, Mac desktop 10/131 = 7.6%.
@@ -268,7 +268,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
     can appear under several versions after updating).
   - GitHub: 24 stars (13 today, +5 since 09:40). Traffic (GitHub is a day behind): 88 views from 60 people on
     09-29, 50 of them from netnyahoo.com.
-  - Errors: 4 Windows visitors got an unhandled `Failed to fetch` when `big-yahu.glb` didn't download (the
+  - Errors: 4 Windows visitors got an unhandled `Failed to fetch` when `big-mascot.glb` didn't download (the
     09:40 fix only caught the chunk import). Fixed and deployed (99f6045f); Safari's 2 `Load failed` are
     probably the same fetch. The rest is noise (cross-origin `Script error.`, a wallet). No app exceptions.
     Three local `ExcUserFault` reports (18:14 to 18:19 IST) came from a 0.2.14 test build under `~/Documents`.
@@ -336,7 +336,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
     `mac_link_visit` still 4. The 23 dead clicks on "Send to my Mac" are the native share sheet opening
     (no DOM change), not a dead button.
   - `github_clicked` 34 (32 people), `screenshot_opened` 69 (45), `support_opened` 8 (5), `notify_clicked` 9.
-    Dead clicks: the Big Yahu canvas 160 (69 people), the hero stage ("Incumbent") 20 (18).
+    Dead clicks: the mascot canvas 160 (69 people), the hero stage ("Incumbent") 20 (18).
   - Experiment: band 65/803 (8.1%), control 62/762 (8.1%). Dead even.
   - Installs: DMG downloads 229 (+25); first launches 41 (+9); update zips 49 (+9). Today's checks: 0.2.19 12,
     0.2.18 4, 0.2.17 2, 0.2.21 2 (0.2.20 and 0.2.21 shipped this morning).
@@ -352,7 +352,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   - Downloads: 176 people all time (141 Mac), +7. Since 10:05, Mac desktop 6/68 = 8.8%; Windows 1/18, Linux 0/10.
   - Phones: the hero's share sheet 3 dismissed, 1 `error` (Firefox on Android; Copy link and Email sit right
     below it); header panel 1. `mac_link_visit` still 4.
-  - `github_clicked` 12, `screenshot_opened` 13 (8 people), `notify_clicked` 5. Dead clicks mostly the Big Yahu
+  - `github_clicked` 12, `screenshot_opened` 13 (8 people), `notify_clicked` 5. Dead clicks mostly the mascot
     canvas (24 people).
   - Experiment: band 68/823 (8.3%), control 65/775 (8.4%). Even after two days.
   - Installs: DMG downloads 239 (+10, 0.2.21 now 14); first launches 47 (+6); update zips 59 (+10). Checks on

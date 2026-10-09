@@ -1,4 +1,4 @@
-import { appUrlOrigin, displayHost, urlForDisplay } from "@netnyahoo/core";
+import { appUrlOrigin, displayHost, urlForDisplay } from "@arcadia/core";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";

@@ -1,6 +1,6 @@
-import { setSearchEngineName } from "@netnyahoo/nncore";
-import { chooseTextFragment, cleanUrl, searchUrl, withTextFragment, type SelectionContext } from "@netnyahoo/core";
-import { copyText } from "@netnyahoo/shell";
+import { setSearchEngineName } from "@arcadia/arcadiacore";
+import { chooseTextFragment, cleanUrl, searchUrl, withTextFragment, type SelectionContext } from "@arcadia/core";
+import { copyText } from "@arcadia/shell";
 import { create } from "zustand";
 import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";
@@ -240,5 +240,5 @@ export async function replaceInField(tabId: string, query: string, replacement: 
 }
 
 if (__DEV__) {
-  (globalThis as { nnSelection?: unknown }).nnSelection = { usePageSelection, searchSelection, linkToSelection, copyPageUrl, replaceInField, jumpToSelection };
+  (globalThis as { acSelection?: unknown }).acSelection = { usePageSelection, searchSelection, linkToSelection, copyPageUrl, replaceInField, jumpToSelection };
 }

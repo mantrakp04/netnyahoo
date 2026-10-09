@@ -1,4 +1,4 @@
-import { Surface, Symbol } from "@netnyahoo/shell";
+import { Surface, Symbol } from "@arcadia/shell";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { create } from "zustand";
@@ -92,4 +92,4 @@ function PersonalizePanel({ windowId, onClose }: { windowId: string; onClose: ()
   );
 }
 
-if (__DEV__) (globalThis as { nnPersonalize?: unknown }).nnPersonalize = { open: setOpen };
+if (__DEV__) (globalThis as { acPersonalize?: unknown }).acPersonalize = { open: setOpen };

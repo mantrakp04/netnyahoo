@@ -1,4 +1,4 @@
-import { WindowBackdrop } from "@netnyahoo/shaders";
+import { WindowBackdrop } from "@arcadia/shaders";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { CommandPanel } from "./components/CommandPanel";
@@ -18,7 +18,7 @@ import { TOP_CARD_INSET, TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./c
 import { useTabLayout } from "./components/layout/windowLayout";
 import { WindowProfile } from "./components/layout/WindowProfile";
 import { DockedLayout } from "./components/layout/SidebarDock";
-import { SmallYahuWindow } from "./components/smallYahu/SmallYahuWindow";
+import { LittleArcadiaWindow } from "./components/littleArcadia/LittleArcadiaWindow";
 import { SidebarOverlays } from "./components/sidebar/Overlays";
 import { layout, ThemeScope, useTheme } from "./lib/theme";
 import { useBrowser } from "./store/browser";
@@ -41,7 +41,7 @@ function BrowserWindowRoot({ windowId }: { windowId?: string }) {
   if (!id || !exists) return null;
   return (
     <WindowContext.Provider value={id}>
-      <ThemeScope>{small ? <SmallYahuWindow /> : <BrowserWindow />}</ThemeScope>
+      <ThemeScope>{small ? <LittleArcadiaWindow /> : <BrowserWindow />}</ThemeScope>
     </WindowContext.Provider>
   );
 }

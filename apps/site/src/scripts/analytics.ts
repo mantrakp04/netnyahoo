@@ -13,7 +13,7 @@
 //   section_viewed { section }                   a [data-shot] section scrolled into view
 //   support_opened { location }                  the footer's support chat (scripts/support.ts)
 //   release_notes_viewed { version, latest, trigger }   pages/release-notes.astro
-//   yahu_found { seconds, misses }, yahu_danced { stage, dance }, yahu_spun { stage }   the game and Big Yahu
+//   mascot_found { seconds, misses }, mascot_danced { stage, dance }, mascot_spun { stage }   the game and the mascot
 // Experiment: flag "download-band", Macs only (components/InOffice.astro, docs/growth.md).
 import { track, type Props } from "./track";
 import "./support";
@@ -54,8 +54,8 @@ const sentRef = new URLSearchParams(location.search).get("ref");
 if (sentRef === "mac" || sentRef === "share" || sentRef === "email") {
   let seen = false;
   try {
-    seen = sessionStorage.getItem("nn:mac_link_visit") === "1";
-    sessionStorage.setItem("nn:mac_link_visit", "1");
+    seen = sessionStorage.getItem("ac:mac_link_visit") === "1";
+    sessionStorage.setItem("ac:mac_link_visit", "1");
   } catch {}
   if (!seen) track("mac_link_visit", { ref: sentRef, device: document.documentElement.dataset.device ?? null });
 }
@@ -65,8 +65,8 @@ const { device, os } = document.documentElement.dataset;
 if (device === "other") {
   let seen = false;
   try {
-    seen = sessionStorage.getItem("nn:non_mac_visit") === "1";
-    sessionStorage.setItem("nn:non_mac_visit", "1");
+    seen = sessionStorage.getItem("ac:non_mac_visit") === "1";
+    sessionStorage.setItem("ac:non_mac_visit", "1");
   } catch {}
   if (!seen) track("non_mac_visit", { os: os ?? null });
 }

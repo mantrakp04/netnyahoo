@@ -5,7 +5,7 @@ export const SHARING_COPY = {
   footnote:
     "Sent to netnyahoo.com with a random ID made on this Mac, and kept on our own servers. No third parties. Turning this off stops it at once and deletes anything waiting to be sent. This setting doesn't sync.",
   ask: {
-    title: "Help fix Netnyahoo?",
+    title: "Help fix Arcadia?",
     body: "Share anonymous crash reports and usage stats. No sites, searches or typing. Ever.",
     share: "Share",
     notNow: "Not now",

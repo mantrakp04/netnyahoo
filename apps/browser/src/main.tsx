@@ -36,9 +36,9 @@ startTelemetry();
 startKillSwitches();
 if (__DEV__ || perfProbeEnabled) require("./lib/devHarness").startDevHarness();
 
-// Development: `globalThis.nnDevMountDelayMs` holds a window's content back that long after its root starts, as a
+// Development: `globalThis.acDevMountDelayMs` holds a window's content back that long after its root starts, as a
 // window opened under load mounts late (acceptance move-tab-slow-mount).
-const devMountDelay = () => (__DEV__ ? ((globalThis as { nnDevMountDelayMs?: number }).nnDevMountDelayMs ?? 0) : 0);
+const devMountDelay = () => (__DEV__ ? ((globalThis as { acDevMountDelayMs?: number }).acDevMountDelayMs ?? 0) : 0);
 
 function Root({ windowId }: { windowId: string }) {
   const [delay] = useState(devMountDelay);

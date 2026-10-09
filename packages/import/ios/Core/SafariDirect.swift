@@ -24,7 +24,7 @@ public enum SafariDirect {
                           cancellation: Cancellation = .init()) throws -> SafariExport {
     let dir = directory(home: home)
     guard hasAccess(home: home) else {
-      throw ImportError.locked("Netnyahoo needs Full Disk Access to read Safari's data.")
+      throw ImportError.locked("Arcadia needs Full Disk Access to read Safari's data.")
     }
     var out = SafariExport()
     var history: [HistoryEntry] = []

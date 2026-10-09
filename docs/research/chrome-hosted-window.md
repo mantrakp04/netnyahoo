@@ -1,7 +1,7 @@
 # Chrome-hosted windows: Chrome's Browser window is the app window
 
 Status: **shipped as the default in 0.2.0** (2026-09-26). Every app window is a Chrome-hosted window; the
-`NETNYAHOO_CHROME_WINDOW` flag and the hidden "ghost" Browser windows are gone. Design, spike and phases 1–3a
+`ARCADIA_CHROME_WINDOW` flag and the hidden "ghost" Browser windows are gone. Design, spike and phases 1–3a
 below; the flip itself in [Shipped as default](#shipped-as-default-020). Screenshots are in
 `docs/research/chrome-hosted-window/`; the test scripts (`spike/`) were removed on 2026-10-02, readable at `231625b9`. Results: [Phase 1](#phase-1-engine-done),
 [Phase 2](#phase-2-production-behind-the-flag-done), [Phase 3](#phase-3-per-profile-windows-and-the-rest-in-progress).
@@ -11,12 +11,12 @@ below; the flip itself in [Shipped as default](#shipped-as-default-020). Screens
 Phases 4 and 5 in one step (there were no users to dogfood with): the flag went and the ghost path with it.
 
 **Deleted:**
-- App side (about 650 lines; `NNWindowHost.mm` went from 1,521 to 1,140 lines, and the whole change is 854 lines
-  out, 631 in, the popup windows and full-screen paging included): `NNWindowHost.mm`'s ghost (`Ghost::Start`, `Align`, the lift in
-  `ShowsChromeWindows` / `WatchChromeWindows`, `NNWindowVisibilityWatcher`, `MakeWindowInert` for app ghosts,
+- App side (about 650 lines; `ACWindowHost.mm` went from 1,521 to 1,140 lines, and the whole change is 854 lines
+  out, 631 in, the popup windows and full-screen paging included): `ACWindowHost.mm`'s ghost (`Ghost::Start`, `Align`, the lift in
+  `ShowsChromeWindows` / `WatchChromeWindows`, `ACWindowVisibilityWatcher`, `MakeWindowInert` for app ghosts,
   parent-window observers, the stock-CEF anchor ghost in `Attach`), the keybinding forwarding for extension
   commands (`ForwardKeyEvent`, `LoadKeybindings`, `ParseKeybinding`, `InvalidateExtensionCommands`), the
-  `IsChromeOnlyShortcut` keycode table (`NNClient.mm`), the flag in `NNChromeWindow.mm` and `ChromeWindowSpike.swift`
+  `IsChromeOnlyShortcut` keycode table (`ACClient.mm`), the flag in `ACChromeWindow.mm` and `ChromeWindowSpike.swift`
   (now `ChromeWindows.swift`), and the DEV `key:` action. `Ghost` is `ChromeWindow` now: one profile's Chrome
   window of an app window.
 - Engine: `chromium-context-menu-hosted.patch` (a tab's view is always in a Chrome window now, so Chrome's own
@@ -29,7 +29,7 @@ Phases 4 and 5 in one step (there were no users to dogfood with): the flag went 
 **Found and fixed in the flip:**
 - **Sized popups** (`window.open` with features: OAuth sign-ins) had used a ghost of their own on both paths: the
   popup window got one as soon as its view adopted the tab. They are Chrome windows of their own now
-  (`NNPopupWindow`, `makePopupWindowForProfile:`, a titled, opaque `ChromeWindow`), and the tab moves into that
+  (`ACPopupWindow`, `makePopupWindowForProfile:`, a titled, opaque `ChromeWindow`), and the tab moves into that
   Browser, so the passkey sheet, autofill dropdown and context menu of a sign-in page show over the popup.
   A popup's tab is recorded as its opener's Browser's when Chrome makes it (`TabOpenedFrom`): CEF's window handle
   for a tab is wherever we host its view, so it can't say which Browser holds it.
@@ -86,14 +86,14 @@ What's left per switch:
 - `MoveRoot`: 15–25 ms of main thread (`_setWindow:` over the whole view tree, then a CA flush that redisplays layers).
 - Applying the switch's view updates: about 40 ms.
 - Chrome showing the tab: roughly 60 ms from the swap to its first frame on screen.
-- The pager no longer animates from JS: the native controller (`NNPager`, `SwipeModule.swift`) tracks, settles
+- The pager no longer animates from JS: the native controller (`ACPager`, `SwipeModule.swift`) tracks, settles
   and selects, and writes the position through the native driver; JS only commits the selection (`layout/profilePager.ts`; the JS pager
   went on 2026-10-01).
 
 ## Summary
 
 Today every app window is a React Native `NSWindow`, and each profile shown in it has an invisible "ghost" Chrome
-window behind it that owns the tabs (`NNWindowHost.mm`). Everything Chrome draws for itself belongs to the ghost:
+window behind it that owns the tabs (`ACWindowHost.mm`). Everything Chrome draws for itself belongs to the ghost:
 dialogs, bubbles, popups, menus, focus, occlusion, shortcuts. Each seam bug so far has been fixed on its own terms:
 lifting the ghost for modal children, then for titled bubbles, a context-menu fallback patch, keycode tables for
 Chrome's shortcuts, activation emulation.
@@ -124,7 +124,7 @@ deferral as hit testing. Plan: 5–7 weeks in six phases, each one shippable.
 
 ## Phase 1 (engine), done
 
-Two incremental patches (`docs/engine-build.md`, `CEF_NN_CLIENT_WINDOW`) replace the spike's runtime overrides:
+Two incremental patches (`docs/engine-build.md`, `CEF_AC_CLIENT_WINDOW`) replace the spike's runtime overrides:
 
 - **`cef-zwindow-client.patch`** (10 CEF files; a new `include/` API, so the translator ran):
   - `CefBrowserSettings.client_window`: no tab strip, toolbar, location bar or bookmarks bar
@@ -132,7 +132,7 @@ Two incremental patches (`docs/engine-build.md`, `CEF_NN_CLIENT_WINDOW`) replace
     open without tabs.
   - `CefBrowserView::CreateTab`: adds a tab to such a Browser even when it has none.
 - **`chromium-window-hosted.patch`** (5 Chromium files):
-  - `BridgedContentView.netnyahooEmbeddedView`: hit testing and accessibility ask it first.
+  - `BridgedContentView.arcadiaEmbeddedView`: hit testing and accessibility ask it first.
   - `Browser::TabStripEmpty` / `UnloadController::TabStripEmpty` keep a client window open unless it is closing.
   - Tab-strip-less normal Browsers use the popup layout. The tabbed layout CHECKs for the tabbed toolbar's
     background (`browser_view_tabbed_layout_impl.cc:1673`) and crashed the first build that hid the tab strip.
@@ -150,7 +150,7 @@ Two incremental patches (`docs/engine-build.md`, `CEF_NN_CLIENT_WINDOW`) replace
   - A tab moved or reopened into an empty window uses a placeholder made with `CreateTab`, dropped a second later
     as ghosts already do.
 
-**App side** (`NNChromeWindow.mm`, `NNWindowHost.mm`, `NNClient.mm`):
+**App side** (`ACChromeWindow.mm`, `ACWindowHost.mm`, `ACClient.mm`):
 - Key routing:
   - In a client window, a key the page and our menus don't take goes on to Chrome.
   - `HiddenChromeUICommand` in `OnChromeCommand` is the one filter.
@@ -207,15 +207,15 @@ The app side:
 - Each window's `<WindowProfile>` view (`components/layout/WindowProfile.tsx`; at first a `setWindowProfile` call
   from `lib/native.ts`) passes its profile and neighbours whenever they change: a swipe settles, ⌃1–9, a tab of
   another profile.
-- The window's Chrome window of that profile takes our root: `NNChromeWindowHost showProfile:inWindow:`, then
+- The window's Chrome window of that profile takes our root: `ACChromeWindowHost showProfile:inWindow:`, then
   the shell's registry follows through the swap callback.
 - The profiles next to it in profile order get their windows ahead, off screen; each Browser comes with its first tab.
 - A tab of profile B mounted while profile A's window is on screen belongs to B's window's Browser
   (`GhostForTab` → the group's window for B). So when B comes on screen its tabs are already that window's.
 - Closing the app window closes the whole group, each Browser once no tab is moving out of it.
 
-The swap (`Swap` in `NNChromeWindow.mm`) orders the new window in behind at the same frame with window
-animations off, moves the root, commits, and orders the old window out. `NETNYAHOO_PROFILE_SWAP` picks how the
+The swap (`Swap` in `ACChromeWindow.mm`) orders the new window in behind at the same frame with window
+animations off, moves the root, commits, and orders the old window out. `ARCADIA_PROFILE_SWAP` picks how the
 seam is covered:
 - **transparent (default):** the window leaving is translucent, so once the root has left it shows nothing.
 - **snapshot:** a picture of the window (`CGWindowListCreateImage`, looked up at run time because the SDK marks it
@@ -266,13 +266,13 @@ strategy from its numbers.
   strategy, plus a pane in our layout. 2–3 days, after the rest of phase 3.
 
 **Docked DevTools, done (after 0.2.0).** Not a hole in our layout but the same trick as the page: DevTools'
-contents are natively hosted too, and the tab's `NNBrowserView` shows them.
-- Engine (`cef-zwindow-z-devtools.patch`, `chromium-window-docked-devtools.patch`, `CEF_NN_DOCKED_DEVTOOLS`): a
+contents are natively hosted too, and the tab's `ACBrowserView` shows them.
+- Engine (`cef-zwindow-z-devtools.patch`, `chromium-window-docked-devtools.patch`, `CEF_AC_DOCKED_DEVTOOLS`): a
   `client_window` Browser may dock; `DevtoolsUIController::UpdateDevtools` hands each change of a tab's docked
   DevTools to the CEF delegate, which marks the DevTools contents natively hosted (no `views::WebView` takes
   them) and calls `CefDisplayHandler::OnDevToolsDockChanged`. `CefBrowserHost::GetDockedDevTools` gives the
   DevTools view and, from Chrome's resizing strategy, where the page goes.
-- App (`NNBrowserView layoutDockedDevTools`): the DevTools view fills the tab's view, behind the page; the page
+- App (`ACBrowserView layoutDockedDevTools`): the DevTools view fills the tab's view, behind the page; the page
   takes the strategy's rectangle. It follows resizes, the tab being shown or hidden, moves and closing.
 - Chrome's own DevTools UI does the rest: the dock-side menu (right, bottom, left, undocked), dragging the split,
   undocking into a window and docking back.
@@ -302,7 +302,7 @@ its screenshot actions and the dock-side menu only under `Root.Runtime.condition
   once draws only through the Views compositor from then on. `chromium-devtools-redock-display.patch` makes it
   draw into its own NSView again when detached.
 - ⌥⌘I / ⌥⌘J / ⌥⌘C run Chrome's own `IDC_DEV_TOOLS`, `IDC_DEV_TOOLS_CONSOLE` and `IDC_DEV_TOOLS_INSPECT` on the
-  tab (`NNBrowserView showDevToolsPanel:`), so they behave as in Chrome and Dia:
+  tab (`ACBrowserView showDevToolsPanel:`), so they behave as in Chrome and Dia:
   - Developer Tools and JavaScript Console close docked DevTools and focus an undocked window.
   - JavaScript Console opens on the Console panel.
   - Inspect Elements (new in the Developer menu) starts the element picker.
@@ -328,7 +328,7 @@ now CEF's default window, 800 × 600 at the screen's corner, untitled. DevTools 
 Chrome made) open in Chrome's own DevTools window (CEF's `ShouldCreateViewsHostedPopup`: the opener has no
 view), titled "DevTools - <url>" and placed where the profile's DevTools window was left
 (`browser.app_window_placement` › DevToolsApp, 640 × 640 at 100, 100 the first time).
-- `ChromeWindow::OnPopupBrowserViewCreated` gives the first kind a window of ours (`NNDevTools.mm`
+- `ChromeWindow::OnPopupBrowserViewCreated` gives the first kind a window of ours (`ACDevTools.mm`
   `WindowDelegate`): it reads and writes Chrome's DevToolsApp record, so both kinds open where either was
   left, and it's titled from the frontend's title. Dia titles its DevTools window "Developer Tools - %@"
   (1.50.1 string) and autosaves its frame (`.devToolsWindowAutosaveFrame`).
@@ -352,7 +352,7 @@ view), titled "DevTools - <url>" and placed where the profile's DevTools window 
 
 ## Phase 2 (production, behind the flag), done
 
-`NETNYAHOO_CHROME_WINDOW=1` is now something to run daily. Every check below is headless, on hidden instances, on
+`ARCADIA_CHROME_WINDOW=1` is now something to run daily. Every check below is headless, on hidden instances, on
 a locked screen; "human" marks what needs a person at an unlocked screen.
 Scripts: `spike/p2.mjs` (steps), `spike/restore.sh`, fixtures in `spike/pages` and `spike/ext-popup`.
 
@@ -366,7 +366,7 @@ Scripts: `spike/p2.mjs` (steps), `spike/restore.sh`, fixtures in `spike/pages` a
 |---|---|---|
 | Home profile | done | The window is the Chrome window of the profile it opened with (`OpenWindowOptions.profile`) |
 | Other profiles | done (interim) | Companion ghosts as `client_window` Browsers; Chrome's active window follows the profile on screen; an alert in the second profile's tab shows in front |
-| Swipe paging, ⌃1–9 | done | A sidebar swipe (real tracker, `nnSwipe.sidebar().devSimulate`) pages to the other profile and back; ⌃2 switches |
+| Swipe paging, ⌃1–9 | done | A sidebar swipe (real tracker, `acSwipe.sidebar().devSimulate`) pages to the other profile and back; ⌃2 switches |
 | Incognito windows | done | Chrome-hosted too (their own `incognito:<id>` profile), dark |
 | Close warning | done | The close button asks the app through `CanClose`: Dia's "Close 5 tabs?" sheet on the window |
 | ⇧⌘W | done | Our own menu action (phase 1) |
@@ -535,7 +535,7 @@ never complete there (`orderOut:` reports the window hidden, but the window serv
 - The `BrowserView` is created and initialised into that widget when the Chrome-style `CefBrowserView` is added
   (`chrome_browser_view.cc` `AddedToWidget` → `InitBrowser` → `ChromeBrowserWidget::Init`, `chrome_browser_widget.cc:34-70`).
 - So the window can be made synchronously, before the profile is ready, and the Browser added later. That's what
-  the spike does (`Ghost::StartHosting`, `NNWindowHost.mm`). `WindowManager.open` needs its window at once.
+  the spike does (`Ghost::StartHosting`, `ACWindowHost.mm`). `WindowManager.open` needs its window at once.
 - RN doesn't need a window of its own. `AppDelegate.swift` gets root views from `RCTRootViewFactory`
   (`WindowHost.makeContentView`), and `WindowManager.open` (`packages/shell/ios/Windows.swift`) is the only place
   that puts them in windows. The spike adds one branch there.
@@ -545,14 +545,14 @@ never complete there (`orderOut:` reports the window hidden, but the window serv
 | Candidate | Result |
 |---|---|
 | **Root as a subview of `BridgedContentView`** (the content view), plus a `-hitTest:` that asks our root first | **Works (spike).** Clicks reach RN and the page; typing reaches the page; the page is visible at 122 fps; resizing reflows. |
-| Root next to `BridgedContentView` in the frame view (`NSThemeFrame`) | **Fails.** The page ignores every click: `RenderWidgetHostViewCocoa -shouldIgnoreMouseEvent:` hit-tests from `window.contentView` and drops events that don't land in its own subtree (`content/app_shim_remote_cocoa/render_widget_host_view_cocoa.mm:1041-1071`). Chromium's occlusion checker also only walks `contentView` (`web_contents_view_cocoa.mm:596-638`). Measured with `NETNYAHOO_CHROME_WINDOW_ROOT=frame`: sidebar clicks work, page clicks are lost. |
+| Root next to `BridgedContentView` in the frame view (`NSThemeFrame`) | **Fails.** The page ignores every click: `RenderWidgetHostViewCocoa -shouldIgnoreMouseEvent:` hit-tests from `window.contentView` and drops events that don't land in its own subtree (`content/app_shim_remote_cocoa/render_widget_host_view_cocoa.mm:1041-1071`). Chromium's occlusion checker also only walks `contentView` (`web_contents_view_cocoa.mm:596-638`). Measured with `ARCADIA_CHROME_WINDOW_ROOT=frame`: sidebar clicks work, page clicks are lost. |
 | Root as a subview of `BridgedContentView` with no hit-test change | Fails: `BridgedContentView -hitTest:` returns itself wherever a `views::View` is under the point (`components/remote_cocoa/app_shim/bridged_content_view.mm:289-333`), and Chrome's views cover the window. |
 | `views::NativeViewHost` inside the `CefWindow` | Chromium's own way to embed an `NSView` (`GetHitTestResult` hands `NativeViewHost` points to the `NSView`). CEF has no public API for it; it would need a new `CefView` type (a translator-regenerating CEF API change). Same result as the first row for more work. |
 | CEF overlays (`CefWindow::AddOverlayView`) | Views only. It can't hold an `NSView`. |
 
 **Decision: root inside `BridgedContentView`, with our views first for hit testing and accessibility.** The spike
 did it with a runtime override of `-hitTest:`, `-accessibilityChildren` and `-accessibilityHitTest:`. Phase 1
-replaced that with `BridgedContentView.netnyahooEmbeddedView` (`chromium-window-hosted.patch`).
+replaced that with `BridgedContentView.arcadiaEmbeddedView` (`chromium-window-hosted.patch`).
 
 Keeping `BridgedContentView` as the content view matters. Chromium updates the widget's geometry from its
 `-setFrameSize:` only while it is the content view (`bridged_content_view.mm:775-795`). `NativeWidgetMacNSWindow
@@ -606,8 +606,8 @@ Where the anchored bubbles go:
 |---|---|---|
 | Zoom | Anchors to the top of `BrowserView` (`toolbar_view.cc:1899-1903`) | Off for our tabs: `ZoomController::SetShowsNotificationBubble(false)` (`components/zoom/zoom_controller.h:172`); our toolbar shows the zoom level. |
 | Page info / permission prompts | Rect fallback at the top left of `BrowserView` (`bubble_anchor_util_views.cc:178-190`) | Already ours (`CefPermissionHandler`). |
-| Passwords, save card / address | `GetBubbleAnchor` → top container | Passwords already ours (`CEF_NN_PASSWORD_BUBBLE`). Card/address: they now show without any lift, at the top of the page. Acceptable for phase 3; anchor to our toolbar later. |
-| Extension popups | No fallback: `ExtensionPopup` needs an anchor (`extension_popup.cc:85`) | Keep ours (`NNChromeUI` popups), as today. |
+| Passwords, save card / address | `GetBubbleAnchor` → top container | Passwords already ours (`CEF_AC_PASSWORD_BUBBLE`). Card/address: they now show without any lift, at the top of the page. Acceptable for phase 3; anchor to our toolbar later. |
+| Extension popups | No fallback: `ExtensionPopup` needs an anchor (`extension_popup.cc:85`) | Keep ours (`ACChromeUI` popups), as today. |
 | Downloads bubble | Hidden button anchor | Off already (`download_bubble.partial_view_enabled`). |
 | Status bubble | Bottom left of Chrome's `ContentsWebView` (`status_bubble_views.cc:794-801`) | Ours already; turn Chrome's off with the `chrome_status_bubble` setting. |
 | Tab-modal dialogs (alert, WebAuthn, HTTP auth) | Centred on the contents area, top at the toolbar's bottom (`tab_modal_dialog_host.cc:50-62, 130-135`) | Keep. Chrome's contents area is laid over our page (`Ghost::Layout`), so they centre on the page. The spike's dialogs are 83 pt below the page top because of Chrome's toolbar; hiding it moves them flush with the page, as in Chrome. |
@@ -668,7 +668,7 @@ already, turned off, or fine at the page's top edge. If one turns up that must a
 ## 4. Events and focus
 
 - **Mouse.** With the root inside the content view, AppKit's hit test picks our views (`hit:` probes in the spike):
-  - the sidebar → `NetnyahooShell.Surface`;
+  - the sidebar → `ArcadiaShell.Surface`;
   - the page → `RenderWidgetHostViewCocoa`;
   - the command bar over the page → `RCTView`.
   Chromium's `-shouldIgnoreMouseEvent:` accepts the page's events because the page is under `contentView`.
@@ -695,10 +695,10 @@ already, turned off, or fine at the page's top edge. If one turns up that must a
   unnecessary for hosting windows: the Browser's widget really becomes key, so `BrowserList` "last active", JS dialog
   gating and `windows.getLastFocused` follow natively.
 - **Swipes, drag and drop.**
-  - `NNSwipe.mm` hooks the page view's delegate and should carry over. Several helpers find "the root" through
-    `window.contentView`, which is now Chrome's view: `NNSwipe.mm:187/453/492`, `SwipeModule.swift:38`,
-    `ShadersModule.swift:21`, `AppModule.swift:213` (snapshot), `Handoff.swift:49`, `NNZoom.mm:78`,
-    `NNPictureInPicture.mm:290/502`. Phase 2 moves them to one `rootView(of:)` helper; the spike did this for
+  - `ACSwipe.mm` hooks the page view's delegate and should carry over. Several helpers find "the root" through
+    `window.contentView`, which is now Chrome's view: `ACSwipe.mm:187/453/492`, `SwipeModule.swift:38`,
+    `ShadersModule.swift:21`, `AppModule.swift:213` (snapshot), `Handoff.swift:49`, `ACZoom.mm:78`,
+    `ACPictureInPicture.mm:290/502`. Phase 2 moves them to one `rootView(of:)` helper; the spike did this for
     `relayoutRoot` only.
   - Drag and drop into the page is routed by AppKit to the `WebContentsViewCocoa` under the cursor. Chrome's
     `drag_drop_client_mac.mm:176` hit-tests `contentView`, which our deferral answers. Untested.
@@ -714,10 +714,10 @@ already, turned off, or fine at the page's top edge. If one turns up that must a
 
 | Item | Size | Why |
 |---|---|---|
-| Ghost lift machinery in `NNWindowHost.mm`: `NNWindowVisibilityWatcher`, `ShowsChromeWindows`, `WatchChromeWindows`, `Align`'s child-window ordering, `MakeWindowInert` for app ghosts, parent-window observers | ~220 lines | Chrome's windows are children of the app window |
+| Ghost lift machinery in `ACWindowHost.mm`: `ACWindowVisibilityWatcher`, `ShowsChromeWindows`, `WatchChromeWindows`, `Align`'s child-window ordering, `MakeWindowInert` for app ghosts, parent-window observers | ~220 lines | Chrome's windows are children of the app window |
 | `chromium-context-menu-hosted.patch` | 1 Chromium file | `GetTopLevelWidgetForNativeView` finds the widget through `[view window]` (`native_widget_mac.mm:1324-1342`); the fallback branch never runs |
-| `IsChromeOnlyShortcut` keycode table (`NNClient.mm:131`) | ~25 lines | Command-id policy in one place |
-| `ForwardKeyEvent`, `LoadKeybindings`, keybinding parsing (`NNWindowHost.mm` "Extension commands") | ~110 lines | Extension accelerators run on the key Browser window (verify first) |
+| `IsChromeOnlyShortcut` keycode table (`ACClient.mm:131`) | ~25 lines | Command-id policy in one place |
+| `ForwardKeyEvent`, `LoadKeybindings`, keybinding parsing (`ACWindowHost.mm` "Extension commands") | ~110 lines | Extension accelerators run on the key Browser window (verify first) |
 | `SetWindowActive` emulation for app windows (API stays for ghosts of secondary profiles) | small | The Browser window really becomes key |
 | "Test instances need `active:1` for JS dialogs" workaround | test-only | Same |
 
@@ -744,9 +744,9 @@ Every phase ships; the flag keeps the ghost path as the default until phase 4.
 
 | Phase | Work | Exit criteria | Time |
 |---|---|---|---|
-| 0. Spike | Done: `NETNYAHOO_CHROME_WINDOW=1`, this doc | 13/14 seam checks pass (`spike/spike.mjs`) | done |
+| 0. Spike | Done: `ARCADIA_CHROME_WINDOW=1`, this doc | 13/14 seam checks pass (`spike/spike.mjs`) | done |
 | 1. Engine groundwork | Done 2026-09-26 (see [Phase 1](#phase-1-engine-done)) | Default path unaffected; the spike without its swizzle; zoom bubble and profile menu gone; no `about:blank` in `chrome.tabs` | done (~1 day) |
-| 2. One window type behind the flag, production quality (done 2026-09-26, see [Phase 2](#phase-2-production-behind-the-flag-done)) | `NNChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
+| 2. One window type behind the flag, production quality (done 2026-09-26, see [Phase 2](#phase-2-production-behind-the-flag-done)) | `ACChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
 | 3a. Profiles: hosted per-profile windows (done 2026-09-26 but for the measurement) | See [Phase 3 item](#phase-3-item-profiles-hosted-per-profile-windows): the transparent-window CEF patch, pre-made neighbour windows, the cut, full screen; measured with `spike/swapmeasure.sh` | 0 transient frames in 20 swaps; paging looks unchanged; secondary-profile ghosts gone | 1.5–2 weeks |
 | 3. Parity checklist | Each item tested in a flagged build, with fixes. Surfaces: save card/address, permission prompts, extension popups and install, device chooser, Cast, find, downloads, status. Window: full screen (window and HTML5; decide on `chromium-browser-view-hosted-fullscreen.patch`), Spaces, minimise, multiple displays, split view, popups, PiP, DevTools docked and undocked, drag and drop, swipes, IME, VoiceOver, extension `chrome.commands`, multi-profile windows, session restore, quitting with dialogs open | `docs/migration-status.md` ledger entries for each, user-run checks listed | 2 weeks |
 | 4. Switch the default | Done with 5 in 0.2.0 ([Shipped as default](#shipped-as-default-020)); no dogfood releases (no users yet) | No seam regressions | done |
@@ -774,29 +774,29 @@ Total: about 5–7 weeks calendar, most of it phase 3's long tail.
 
 Code as the spike left it (the flag and `ChromeWindowSpike.swift` are gone since 0.2.0: see [Shipped as default](#shipped-as-default-020)):
 
-- `packages/cef/ios/NNChromeWindow.{h,mm}`: `NNChromeWindowHost` makes the window and embeds the root in Chrome's
-  content view (since phase 1 through `netnyahooEmbeddedView`; the spike overrode `BridgedContentView` at runtime).
+- `packages/cef/ios/ACChromeWindow.{h,mm}`: `ACChromeWindowHost` makes the window and embeds the root in Chrome's
+  content view (since phase 1 through `arcadiaEmbeddedView`; the spike overrode `BridgedContentView` at runtime).
   It also adds DEV input actions.
   - `hit:` / `click:` / `type:` / `keys:` through `devWindow`, because test instances get no OS events and are never
     active.
   - The DEV `click:` goes through `NSWindow -sendEvent:` for RN views (their touch handler is window-driven) and
     straight to `RenderWidgetHostViewCocoa` for the page. The same probe on the default path gives the same page
     result, so it measures hit testing and Chromium's `-shouldIgnoreMouseEvent:`, not activation.
-- `packages/cef/ios/NNWindowHost.mm`: `Ghost::StartHosting` (the ghost *is* the window: no inert/align/lift,
+- `packages/cef/ios/ACWindowHost.mm`: `Ghost::StartHosting` (the ghost *is* the window: no inert/align/lift,
   standard buttons, resizable; since phase 1 its Browser comes with the first tab and outlives the last),
   `MakeHostingWindow`, `BlocksChromeCommand` / `HiddenChromeUICommand`.
-- `packages/cef/ios/NNClient.mm`: `OnChromeCommand` consults the policy (false outside hosting windows).
+- `packages/cef/ios/ACClient.mm`: `OnChromeCommand` consults the policy (false outside hosting windows).
 - `packages/shell/ios/ChromeWindowSpike.swift` + `Windows.swift`: `WindowManager.open` asks for a Chrome window
   first. It embeds the root instead of setting `contentViewController`, follows the window through notifications,
   and unmounts the root on close.
-- (Spike only, removed in phase 1: `NETNYAHOO_CHROME_WINDOW_ROOT=frame`, the failed frame-view placement.)
+- (Spike only, removed in phase 1: `ARCADIA_CHROME_WINDOW_ROOT=frame`, the failed frame-view placement.)
 
 The check scripts (`spike/*`, cited throughout this doc: `spike.mjs`, `keys.mjs`, `p2.mjs`, `p3.mjs`,
 `swapmeasure.sh`, the `pages` and `ext-popup` fixtures) drove the CEF-era build and were removed on 2026-10-02.
 Read them at `231625b9`: `git ls-tree -r --name-only 231625b9 docs/research/chrome-hosted-window/spike`, then
 `git show 231625b9:docs/research/chrome-hosted-window/spike/<file>`.
 
-Results, same build, fresh data dirs, hidden instances (`NETNYAHOO_BACKGROUND=1`, never frontmost):
+Results, same build, fresh data dirs, hidden instances (`ARCADIA_BACKGROUND=1`, never frontmost):
 
 | Check | Chrome-hosted | Default (ghost) |
 |---|---|---|

@@ -1,4 +1,4 @@
-import { iconTheme, type IconTheme } from "@netnyahoo/shell";
+import { iconTheme, type IconTheme } from "@arcadia/shell";
 import { useEffect, useState } from "react";
 import { useAppearanceDark, useFavicon, useFaviconTheme } from "./favicons";
 

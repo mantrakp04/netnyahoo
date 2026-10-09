@@ -83,10 +83,10 @@ public enum ShellScripting {
 
   static func perform(_ body: [String: Any], transform: @escaping ([String: Any]) -> Any? = { _ in nil }) -> Any? {
     #if DEBUG
-    if !Thread.isMainThread { NSLog("Netnyahoo: an Apple event is being handled off the main thread") }
+    if !Thread.isMainThread { NSLog("Arcadia: an Apple event is being handled off the main thread") }
     #endif
     guard let send else {
-      NSScriptCommand.current()?.setError("Netnyahoo isn't ready yet.")
+      NSScriptCommand.current()?.setError("Arcadia isn't ready yet.")
       return nil
     }
     seq += 1
@@ -99,15 +99,15 @@ public enum ShellScripting {
       finished = true
       if let error { command?.setError(error) }
       let value = error == nil ? transform(result as? [String: Any] ?? [:]) : nil
-      if let failure = NNTryCatch({ command?.resumeExecution(withResult: value) }) {
-        NSLog("Netnyahoo: AppleScript reply failed: \(failure)")
+      if let failure = ACTryCatch({ command?.resumeExecution(withResult: value) }) {
+        NSLog("Arcadia: AppleScript reply failed: \(failure)")
       }
     }
     var request = body
     request["id"] = id
     send(request)
     DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
-      reply(id, result: nil, error: "Netnyahoo didn't respond in time.")
+      reply(id, result: nil, error: "Arcadia didn't respond in time.")
     }
     return nil
   }
@@ -122,7 +122,7 @@ extension NSScriptCommand {
 
 private let appDescription = NSScriptClassDescription(for: NSApplication.self)
 
-@objc(NNScriptWindow)
+@objc(ACScriptWindow)
 final class ScriptWindow: NSObject {
   @objc let uniqueID: String
 
@@ -172,7 +172,7 @@ final class ScriptWindow: NSObject {
   }
 }
 
-@objc(NNScriptTab)
+@objc(ACScriptTab)
 final class ScriptTab: NSObject {
   @objc let uniqueID: String
 
@@ -232,7 +232,7 @@ final class ScriptTab: NSObject {
   }
 }
 
-@objc(NNScriptProfile)
+@objc(ACScriptProfile)
 final class ScriptProfile: NSObject {
   @objc let uniqueID: String
 
@@ -256,7 +256,7 @@ final class ScriptProfile: NSObject {
   }
 }
 
-@objc(NNScriptCreateCommand)
+@objc(ACScriptCreateCommand)
 final class ScriptCreateCommand: NSCreateCommand {
   override func performDefaultImplementation() -> Any? {
     let properties = resolvedKeyDictionary
@@ -277,7 +277,7 @@ final class ScriptCreateCommand: NSCreateCommand {
       }
       return ShellScripting.perform(body) { ($0["tabId"] as? String).flatMap { ScriptTab(id: $0).objectSpecifier } }
     default:
-      setError("Netnyahoo can't make a new \(createClassDescription.className).")
+      setError("Arcadia can't make a new \(createClassDescription.className).")
       return nil
     }
   }

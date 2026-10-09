@@ -2,7 +2,7 @@
 // the field, the JS side and the completion protocol under every interleaving of their messages.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildSuggestions } from "@netnyahoo/core";
+import { buildSuggestions } from "@arcadia/core";
 import { acceptsCompletion, completionToWrite, fieldChange, withoutFirst } from "./inline.ts";
 
 const now = Date.UTC(2026, 8, 25);

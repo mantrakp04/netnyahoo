@@ -1,4 +1,4 @@
-import { confirm, onWindowEvent } from "@netnyahoo/shell";
+import { confirm, onWindowEvent } from "@arcadia/shell";
 import { useBrowser } from "../store/browser";
 import { inPinnedContainer, plural, profileFor } from "../store/model";
 

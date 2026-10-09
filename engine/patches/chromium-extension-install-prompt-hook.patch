@@ -5,8 +5,8 @@
  #include "ui/gfx/image/image_skia.h"
  #include "ui/gfx/image/image_skia_rep.h"
 +
-+// Netnyahoo: NNCore (engine/nncore) may ask with its own install prompt.
-+bool (*g_netnyahoo_extension_install_prompt)(
++// Arcadia: ArcadiaCore (engine/arcadiacore) may ask with its own install prompt.
++bool (*g_arcadia_extension_install_prompt)(
 +    Profile* profile,
 +    content::WebContents* parent,
 +    const extensions::InstallPromptData& prompt,
@@ -19,9 +19,9 @@
    if (AutoConfirmPromptIfEnabled())
      return;
  
-+  // Netnyahoo: NNCore may show its own install prompt.
-+  if (g_netnyahoo_extension_install_prompt &&
-+      g_netnyahoo_extension_install_prompt(
++  // Arcadia: ArcadiaCore may show its own install prompt.
++  if (g_arcadia_extension_install_prompt &&
++      g_arcadia_extension_install_prompt(
 +          profile_, show_params_->GetParentWebContents(), *prompt_,
 +          &done_callback_)) {
 +    return;

@@ -1,4 +1,4 @@
-import { ContextMenuArea, DockSelection, MouseArea, Surface, Symbol } from "@netnyahoo/shell";
+import { ContextMenuArea, DockSelection, MouseArea, Surface, Symbol } from "@arcadia/shell";
 import { memo, useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { closeTab } from "../../lib/actions";

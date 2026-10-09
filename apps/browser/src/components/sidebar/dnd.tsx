@@ -1,4 +1,4 @@
-import { hapticTick } from "@netnyahoo/shell";
+import { hapticTick } from "@arcadia/shell";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Animated, Easing, PanResponder, type ScrollView, type View } from "react-native";
 import { create, useStore } from "zustand";

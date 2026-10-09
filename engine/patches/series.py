@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Netnyahoo's changes to the Chromium tree, in the order `series` gives.
+"""Arcadia's changes to the Chromium tree, in the order `series` gives.
 
   series.py apply [--phase chromium]             apply to the tree; skips what is already applied
   series.py check [--keep DIR]                   apply the whole series to a scratch copy of the base and
@@ -11,11 +11,11 @@
   series.py files                                every path the series touches, by step
 
 The base is the tree as ungoogled-chromium and domain substitution leave it, before any line of
-`series`: ~/chromium-build/series-base (NN_SERIES_BASE), one file per touched path, relative to chromium/src.
+`series`: ~/chromium-build/series-base (AC_SERIES_BASE), one file per touched path, relative to chromium/src.
 `check` exits 0 when every step applies strictly (git apply: no fuzz) and the result equals the
 tree; 1 with a report otherwise. It writes nothing outside its scratch directory.
 
-Environment: CHROMIUM_SRC (default ~/chromium-build/chromium_git/chromium/src), NN_SERIES_BASE.
+Environment: CHROMIUM_SRC (default ~/chromium-build/chromium_git/chromium/src), AC_SERIES_BASE.
 """
 
 import argparse
@@ -30,7 +30,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 SRC = os.environ.get("CHROMIUM_SRC", os.path.expanduser("~/chromium-build/chromium_git/chromium/src"))
-BASE = os.environ.get("NN_SERIES_BASE", os.path.expanduser("~/chromium-build/series-base"))
+BASE = os.environ.get("AC_SERIES_BASE", os.path.expanduser("~/chromium-build/series-base"))
 
 
 class Step:
@@ -86,7 +86,7 @@ def layer_paths(layer):
     m = re.search(r"^owned=\(([^)]*)\)", script, re.M)
     dirs = m.group(1).split() if m else []
     for path in re.findall(r'"\$src/([A-Za-z0-9_./-]+)"', script):
-        path = path.rstrip("/")  # "$src/netnyahoo/" (an rsync target) is the directory "netnyahoo"
+        path = path.rstrip("/")  # "$src/arcadia/" (an rsync target) is the directory "arcadia"
         if os.path.isdir(os.path.join(layer, "src", path)):
             dirs.append(path)
         else:
@@ -213,8 +213,8 @@ def cmd_apply(args):
         if error:
             sys.exit(f"error: {step} does not apply:\n{error}")
         print(f"applied {step}")
-    # The offline page chromium-neterror-yahu.patch names is generated, not patched in.
-    run([os.path.join(HERE, "build", "yahu-resource.sh")], HERE, check=True)
+    # The offline page chromium-neterror-mascot.patch names is generated, not patched in.
+    run([os.path.join(HERE, "build", "game-resource.sh")], HERE, check=True)
 
 
 def cmd_capture_base(args):
@@ -267,7 +267,7 @@ def cmd_check(args):
     if not os.path.isdir(BASE):
         sys.exit(f"no base at {BASE}: run `series.py capture-base` on a tree before its series is applied")
     steps = read_series()
-    scratch = args.keep or tempfile.mkdtemp(prefix="nn-series-")
+    scratch = args.keep or tempfile.mkdtemp(prefix="ac-series-")
     os.makedirs(scratch, exist_ok=True)
     try:
         errors = materialize(steps, scratch, report=print if args.verbose else None)

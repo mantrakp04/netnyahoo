@@ -1,4 +1,4 @@
-import { prompt, Surface } from "@netnyahoo/shell";
+import { prompt, Surface } from "@arcadia/shell";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../../lib/theme";

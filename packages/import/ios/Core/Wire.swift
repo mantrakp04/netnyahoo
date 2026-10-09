@@ -1,6 +1,6 @@
 import Foundation
 
-// JSON payloads for the engine (nn_cookies_import, autofill import), written straight into SecretBytes so no
+// JSON payloads for the engine (ac_cookies_import, autofill import), written straight into SecretBytes so no
 // String or Data ever holds a cookie value or card number. Each payload ends with a NUL byte for the C side.
 
 public enum CookieWire {
@@ -69,7 +69,7 @@ public enum CookieWire {
 }
 
 public enum AutofillWire {
-  /// One NUL-terminated payload for nn_autofill_import:
+  /// One NUL-terminated payload for ac_autofill_import:
   /// `{"addresses":[{name?,organization?,street?,city?,state?,postalCode?,country?,phone?,email?}],
   ///   "cards":[{name?,number,expMonth?,expYear?,nickname?}]}`.
   /// Unset fields are left out. A card is left out unless its number is 12–19 digits (spaces and dashes are

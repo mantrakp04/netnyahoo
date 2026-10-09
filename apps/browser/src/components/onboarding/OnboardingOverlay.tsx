@@ -1,4 +1,4 @@
-import { Surface, VisualEffect, WindowDragRegion } from "@netnyahoo/shell";
+import { Surface, VisualEffect, WindowDragRegion } from "@arcadia/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 import { hex } from "../../lib/theme";

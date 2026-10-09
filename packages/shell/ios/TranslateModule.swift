@@ -6,7 +6,7 @@ import SwiftUI
 
 public class TranslateModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooTranslate")
+    Name("ArcadiaTranslate")
 
     Constant("available") { () -> Bool in
       if #available(macOS 26.0, *) { return true }
@@ -53,7 +53,7 @@ public class TranslateModule: Module {
         var text = AttributedString()
         for (i, piece) in pieces.enumerated() {
           var run = AttributedString(piece)
-          run.link = URL(string: "nn-piece:\(i)")
+          run.link = URL(string: "ac-piece:\(i)")
           text += run
         }
         guard let translated = try? await session.translate(text).attributedTargetText else { continue }
@@ -62,7 +62,7 @@ public class TranslateModule: Module {
         var last = 0
         for run in translated.runs {
           let words = String(translated[run.range].characters)
-          if let link = run.link, link.scheme == "nn-piece", let i = Int(link.absoluteString.dropFirst("nn-piece:".count)), parts.indices.contains(i) {
+          if let link = run.link, link.scheme == "ac-piece", let i = Int(link.absoluteString.dropFirst("ac-piece:".count)), parts.indices.contains(i) {
             order.append(i)
             last = i
             parts[i] += words

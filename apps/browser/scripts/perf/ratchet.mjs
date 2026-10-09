@@ -5,12 +5,12 @@
 // ratchet.json holds a ceiling per count. The gate, the policy and the proof the counts track wall-clock:
 // docs/perf/README.md ("The ratchet").
 //
-//   node ratchet.mjs run [--app <Netnyahoo.app>] [--own | --bundle <main.jsbundle>] [--instr] [--skip-js] [--skip-micro] [--lib <bench-app.js>] [--out <dir>] [--port <n>]
+//   node ratchet.mjs run [--app <Arcadia.app>] [--own | --bundle <main.jsbundle>] [--instr] [--skip-js] [--skip-micro] [--lib <bench-app.js>] [--out <dir>] [--port <n>]
 //       The fast local check (about 85 s, 170 s when a count needs the rerun): bundles the current tree, runs the journey scenarios once in a hidden
 //       instance of a Release app, counts the Node hot paths and checks both against ratchet.json. A count over its
 //       ceiling gets one more run, and only a count over in both fails (a real regression stays over; a stray event
 //       from a mouse over the hidden window or a window deactivating doesn't). --app defaults to the newest
-//       dist/<v>/export/Netnyahoo.app, which must have the tree's native API. --own runs the app's own main.jsbundle
+//       dist/<v>/export/Arcadia.app, which must have the tree's native API. --own runs the app's own main.jsbundle
 //       instead of a bundle of the tree: that is how a release candidate is gated. --bundle runs a bundle js-bench.mjs
 //       built earlier. --lib <bench-app.js> swaps in another copy of the scenarios. --instr adds the instruction counter.
 //   node ratchet.mjs baseline [--runs 8] [--app …] [--bundle …] [--out <dir>] [--measure-only]
@@ -94,7 +94,7 @@ const add = (into, key, value) => {
   into[key] = (into[key] ?? 0) + value;
 };
 
-// One stats object (nnPerf.read()) as flat counts under `prefix`.
+// One stats object (acPerf.read()) as flat counts under `prefix`.
 function flattenStats(into, prefix, stats) {
   if (!stats) return;
   for (const k of SCALARS) if (typeof stats[k] === "number") add(into, `${prefix}.${k}`, stats[k]);
@@ -430,10 +430,10 @@ function newestApp() {
     .filter((d) => /^\d+\.\d+\.\d+(-rc)?$/.test(d))
     .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   for (const v of versions) {
-    const app = join(dist, v, "export/Netnyahoo.app");
+    const app = join(dist, v, "export/Arcadia.app");
     if (existsSync(app)) return app;
   }
-  throw new Error("no dist/<version>/export/Netnyahoo.app: pass --app");
+  throw new Error("no dist/<version>/export/Arcadia.app: pass --app");
 }
 
 // The app, the bundle and the js-bench command line for `run` and `baseline`.
@@ -470,7 +470,7 @@ function jsSetup(flags, out, mark) {
 
 async function run(flags) {
   const started = Date.now();
-  const out = resolve(flags.out ?? join(process.env.TMPDIR ?? "/tmp", "nn-ratchet"));
+  const out = resolve(flags.out ?? join(process.env.TMPDIR ?? "/tmp", "ac-ratchet"));
   mkdirSync(out, { recursive: true });
   const mark = (what) => console.error(`[ratchet +${((Date.now() - started) / 1000).toFixed(0)}s] ${what}`);
   const ceilings = readCeilings();
@@ -505,7 +505,7 @@ async function run(flags) {
 // Rebuilds ratchet.json: runs the scenarios N times (default 8) on a fresh bundle and sets the ceilings from them.
 async function baseline(flags) {
   const started = Date.now();
-  const out = resolve(flags.out ?? join(process.env.TMPDIR ?? "/tmp", "nn-ratchet-baseline"));
+  const out = resolve(flags.out ?? join(process.env.TMPDIR ?? "/tmp", "ac-ratchet-baseline"));
   mkdirSync(out, { recursive: true });
   const mark = (what) => console.error(`[ratchet baseline +${((Date.now() - started) / 1000).toFixed(0)}s] ${what}`);
   const setup = jsSetup(flags, out, mark);

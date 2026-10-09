@@ -1,5 +1,5 @@
-import { addHistoryVisits, deleteHistoryUrls, deletePassword, savePassword } from "@netnyahoo/nncore";
-import { assignPositions, SyncNative, type Adapter, type Extraction, type SavedLogin } from "@netnyahoo/sync";
+import { addHistoryVisits, deleteHistoryUrls, deletePassword, savePassword } from "@arcadia/arcadiacore";
+import { assignPositions, SyncNative, type Adapter, type Extraction, type SavedLogin } from "@arcadia/sync";
 import { bookmarkUuidFor, ensureRoots, isBookmarkUuid } from "../store/bookmarks";
 import { MAX_HISTORY, MAX_VISIT_TIMES } from "../store/history";
 import { useBrowser, type BrowserState } from "../store/browser";
@@ -218,7 +218,7 @@ export const HISTORY_WINDOW_MS = 90 * 86_400_000;
 
 type HistoryValue = { t: string; n: number; vt: number[] };
 const lastVisitOf = (v: HistoryValue) => Math.max(0, ...v.vt);
-// What Chrome keeps in history (an app page, netnyahoo://, it doesn't): other records are left alone.
+// What Chrome keeps in history (an app page, arcadia://, it doesn't): other records are left alone.
 const keptInHistory = (url: string) => /^(https?|file):/i.test(url);
 // Chrome stores visit times in microseconds and reports them in whole ms: the same visit reads back within this.
 const SAME_VISIT_MS = 1;
@@ -344,7 +344,7 @@ type PinGroupValue = { n: string; i: string | null; c: TabGroup["color"]; pos: s
 
 type Window = BrowserState["windows"][string];
 
-// Small Yahu's page isn't one of the open tabs: it's thrown away when the window closes.
+// Little Arcadia's page isn't one of the open tabs: it's thrown away when the window closes.
 const openWindows = (s: BrowserState) => s.windowOrder.map((id) => s.windows[id]).filter((w): w is Window => !!w && !w.incognito && w.kind !== "small");
 
 // Where the profile's pins change: a window that shows it (store/pinMirror.ts carries the change to the others).

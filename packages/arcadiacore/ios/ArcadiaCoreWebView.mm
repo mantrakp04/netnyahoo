@@ -1,0 +1,2457 @@
+// The WebView on ArcadiaCore. It hosts one live tab, an ArcadiaCoreTab: Chrome's WebContents in the Browser of its window
+// and profile, with its page view placed straight in this view.
+//
+// Where packages/cef adopts popups by id after the fact (OnBeforePopup → JS → a new browser adopts the popup,
+// with a 30 s orphan timer and a replay of the navigation), Chrome here has already made the tab with its
+// navigation (POST body included): the app gets onOpenWindow with "arcadiacore:<id>", and the WebView it mounts
+// takes that live tab.
+#import "ArcadiaCoreWebView.h"
+#import "ArcadiaCoreWebViewInternal.h"
+#import "ArcadiaCorePictureInPicture.h"
+#import "ArcadiaCoreServices.h"
+
+#import <IOKit/IOKitLib.h>
+#import <QuartzCore/QuartzCore.h>
+#import <dlfcn.h>
+#import <objc/message.h>
+#import <objc/runtime.h>
+
+#import "ArcadiaCoreFieldTiming.h"
+#import "ArcadiaCoreNavigationDownloads.h"
+
+#include <climits>
+#include <cmath>
+
+namespace {
+
+// ARCADIA_TRACE_VISIBILITY=1: each change of what a WebView shows, for chasing a page Chrome reports hidden.
+bool TraceVisibility() {
+  static const bool on = getenv("ARCADIA_TRACE_VISIBILITY") != nullptr;
+  return on;
+}
+
+// How long a page that left the screen keeps painting (leaveScreen): a few frames, under load too.
+constexpr CFTimeInterval kLeaveScreenDelay = 0.1;
+
+NSHashTable<ArcadiaCoreWebView *> *LiveViews() {
+  static NSHashTable *views = [NSHashTable weakObjectsHashTable];
+  return views;
+}
+
+// Views whose visible or warm prop changed this run-loop turn, and whether the drain is scheduled (schedulePainting).
+NSHashTable<ArcadiaCoreWebView *> *PendingPainting() {
+  static NSHashTable *views = [NSHashTable weakObjectsHashTable];
+  return views;
+}
+bool gPaintingScheduled = false;
+
+// A tab whose view went while the app keeps the tab (prepareTransfer: moved to another window, its pane remounted), by
+// its key: until the tab's next view takes it, or the app says the tab is gone (releaseTransfer). No deadline: a view
+// can mount seconds later (a window opened under load).
+NSMutableDictionary<NSString *, ArcadiaCoreTab *> *Parked() {
+  static NSMutableDictionary *parked = [NSMutableDictionary dictionary];
+  return parked;
+}
+
+// By transfer key: the JS reload that parked its tab, until a view takes it (+initialize).
+NSMutableDictionary<NSString *, NSNumber *> *ReloadParked() {
+  static NSMutableDictionary *parked = [NSMutableDictionary dictionary];
+  return parked;
+}
+
+// The launch's first page (+startLaunchTab:…) until the app claims it: the tab, and what it was started for.
+ArcadiaCoreTab *gLaunchTab;
+NSString *gLaunchKey;
+NSString *gLaunchURL;
+NSString *gLaunchProfile;
+// The app claimed (claimLaunchTab:): a page started after that would never be claimed.
+BOOL gLaunchClaimed;
+// On the launch page's tab until a view takes it: its ArcadiaCoreLaunchTabHolder.
+const char kLaunchHolderKey = 0;
+// The app's tabs whose launch page Chrome closed before their view came (an extension's tabs.remove): their view
+// tells the app the tab closed instead of loading it again, until the app releases the tab (releaseTransfer:).
+NSMutableSet<NSString *> *ClosedLaunch() {
+  static NSMutableSet<NSString *> *keys = [NSMutableSet set];
+  return keys;
+}
+
+void CloseTab(ArcadiaCoreTab *tab) {
+  if (!tab || tab.closed) return;
+  if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+  else [tab close];
+}
+
+NSView *ParkingView() {
+  static NSView *view = [[NSView alloc] initWithFrame:NSZeroRect];
+  return view;
+}
+
+bool SamePage(NSString *a, NSString *b) {
+  auto strip = [](NSString *url) {
+    NSRange hash = [url rangeOfString:@"#"];
+    return hash.location == NSNotFound ? url : [url substringToIndex:hash.location];
+  };
+  return a && b && [strip(a) isEqualToString:strip(b)];
+}
+
+// Chrome's renderer debug URLs (blink::IsRendererDebugURL and the GPU ones content handles), as chrome:// or as the
+// arcadia:// the app shows them as.
+bool IsRendererDebugURL(NSString *url) {
+  NSURLComponents *c = [NSURLComponents componentsWithString:url];
+  if (![@[ @"chrome", @"arcadia" ] containsObject:c.scheme.lowercaseString ?: @""]) return false;
+  static NSSet *hosts = [NSSet setWithArray:@[
+    @"badcastcrash", @"crash", @"crashdump", @"kill", @"hang", @"shorthang", @"memory-exhaust", @"memory-pressure-critical",
+    @"memory-pressure-moderate", @"gpuclean", @"gpucrash", @"gpuhang", @"inducebrowsercrashforrealz",
+    @"inducebrowserdcheckforrealz", @"cfi-crash", @"heap-corruption-crash"
+  ]];
+  return [hosts containsObject:c.host.lowercaseString ?: @""];
+}
+
+// Chrome names a page after its URL until the page names itself (NavigationEntryImpl::GetTitleForDisplay: the URL
+// without "http(s)://", "www." or a bare host's slash, spaces unescaped). While the page loads that stand-in isn't
+// reported: it changed the tab's title once more per load (one more store update for every listener and row), and the
+// page's own title follows within a frame or two. A page that never names itself gets it once loaded, as Chrome shows.
+NSString *ReportedTitle(NSString *title, NSString *url, BOOL loading) {
+  if (!loading || !title.length) return title ?: @"";
+  NSURLComponents *c = [NSURLComponents componentsWithString:url];
+  NSString *scheme = c.scheme.lowercaseString;
+  if ((![scheme isEqualToString:@"http"] && ![scheme isEqualToString:@"https"]) || ![[url substringWithRange:NSMakeRange(scheme.length, MIN(3, url.length - scheme.length))] isEqualToString:@"://"])
+    return title;
+  NSString *shown = [url substringFromIndex:scheme.length + 3];
+  if ([shown.lowercaseString hasPrefix:@"www."]) shown = [shown substringFromIndex:4];
+  if ([c.path isEqualToString:@"/"] && !c.query && !c.fragment && [shown hasSuffix:@"/"]) shown = [shown substringToIndex:shown.length - 1];
+  shown = [shown stringByReplacingOccurrencesOfString:@"%20" withString:@" "];
+  return [title isEqualToString:shown] ? @"" : title;
+}
+
+NSString *PNGDataURL(NSImage *image) {
+  CGImageRef cg = [image CGImageForProposedRect:nil context:nil hints:nil];
+  if (!cg) return nil;
+  NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithCGImage:cg];
+  NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+  return png.length ? [@"data:image/png;base64," stringByAppendingString:[png base64EncodedStringWithOptions:0]] : nil;
+}
+
+id JSONValue(NSString *json) {
+  NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+  return data ? [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingFragmentsAllowed error:nil] : nil;
+}
+
+template <typename T>
+T *Field(NSDictionary *d, NSString *key) {
+  id value = d[key];
+  return [value isKindOfClass:[T class]] ? value : nil;
+}
+
+NSString *Text(NSDictionary *d, NSString *key, NSUInteger max) {
+  NSString *s = Field<NSString>(d, key);
+  if (s.length <= max) return s;
+  return [s substringToIndex:[s rangeOfComposedCharacterSequenceAtIndex:max].location];
+}
+
+bool Flag(NSDictionary *d, NSString *key) {
+  return Field<NSNumber>(d, key).boolValue;
+}
+
+bool Finite(NSDictionary *d, NSString *key, double *out) {
+  NSNumber *n = Field<NSNumber>(d, key);
+  if (!n || !std::isfinite(n.doubleValue)) return false;
+  *out = n.doubleValue;
+  return true;
+}
+
+NSString *OriginOf(NSString *url) {
+  NSURLComponents *c = [NSURLComponents componentsWithString:url ?: @""];
+  if (!c.scheme.length || !c.host.length) return nil;
+  return c.port ? [NSString stringWithFormat:@"%@://%@:%@", c.scheme, c.host, c.port] : [NSString stringWithFormat:@"%@://%@", c.scheme, c.host];
+}
+
+NSDictionary *NowPlayingState(NSDictionary *d) {
+  NSString *state = Field<NSString>(d, @"playbackState");
+  if (![@[ @"none", @"paused", @"playing" ] containsObject:state]) state = @"none";
+  NSMutableArray *actions = [NSMutableArray array];
+  for (id action in Field<NSArray>(d, @"actions"))
+    if ([action isKindOfClass:NSString.class] && [action length] <= 64 && actions.count < 32) [actions addObject:action];
+  double position = 0, duration = 0, rate = 1, timestamp = 0;
+  Finite(d, @"position", &position);
+  const bool hasDuration = Finite(d, @"duration", &duration) && duration >= 0;
+  Finite(d, @"playbackRate", &rate);
+  Finite(d, @"timestamp", &timestamp);
+  return @{
+    @"frame" : Text(d, @"frame", 64) ?: @"",
+    @"title" : Text(d, @"title", 1024) ?: @"",
+    @"artist" : Text(d, @"artist", 1024) ?: @"",
+    @"album" : Text(d, @"album", 1024) ?: @"",
+    @"artwork" : Text(d, @"artwork", 1 << 20) ?: NSNull.null,
+    @"playbackState" : state,
+    @"position" : @(MAX(position, 0)),
+    @"duration" : hasDuration ? @(duration) : NSNull.null,
+    @"playbackRate" : @(rate),
+    @"timestamp" : @(timestamp),
+    @"hasVideo" : @(Flag(d, @"hasVideo")),
+    @"actions" : actions,
+  };
+}
+
+NSDictionary *SelectionState(NSDictionary *d) {
+  NSString *text = Text(d, @"text", 4000);
+  NSDictionary *rect = Field<NSDictionary>(d, @"rect");
+  double x, y, width, height;
+  if (!text || !Finite(rect, @"x", &x) || !Finite(rect, @"y", &y) || !Finite(rect, @"width", &width) ||
+      !Finite(rect, @"height", &height))
+    return nil;
+  return @{@"text" : text, @"rect" : @{@"x" : @(x), @"y" : @(y), @"width" : @(width), @"height" : @(height)}};
+}
+
+// The last events each tab's view sent (names and payloads), for tests (devEvents).
+NSMutableDictionary<NSNumber *, NSMutableArray *> *RecentEvents() {
+  static NSMutableDictionary *events = [NSMutableDictionary dictionary];
+  return events;
+}
+
+void NoteEvent(int browserId, NSString *name, NSDictionary *payload) {
+#if DEBUG
+  NSMutableArray *list = RecentEvents()[@(browserId)];
+  if (!list) RecentEvents()[@(browserId)] = list = [NSMutableArray array];
+  NSMutableDictionary *brief = [NSMutableDictionary dictionary];
+  for (NSString *key in payload) {
+    id value = payload[key];
+    brief[key] = [value isKindOfClass:NSString.class] && [value length] > 200 ? [value substringToIndex:200] : value;
+  }
+  [list addObject:@{@"name" : name, @"payload" : brief, @"t" : @(round(CACurrentMediaTime() * 1000))}];
+  if (list.count > 80) [list removeObjectAtIndex:0];
+#endif
+}
+
+// The search engine the app names in its menu ("Search Google for …"), as CEF's ACClient keeps it.
+NSString *gSearchEngineName = @"Google";
+// The app's screen-share picker (setDisplayMediaPicker): pages' getDisplayMedia asks the app for a source.
+BOOL gDisplayMediaPicker = NO;
+// ARCADIA_TRACE_PIP=1: the app's side of a real call's Picture in Picture, in the engine's /tmp/ac-pip-trace.log.
+BOOL TracingPictureInPicture() {
+  static const BOOL tracing = getenv("ARCADIA_TRACE_PIP") != nullptr;
+  return tracing;
+}
+
+// CEF's SelectionLabel: whitespace collapsed, cut near 50 characters at a word.
+NSString *SelectionLabel(NSString *text) {
+  NSArray *words = [text componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+  NSString *collapsed = [[words filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]]
+      componentsJoinedByString:@" "];
+  if (collapsed.length <= 50) return collapsed;
+  NSRange space = [collapsed rangeOfString:@" " options:NSBackwardsSearch range:NSMakeRange(0, 50)];
+  NSUInteger end = space.location != NSNotFound && space.location > 25 ? space.location : 50;
+  end = [collapsed rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, end)].length;
+  return [[collapsed substringToIndex:end] stringByAppendingString:@"…"];
+}
+
+// Chrome's menu model items (ui::MenuModel::ItemType in "type"; an older engine says "separator") as CEF's
+// DescribeMenu wrote them for ARCADIA_CONTEXT_MENU_LOG: cef_menu_item_type_t, CefSimpleMenuModelImpl's mapping.
+constexpr int kMenuSeparator = 3;
+
+int MenuItemType(NSDictionary *item) {
+  if (NSNumber *type = Field<NSNumber>(item, @"type")) return type.intValue;
+  return Flag(item, @"separator") ? kMenuSeparator : 0;
+}
+
+NSString *MenuTitle(NSString *label);
+
+NSArray *DescribeMenu(NSArray *items) {
+  NSMutableArray *out = [NSMutableArray array];
+  for (NSDictionary *item in items) {
+    if (![item isKindOfClass:NSDictionary.class]) continue;
+    static const int kCefTypes[] = {1, 2, 3, 4, 0, 5, 5};  // command, check, radio, separator, button, submenus
+    const int type = MenuItemType(item);
+    NSMutableDictionary *described = [@{
+      @"id" : Field<NSNumber>(item, @"id") ?: @0,
+      @"label" : MenuTitle(Field<NSString>(item, @"label") ?: @""),
+      @"type" : @(type >= 0 && type < 7 ? kCefTypes[type] : 0),
+      @"enabled" : @(Flag(item, @"enabled")),
+      @"visible" : @(Field<NSNumber>(item, @"visible") ? Flag(item, @"visible") : YES),
+    } mutableCopy];
+    if (NSArray *submenu = Field<NSArray>(item, @"submenu")) described[@"submenu"] = DescribeMenu(submenu);
+    [out addObject:described];
+  }
+  return out;
+}
+
+// A Chrome menu label as its Mac menus show it (l10n_util::FixUpWindowsStyleLabel): no Windows mnemonics ("&Copy",
+// "Emoji && Symbols"), as CEF's background guard logged the NSMenu's titles.
+NSString *MenuTitle(NSString *label) {
+  NSMutableString *title = [NSMutableString stringWithCapacity:label.length];
+  for (NSUInteger i = 0; i < label.length; i++) {
+    const unichar c = [label characterAtIndex:i];
+    if (c != '&') {
+      [title appendFormat:@"%C", c];
+    } else if (i + 1 < label.length && [label characterAtIndex:i + 1] == '&') {
+      [title appendString:@"&"];
+      i++;
+    }
+  }
+  return title;
+}
+
+// The first item titled `label`, depth first: its id and its indices down the tree (the engine runs it on the submenu
+// model that owns it; ids are only unique within one model).
+NSDictionary *FindMenuItem(NSArray *items, NSString *label) {
+  for (NSUInteger i = 0; i < items.count; i++) {
+    NSDictionary *item = items[i];
+    if (![item isKindOfClass:NSDictionary.class]) continue;
+    if ([MenuTitle(Field<NSString>(item, @"label") ?: @"") isEqualToString:label]) {
+      NSNumber *command = Field<NSNumber>(item, @"id");
+      return command ? @{@"command" : command, @"path" : @[ @(i) ]} : nil;
+    }
+    if (NSDictionary *found = FindMenuItem(Field<NSArray>(item, @"submenu"), label))
+      return @{@"command" : found[@"command"], @"path" : [@[ @(i) ] arrayByAddingObjectsFromArray:found[@"path"]]};
+  }
+  return nil;
+}
+
+NSString *JSONString(id value) {
+  NSData *data = [NSJSONSerialization dataWithJSONObject:value ?: NSNull.null options:NSJSONWritingFragmentsAllowed error:nil];
+  return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"null";
+}
+
+// The page's reports a view keeps, held on its tab between views (-stashPageReports).
+const char kPageReportsKey = 0;
+
+// The drag types a view under a page registered (Chrome's WebContentsViewCocoa), put away while the page isn't shown.
+const char kDropTypesKey = 0;
+
+// Whether the views under `root` take drops. AppKit finds a drop's destination with a hit test of its own (the topmost
+// view under the pointer registered for the dragged types) that counts neither alpha nor React Native's pointerEvents:
+// a page painting unseen (warm for a swipe, or just leaving the screen) stacked above the shown one took its drops, and
+// Chrome opened the dropped link as a new tab of that page, in its profile (a link dragged on x.com opened in the next
+// Space, logged out). Registered again as the page shows, or leaves its view.
+void AcceptDrops(NSView *root, BOOL accept) {
+  if (!root) return;
+  NSArray<NSPasteboardType> *held = objc_getAssociatedObject(root, &kDropTypesKey);
+  if (accept && held) {
+    objc_setAssociatedObject(root, &kDropTypesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [root registerForDraggedTypes:held];
+  } else if (!accept && !held && root.registeredDraggedTypes.count) {
+    objc_setAssociatedObject(root, &kDropTypesKey, root.registeredDraggedTypes, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [root unregisterDraggedTypes];
+  }
+  for (NSView *sub in root.subviews) AcceptDrops(sub, accept);
+}
+
+}  // namespace
+
+@interface ArcadiaCoreWebView () <ArcadiaCoreTabDelegate>
+@end
+
+// The page script's hello from a frame of `tab`, answered with the frame's settings as CEF's ACClient answers it:
+// autoplay blocked for the top page's site, and what the page script turns on.
+static void AnswerHello(ArcadiaCoreTab *tab, NSString *profile, NSDictionary *hello, NSString *frameId, BOOL main) {
+  NSString *frameURL = Text(hello, @"url", 8192) ?: tab.url;
+  NSString *origin = OriginOf(main ? frameURL : tab.url);
+  __weak ArcadiaCoreTab *weakTab = tab;
+  void (^answer)(BOOL) = ^(BOOL blockAutoplay) {
+    ArcadiaCoreTab *to = weakTab;
+    if (!frameId.length || ![to respondsToSelector:@selector(callFrame:kind:json:)]) return;
+    NSMutableDictionary *config = [NSMutableDictionary dictionary];
+    if (blockAutoplay) config[@"blockAutoplay"] = @YES;
+    // The app's screen-share picker, when the engine can grant the picked source to getUserMedia (CEF's
+    // site::AllowDesktopCapture).
+    if (gDisplayMediaPicker && [ArcadiaCoreEngine respondsToSelector:@selector(allowDesktopCapture:tab:frame:origin:)])
+      config[@"displayMediaPicker"] = @YES;
+    // The page reports its first contentful paint and its first frames once shown (page_script.js › Field timing).
+    if (main && ACFieldTimingEnabled()) config[@"fieldTiming"] = @YES;
+    [to callFrame:frameId kind:@"config" json:JSONString(config)];
+  };
+  if (origin && [origin hasPrefix:@"http"])
+    [ArcadiaCoreServices siteSettings:profile ?: @"" origin:origin completion:^(NSDictionary *settings) {
+      NSDictionary *autoplay = [settings[@"autoplay"] isKindOfClass:NSDictionary.class] ? settings[@"autoplay"] : nil;
+      answer([autoplay[@"value"] isEqual:@"block"]);
+    }];
+  else
+    answer(NO);
+}
+
+// The launch's first page has no view until the app's window mounts: this is its tab's delegate meanwhile, and keeps
+// what Chrome told it (the page script's hello, which a view answers with the page's settings; a navigation that became
+// a download; a crash; blocked requests…) for the view that takes the tab, which hears it all then, in order. Calls that
+// answer something (a context menu's items) aren't taken: a page nobody sees has none.
+@interface ArcadiaCoreLaunchTabHolder : NSObject <ArcadiaCoreTabDelegate>
+@property (nonatomic, copy) NSString *url;
+// The profile it loads in (its site settings answer the page's hello), and whether Chrome closed it meanwhile (an
+// extension's tabs.remove): the app's tab then closes too, instead of loading again.
+@property (nonatomic, copy) NSString *profile;
+@property (nonatomic, readonly) BOOL closedByChrome;
+- (void)replayTo:(ArcadiaCoreWebView *)view tab:(ArcadiaCoreTab *)tab;
+@end
+
+@implementation ArcadiaCoreLaunchTabHolder {
+  NSMutableArray<NSInvocation *> *_calls;
+}
+
+static BOOL HeldSelector(SEL selector) {
+  struct objc_method_description d = protocol_getMethodDescription(@protocol(ArcadiaCoreTabDelegate), selector, NO, YES);
+  if (!d.name || ![ArcadiaCoreWebView instancesRespondToSelector:selector]) return NO;
+  NSMethodSignature *signature = [ArcadiaCoreWebView instanceMethodSignatureForSelector:selector];
+  return signature && strcmp(signature.methodReturnType, @encode(void)) == 0;
+}
+
+- (BOOL)respondsToSelector:(SEL)selector {
+  return [super respondsToSelector:selector] || HeldSelector(selector);
+}
+
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector {
+  return HeldSelector(selector) ? [ArcadiaCoreWebView instanceMethodSignatureForSelector:selector] : [super methodSignatureForSelector:selector];
+}
+
+- (void)forwardInvocation:(NSInvocation *)invocation {
+  // Every one of them names the tab first, which holds this object: not kept here (replayTo:tab: puts it back).
+  if (!HeldSelector(invocation.selector) || invocation.methodSignature.numberOfArguments < 3) return [super forwardInvocation:invocation];
+  // The page's hello is answered now, as a view would: a page that blocks autoplay pauses a video that starts before
+  // the view comes (the replay answers it again, the same).
+  if (invocation.selector == @selector(tab:didReceivePageMessage:json:frame:main:)) {
+    // One declaration each: in `__unsafe_unretained NSString *a, *b` ARC takes only `a` as unretained, and releases `b`
+    // (a string it never retained).
+    __unsafe_unretained ArcadiaCoreTab *tab = nil;
+    __unsafe_unretained NSString *kind = nil;
+    __unsafe_unretained NSString *json = nil;
+    __unsafe_unretained NSString *frame = nil;
+    BOOL main = NO;
+    [invocation getArgument:&tab atIndex:2];
+    [invocation getArgument:&kind atIndex:3];
+    [invocation getArgument:&json atIndex:4];
+    [invocation getArgument:&frame atIndex:5];
+    [invocation getArgument:&main atIndex:6];
+    if ([kind isEqualToString:@"hello"]) {
+      id hello = JSONValue(json);
+      AnswerHello(tab, _profile, [hello isKindOfClass:NSDictionary.class] ? hello : nil, frame ?: @"", main);
+    }
+  }
+  if (!_calls) _calls = [NSMutableArray array];
+  // A page left loading unseen for long: its first reports are what matter.
+  if (_calls.count >= 2000) return;
+  // Cleared before the arguments are retained: once retained, setting it again doesn't release the tab.
+  __unsafe_unretained id none = nil;
+  [invocation setArgument:&none atIndex:2];
+  invocation.target = nil;
+  [invocation retainArguments];
+  [_calls addObject:invocation];
+}
+
+- (void)tabWillClose:(ArcadiaCoreTab *)tab {
+  _closedByChrome = YES;
+}
+
+- (void)replayTo:(ArcadiaCoreWebView *)view tab:(ArcadiaCoreTab *)tab {
+  NSArray<NSInvocation *> *calls = _calls;
+  _calls = nil;
+  __unsafe_unretained ArcadiaCoreTab *named = tab;
+  for (NSInvocation *call in calls) {
+    [call setArgument:&named atIndex:2];
+    [call invokeWithTarget:view];
+  }
+}
+
+@end
+
+@implementation ArcadiaCoreWebView {
+  ArcadiaCoreTab *_tab;
+  // The app's first load (a restored tab's URL), and the URL the app last asked for until a document commits: what a
+  // navigation that became a download remembers (ArcadiaCoreNavigationDownloads).
+  BOOL _loadedOnce;
+  BOOL _pendingUserInitiated;
+  NSString *_requestedURL;
+  BOOL _creating;
+  BOOL _closing;
+  // The app was told its launch page closed (takeTransferredTab).
+  BOOL _launchCloseSent;
+  BOOL _moving;
+  NSString *_pendingURL;
+  // The URL a new tab opens with: the page's first loadURL asks for it again (ContentCard), and loading it twice
+  // would run the page twice.
+  NSString *_creatingURL;
+  CFTimeInterval _creatingAt;
+  NSString *_transferredURL;
+  BOOL _muted;
+  NSInteger _tabIndex;
+  BOOL _pinned;
+  NSView *_devtoolsView;
+  BOOL _navigationQueued;
+  NSString *_pageTheme;
+  NSString *_pageThemeSource;
+  NSUInteger _createGeneration;
+  NSUInteger _blockedGeneration;
+  // Requests the content blocker stopped on this page (onContentBlocked), as CEF's ACClient counts them.
+  NSInteger _blockedCount;
+  NSString *_lastBlocked;
+  BOOL _blockedEmitQueued;
+  NSDictionary *_sentNavigation;
+  NSString *_lastFavicon;
+  CFTimeInterval _sentProgressAt;
+  double _sentProgress;
+  BOOL _progressQueued;
+  // When a link dragged onto its own page last opened (page_script.js › Link drags).
+  CFTimeInterval _linkDropAt;
+  // The page script's reports, per frame (as packages/cef's ACClient keeps them).
+  NSMutableDictionary<NSString *, NSNumber *> *_mediaFrames;
+  NSMutableDictionary<NSString *, NSDictionary *> *_nowPlaying;
+  NSString *_nowPlayingFrame;
+  NSMutableDictionary<NSString *, NSString *> *_notificationFrames;
+  NSMutableDictionary<NSString *, NSDictionary *> *_displayRequests;
+  double _pinchScale;
+  BOOL _autoPictureInPictureActive;
+  // The page reported a Picture in Picture window open (a video's or its document's), however it opened.
+  BOOL _inPictureInPicture;
+  // Whether the user saw this page when last asked (-userSightChanged), and the observer of its window's changes.
+  BOOL _seenByUser;
+  id _sightObserver;
+  // The page uses the camera, microphone or screen (CEF's capturing_): auto Picture in Picture takes its document PiP.
+  BOOL _capturing;
+  // Its renderer died and nothing loaded since (emitNavigation).
+  BOOL _crashed;
+  // Just left the screen: still painting (visible to Chrome), at alpha 0, for kLeaveScreenDelay.
+  BOOL _leaving;
+  NSUInteger _leaveGeneration;
+  // The app keeps this view's tab when the view goes (prepareTransfer): closing parks it instead.
+  BOOL _handingOff;
+}
+
+// From the JS thread, as the app learns a tab outlives its view (lib/tabPages.ts): the view holding the tab hands it off
+// when it goes. On the main queue in call order, so before the unmount that follows and before a window close the app
+// asks for after it (WindowManager's close is a main-queue call too).
++ (void)prepareTransfer:(NSString *)transferKey {
+  if (!transferKey.length) return;
+  NSString *key = [transferKey copy];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (ArcadiaCoreWebView *view in LiveViews().allObjects)
+      if (view->_tab && [view->_transferKey isEqualToString:key]) view->_handingOff = YES;
+  });
+}
+
+// The app's tab is gone (closed, asleep, an app page, another profile): a page parked for it closes, and a view still
+// holding it closes it when it goes.
++ (void)releaseTransfer:(NSString *)transferKey {
+  if (!transferKey.length) return;
+  NSString *key = [transferKey copy];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (ArcadiaCoreWebView *view in LiveViews().allObjects)
+      if ([view->_transferKey isEqualToString:key]) view->_handingOff = NO;
+    [ClosedLaunch() removeObject:key];
+    ArcadiaCoreTab *tab = Parked()[key];
+    if (!tab) return;
+    [Parked() removeObjectForKey:key];
+    // At once, as a closed view's tab: a beforeunload prompt nobody sees would keep it (and the hidden window
+    // keepTransfersOfWindow: put it in) alive.
+    if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+    else [tab close];
+  });
+}
+
+// React Native just started running the app's bundle: the page the app's focused window will show (session.json's hint)
+// starts loading now, in a hidden window of its profile, instead of once that window's content has mounted (200 to
+// 400 ms later). Only a web page, in a profile Chrome already has, that wasn't a download (skipsNavigationDownload:).
+// The app claims it as it hydrates (claimLaunchTab:); an app that never does leaves it 30 s.
++ (void)startLaunchTab:(NSString *)transferKey url:(NSString *)url profile:(NSString *)profileName {
+  if (gLaunchTab || gLaunchClaimed || !transferKey.length || !url.length || !ArcadiaCoreHost.isStarted) return;
+  NSString *scheme = [NSURLComponents componentsWithString:url].scheme.lowercaseString;
+  if (![scheme isEqualToString:@"http"] && ![scheme isEqualToString:@"https"]) return;
+  profileName = profileName ?: @"";
+  if (arcadiacore_host::IsIncognito(profileName) || arcadiacore_host::IsDeletedProfile(profileName)) return;
+  ArcadiaCoreProfile *profile = arcadiacore_host::LoadedProfile(profileName);
+  if (!profile || arcadiacore_host::WasNavigationDownload(url, profileName)) return;
+  ArcadiaCoreWindowController *keeper = [ArcadiaCoreWindowController strayWindowForProfile:profile];
+  if (!keeper) return;
+  keeper.hostChanges++;
+  ArcadiaCoreTab *tab = [keeper.coreWindow openTab:url profile:profile foreground:NO];
+  keeper.hostChanges--;
+  if (!tab) return [keeper.coreWindow close];
+  [ParkingView() addSubview:tab.view];
+  ArcadiaCoreLaunchTabHolder *holder = [ArcadiaCoreLaunchTabHolder new];
+  holder.url = url;
+  holder.profile = profileName;
+  objc_setAssociatedObject(tab, &kLaunchHolderKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  tab.delegate = holder;
+  gLaunchTab = tab;
+  gLaunchKey = [transferKey copy];
+  gLaunchURL = [url copy];
+  gLaunchProfile = [profileName copy];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    if (gLaunchTab == tab) [ArcadiaCoreWebView claimLaunchTab:@"" url:@"" profile:@""];
+  });
+}
+
+// From the JS thread (lib/tabPages.ts), before the app opens its windows: on the main queue in call order, so before
+// any view mounts. The page started for the same tab, URL and profile waits, parked, for that tab's view, as a page
+// handed off does (the app releases it the same way: releaseTransfer:); any other closes.
++ (void)claimLaunchTab:(NSString *)transferKey url:(NSString *)url profile:(NSString *)profile {
+  NSString *key = [transferKey copy], *claimed = [url copy], *name = [profile copy];
+  void (^claim)(void) = ^{
+    ArcadiaCoreTab *tab = gLaunchTab;
+    gLaunchClaimed = YES;
+    const BOOL same = tab && key.length && [gLaunchKey isEqualToString:key] && [gLaunchURL isEqualToString:claimed] &&
+                      [gLaunchProfile isEqualToString:name ?: @""] && !Parked()[key];
+    gLaunchTab = nil;
+    gLaunchKey = gLaunchURL = gLaunchProfile = nil;
+    if (!same) return CloseTab(tab);
+    // Parked even when Chrome closed it already: the view sees that (takeTransferredTab) and the app's tab closes.
+    Parked()[key] = tab;
+  };
+  if (NSThread.isMainThread) claim();
+  else dispatch_async(dispatch_get_main_queue(), claim);
+}
+
+// A JS reload (development: Metro) unmounts every view and mounts them again once the new bundle has run: each tab's
+// page is parked for its next view, as prepareTransfer: parks it, instead of closing and loading again (wasted work,
+// and a second history visit for every open page). One the new bundle hasn't shown again within 30 s closes, and an
+// old view torn down later closes its tab as usual. RN posts the notification from any thread, then queues its
+// teardown on the main queue: this goes first.
++ (void)initialize {
+  if (self != ArcadiaCoreWebView.class) return;
+  static NSUInteger reloads = 0;
+  [NSNotificationCenter.defaultCenter addObserverForName:@"RCTBridgeWillReloadNotification"
+                                                  object:nil
+                                                   queue:nil
+                                              usingBlock:^(NSNotification *) {
+                                                void (^park)(void) = ^{
+                                                  NSNumber *reload = @(++reloads);
+                                                  NSMapTable<NSString *, ArcadiaCoreWebView *> *views = [NSMapTable strongToWeakObjectsMapTable];
+                                                  NSMutableDictionary<NSString *, ArcadiaCoreTab *> *handed = [NSMutableDictionary dictionary];
+                                                  for (ArcadiaCoreWebView *view in LiveViews().allObjects) {
+                                                    if (!view->_tab || view->_tab.closed || !view->_transferKey.length) continue;
+                                                    view->_handingOff = YES;
+                                                    [views setObject:view forKey:view->_transferKey];
+                                                    handed[view->_transferKey] = view->_tab;
+                                                    ReloadParked()[view->_transferKey] = reload;
+                                                  }
+                                                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                                                    [handed enumerateKeysAndObjectsUsingBlock:^(NSString *key, ArcadiaCoreTab *tab, BOOL *) {
+                                                      // Taken by a view since, or parked again by a later reload.
+                                                      if (![ReloadParked()[key] isEqual:reload]) return;
+                                                      [ReloadParked() removeObjectForKey:key];
+                                                      // An old view not torn down yet closes its tab when it goes.
+                                                      if (ArcadiaCoreWebView *view = [views objectForKey:key]; view && view->_tab == tab) view->_handingOff = NO;
+                                                      if (Parked()[key] != tab) return;
+                                                      [Parked() removeObjectForKey:key];
+                                                      if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+                                                      else [tab close];
+                                                    }];
+                                                  });
+                                                };
+                                                if (NSThread.isMainThread) park();
+                                                else dispatch_async(dispatch_get_main_queue(), park);
+                                              }];
+}
+
+- (instancetype)initWithFrame:(NSRect)frameRect {
+  if ((self = [super initWithFrame:frameRect])) {
+    _profile = @"";
+    _visible = YES;
+    _seenByUser = YES;
+    _tabIndex = -1;
+    self.wantsLayer = YES;
+  }
+  return self;
+}
+
+- (void)dealloc {
+  if (_sightObserver) [NSNotificationCenter.defaultCenter removeObserver:_sightObserver];
+  [self closeBrowser];
+}
+
+- (BOOL)isFlipped {
+  return YES;
+}
+
+- (int)browserId {
+  return _tab ? arcadiacore_host::BrowserId(_tab) : 0;
+}
+
+- (int)chromeTabId {
+  return _tab ? _tab.tabId : 0;
+}
+
+- (ArcadiaCoreWindowController *)controller {
+  return [ArcadiaCoreWindowController forNSWindow:self.window];
+}
+
+// MARK: The tab
+
+- (void)viewDidMoveToWindow {
+  [super viewDidMoveToWindow];
+  if (TraceVisibility()) NSLog(@"[arcadiacore-vis] %@ window=%ld tab=%d", _transferKey, (long)self.window.windowNumber, _tab ? (int)_tab.tabId : -1);
+  if (_sightObserver) [NSNotificationCenter.defaultCenter removeObserver:_sightObserver];
+  _sightObserver = nil;
+  if (!self.window) return;
+  __weak ArcadiaCoreWebView *weakSelf = self;
+  _sightObserver = [NSNotificationCenter.defaultCenter addObserverForName:ArcadiaCoreWindowSeenDidChange object:self.window queue:nil
+                                                               usingBlock:^(NSNotification *) { [weakSelf userSightChanged]; }];
+  [self userSightChanged];
+  if (_tab) [self adoptIntoWindow];
+  else [self ensureTab];
+}
+
+- (void)setExtensionHost:(NSString *)extensionHost {
+  _extensionHost = [extensionHost copy];
+  // Never in a tab strip, as a standalone view.
+  if (_extensionHost.length) _standalone = YES;
+}
+
+- (void)setAdoptId:(NSString *)adoptId {
+  _adoptId = [adoptId copy];
+  if (self.window) [self ensureTab];
+}
+
+- (void)ensureTab {
+  if (_tab || _creating || !self.window || !ArcadiaCoreHost.isStarted || !self.controller) return;
+  if ([self takeTransferredTab]) return;
+  if ([_adoptId hasPrefix:@"arcadiacore:"] || [_adoptId hasPrefix:@"tab:"]) {
+    ArcadiaCoreTab *offered = [ArcadiaCoreTabs takeOffered:_adoptId];
+    _adoptId = nil;
+    // Only a tab of this view's own profile (canTake): never a private tab in a normal view or the reverse, a private
+    // view takes only its session's tabs (the off-the-record profile of the profile it was opened from), a normal one
+    // only its profile's (Chrome's tabs reach a view of their profile, ArcadiaCoreChromeWindow HandOffTab; another
+    // profile's would keep its cookies under this one's name). Else the view loads its URL itself.
+    if (offered && ![self canTake:offered]) {
+      if (!offered.closed) [offered closeNow];
+      offered = nil;
+    }
+    if (offered && !offered.closed) return [self attach:offered];
+  }
+  // "restore:<closed tab id>" and "clone:<source tab id>": a tab with history (⇧⌘T, Duplicate).
+  NSString *kind = nil, *key = nil;
+  NSRange colon = _adoptId ? [_adoptId rangeOfString:@":"] : NSMakeRange(NSNotFound, 0);
+  if (colon.location != NSNotFound) {
+    kind = [_adoptId substringToIndex:colon.location];
+    key = [_adoptId substringFromIndex:NSMaxRange(colon)];
+  }
+  _adoptId = nil;
+  _creating = YES;
+  // A close (or a new creation) while Chrome is asked makes this one stale.
+  const NSUInteger generation = ++_createGeneration;
+  __weak ArcadiaCoreWebView *weakSelf = self;
+  arcadiacore_host::WithProfile(_profile, ^(ArcadiaCoreProfile *profile) {
+    ArcadiaCoreWebView *view = weakSelf;
+    if (!view || view->_createGeneration != generation) return;
+    view->_creating = NO;
+    ArcadiaCoreWindowController *controller = view.controller;
+    if (!profile || view->_tab || !controller) return;
+    // Extension popups and side panels: out of the app window's Browser and strip, as CEF's standalone browsers.
+    const BOOL standalone = view->_standalone;
+    NSString *url = view->_pendingURL ?: view->_initialURL;
+    view->_pendingURL = nil;
+    view->_creatingURL = url;
+    view->_creatingAt = CACurrentMediaTime();
+    // Chrome's own extension view (an engine that has it): bound to this window's Browser, so the page's current
+    // window and active tab are this window's and its tab, as for Chrome's popup. Else a tab in a hidden window.
+    if (view->_extensionHost.length && url.length &&
+        [controller.coreWindow respondsToSelector:@selector(openExtensionView:profile:kind:)]) {
+      if (ArcadiaCoreTab *tab = [controller.coreWindow openExtensionView:url profile:profile kind:view->_extensionHost])
+        return [view attach:tab];
+    }
+    if (standalone) controller = [ArcadiaCoreWindowController standaloneWindowForProfile:profile] ?: controller;
+    if (!standalone && [kind isEqualToString:@"clone"] && [view cloneTab:key profile:profile]) return;
+    if (!standalone && [kind isEqualToString:@"restore"] && url.length && !arcadiacore_host::IsIncognito(view->_profile) &&
+        [controller.coreWindow respondsToSelector:@selector(restoreTab:profile:foreground:)]) {
+      // Its back/forward list is the one Chrome's TabRestoreService kept when it closed (closeBrowser tagged it
+      // with the tab's id; on disk, so it survives a relaunch). Without one, the page loads. The view stays
+      // "creating" meanwhile, so a load asked for in between waits for the tab (attach loads it).
+      view->_creating = YES;
+      [ArcadiaCoreServices call:@"ac_tab_restore_take" profile:view->_profile args:@{@"key" : key}
+                completion:^(NSDictionary *result) {
+                  ArcadiaCoreWebView *later = weakSelf;
+                  if (!later || later->_createGeneration != generation) return;
+                  later->_creating = NO;
+                  ArcadiaCoreWindowController *now = later.controller;
+                  if (later->_tab || !now) return;
+                  NSString *state = [result[@"state"] isKindOfClass:NSString.class] ? result[@"state"] : nil;
+                  ArcadiaCoreTab *tab = nil;
+                  now.hostChanges++;
+                  if (state.length) tab = [now.coreWindow restoreTab:state profile:profile foreground:NO];
+                  if (!tab) tab = [now.coreWindow openTab:url profile:profile foreground:NO];
+                  now.hostChanges--;
+                  if (tab) [later attach:tab];
+                }];
+      return;
+    }
+    if (url.length && [view skipsNavigationDownload:url userInitiated:view->_pendingUserInitiated]) url = nil;
+    if (url.length) ACFieldMarkNow(view->_transferKey, @"request");
+    controller.hostChanges++;
+    // No URL yet (a New Tab page's prewarm, or a download's tab): made ahead, which keeps its about:blank out of Back
+    // and Chrome's closed-tab list.
+    ArcadiaCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"" profile:profile foreground:NO];
+    controller.hostChanges--;
+    // Its navigation started in openTab, before this view was its delegate (tabDidChangeLoading:).
+    if (url.length && tab.loading) ACFieldMarkNow(view->_transferKey, @"start");
+    if (tab) [view attach:tab];
+    if (tab && url.length) [view focusAfterLoad];
+  });
+}
+
+// Duplicate: Chrome's copy of the source tab (its back/forward list and current page), for this view.
+- (BOOL)cloneTab:(NSString *)sourceKey profile:(ArcadiaCoreProfile *)profile {
+  ArcadiaCoreWindowController *controller = self.controller;
+  if (![controller.coreWindow respondsToSelector:@selector(duplicateTab:profile:foreground:)]) return NO;
+  ArcadiaCoreTab *source = nil;
+  for (ArcadiaCoreWebView *other in LiveViews())
+    if (other != self && [other.transferKey isEqualToString:sourceKey] && other->_tab && !other->_tab.closed) source = other->_tab;
+  if (!source || source.profile != profile) return NO;
+  ArcadiaCoreWindowController *holder = [ArcadiaCoreWindowController holding:source];
+  _pendingURL = nil;
+  controller.hostChanges++;
+  holder.hostChanges++;
+  ArcadiaCoreTab *tab = [controller.coreWindow duplicateTab:source profile:profile foreground:NO];
+  holder.hostChanges--;
+  controller.hostChanges--;
+  if (!tab) return NO;
+  [self attach:tab];
+  return YES;
+}
+
++ (void)keepTransfersOfWindow:(NSWindow *)window {
+  ArcadiaCoreWindowController *closing = [ArcadiaCoreWindowController forNSWindow:window];
+  if (!closing || ![closing.coreWindow respondsToSelector:@selector(adoptTab:)]) return;
+  // Moving a window's last tab to another window closes the window at once, while the tab's new view is still to
+  // mount: its tab closed with the Browser, and the new view loaded the page afresh (blank for a moment, its history
+  // and state gone).
+  for (ArcadiaCoreWebView *view in LiveViews().allObjects)
+    if (view->_handingOff && view->_tab && !view->_tab.closed && [ArcadiaCoreWindowController holding:view->_tab] == closing)
+      [view closeBrowser];
+  for (ArcadiaCoreTab *tab in Parked().allValues) {
+    if (tab.closed || [ArcadiaCoreWindowController holding:tab] != closing || !tab.profile) continue;
+    ArcadiaCoreWindowController *keeper = [ArcadiaCoreWindowController strayWindowForProfile:tab.profile];
+    keeper.hostChanges++;
+    closing.hostChanges++;
+    [keeper.coreWindow adoptTab:tab];
+    closing.hostChanges--;
+    keeper.hostChanges--;
+  }
+}
+
+// Only a page of this view's own profile: a tab moved to another profile opens afresh there, and a page parked as
+// its view went (ContentCard) mustn't show in a profile the tab moved to meanwhile.
+- (BOOL)canTake:(ArcadiaCoreTab *)tab {
+  ArcadiaCoreProfile *profile = tab.profile;
+  if (!profile || tab.closed || profile.offTheRecord != arcadiacore_host::IsIncognito(_profile)) return NO;
+  if (profile.offTheRecord) return arcadiacore_host::IsOffTheRecordOf(profile, _profile);
+  return [arcadiacore_host::ProfileName(profile) isEqualToString:_profile ?: @""];
+}
+
+// The tab's page, parked for this view (closeBrowser), or still in the view this one replaces: in the same batch the
+// old view goes after this one came. A page this view can't show stays parked until the app releases it (the tab moved
+// to another profile: releaseTransfer).
+- (BOOL)takeTransferredTab {
+  if (!_transferKey.length) return NO;
+  ArcadiaCoreTab *tab = Parked()[_transferKey];
+  // The launch's first page, closed by Chrome before this view came (an extension's tabs.remove): the app's tab closes,
+  // as it would have with the view there, instead of loading again.
+  ArcadiaCoreLaunchTabHolder *held = tab ? objc_getAssociatedObject(tab, &kLaunchHolderKey) : nil;
+  if (held && (tab.closed || held.closedByChrome)) {
+    [Parked() removeObjectForKey:_transferKey];
+    [ClosedLaunch() addObject:_transferKey];
+  }
+  if ([ClosedLaunch() containsObject:_transferKey]) {
+    if (!_launchCloseSent) {
+      _launchCloseSent = YES;
+      // After this mount: the app hears it as it hears a tab Chrome closed (onWindowClose).
+      __weak ArcadiaCoreWebView *weakSelf = self;
+      dispatch_async(dispatch_get_main_queue(), ^{
+        ArcadiaCoreWebView *view = weakSelf;
+        if (view && !view->_tab) [view emit:@"windowClose" payload:@{}];
+      });
+    }
+    return YES;
+  }
+  if (tab && ![self canTake:tab]) return NO;
+  if (tab) [Parked() removeObjectForKey:_transferKey];
+  if (!tab) {
+    for (ArcadiaCoreWebView *other in LiveViews().allObjects) {
+      if (other == self || ![other.transferKey isEqualToString:_transferKey] || !other->_tab) continue;
+      if (![self canTake:other->_tab]) return NO;
+      tab = other->_tab;
+      [other detach];
+      break;
+    }
+  }
+  if (!tab || tab.closed) return NO;
+  [ReloadParked() removeObjectForKey:_transferKey];
+  _adoptId = nil;
+  // The launch's first page: compared by the URL it was asked for, which its tab may not show yet (nothing committed)
+  // or at all (a redirect).
+  ArcadiaCoreLaunchTabHolder *launch = objc_getAssociatedObject(tab, &kLaunchHolderKey);
+  objc_setAssociatedObject(tab, &kLaunchHolderKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  _transferredURL = launch.url ?: tab.url;
+  if (SamePage(_pendingURL, _transferredURL)) _pendingURL = nil;
+  [self attach:tab];
+  if (launch) {
+    // This view's first load, as ensureTab would have made it, then what the page reported before the view came.
+    _loadedOnce = YES;
+    _requestedURL = launch.url;
+    [launch replayTo:self tab:tab];
+    [self focusAfterLoad];
+  }
+  return YES;
+}
+
+// The tab's Browser is its window's: a tab this view takes from elsewhere (a popup Chrome opened in another
+// window's Browser, a tab moved between windows) moves into this window's Browser for its profile.
+- (void)adoptIntoWindow {
+  if (_standalone) return;
+  ArcadiaCoreWindowController *controller = self.controller;
+  if (!controller || ![controller.coreWindow respondsToSelector:@selector(adoptTab:)]) return;
+  if ([[controller.coreWindow tabsForProfile:_tab.profile] containsObject:_tab]) return;
+  ArcadiaCoreWindowController *source = [ArcadiaCoreWindowController holding:_tab];
+  _moving = YES;
+  controller.hostChanges++;
+  source.hostChanges++;
+  [controller.coreWindow adoptTab:_tab];
+  source.hostChanges--;
+  controller.hostChanges--;
+  _moving = NO;
+  if (_tabIndex >= 0) [self placeTab];
+}
+
+- (void)attach:(ArcadiaCoreTab *)tab {
+  if (TraceVisibility()) NSLog(@"[arcadiacore-vis] %@ attach tab=%d visible=%d", _transferKey, (int)tab.tabId, _visible);
+  [LiveViews() addObject:self];
+  _tab = tab;
+  tab.delegate = self;
+  [ArcadiaCoreTabs setView:self forTab:tab];
+  [self bindRestoreKey];
+  [self takePageReports];
+  // From where the last view left it: a tab that comes into sight in this one leaves Picture in Picture.
+  [self userSightChanged];
+  [self adoptIntoWindow];
+  NSView *page = tab.view;
+  if (page.superview != self) {
+    [page removeFromSuperview];
+    [self addSubview:page];
+  }
+  if (NSView *devtools = tab.devToolsView) [self devToolsChanged:devtools];
+  [self layoutPage];
+  [self applyPainting];
+  if (_muted && [tab respondsToSelector:@selector(setMuted:)]) tab.muted = YES;
+  if (_pageBackgroundColor && [tab respondsToSelector:@selector(setPageBackgroundColor:)]) tab.pageBackgroundColor = _pageBackgroundColor;
+  if (_pendingURL) {
+    [self loadNow:_pendingURL userInitiated:_pendingUserInitiated];
+    _pendingURL = nil;
+  }
+  [self emit:@"ready" payload:@{@"browserId" : @(arcadiacore_host::BrowserId(tab)), @"tabId" : @(tab.tabId)}];
+  [self emitNavigation];
+  // A popup that sized itself before this view took it.
+  if (_extensionHost.length && [tab respondsToSelector:@selector(preferredSize)] && tab.preferredSize.width > 0)
+    [self tab:tab preferredSizeDidChange:tab.preferredSize];
+  // A moved tab's app state starts from nothing (moveTabsInto): what plays is sent again.
+  if (_mediaFrames.count) [self emitMedia];
+  [self tabDidChangeFavicon:tab];
+  if (_tabIndex >= 0) [self placeTab];
+  // The strip names the tab by this view's key from now on (re-sent as Chrome's report, cmd null).
+  if (ArcadiaCoreWindowController *controller = self.controller)
+    [ArcadiaCoreTabStrip changedInWindow:controller profile:tab.profile cause:NSNull.null];
+}
+
+// Chrome's TabRestoreService entry for the tab carries the app's id for it, so ⇧⌘T finds this one. Bound while the tab
+// lives (the engine stamps each navigation it makes after): Chrome records a tab that closes before the app hears of it
+// (its window closed at once, an extension's chrome.tabs.remove, a page's window.close()).
+- (void)bindRestoreKey {
+  if (_tab && _transferKey.length && !arcadiacore_host::IsIncognito(_profile) && ArcadiaCoreHost.isStarted)
+    [ArcadiaCoreServices call:@"ac_tab_restore_tag" profile:_profile args:@{@"tab" : @(_tab.tabId), @"key" : _transferKey}
+              completion:^(NSDictionary *) {}];
+}
+
+- (void)detach {
+  if (!_tab) return;
+  if (TraceVisibility()) NSLog(@"[arcadiacore-vis] %@ detach tab=%d", _transferKey, (int)_tab.tabId);
+  if (_tab.delegate == self) _tab.delegate = nil;
+  [ArcadiaCoreTabs setView:nil forTab:_tab];
+  [ArcadiaCoreWebView noteShown:_tab];
+  [self stashPageReports];
+  // Wherever the page goes next (another view, parked, a window of Chrome's), it takes drops until that says otherwise.
+  AcceptDrops(_tab.view, YES);
+  if (_tab.view.superview == self) [_tab.view removeFromSuperview];
+  [self dropDevTools];
+  [self resetBlocked:NO];
+  _tab = nil;
+  _handingOff = NO;
+  _leaving = NO;
+  _leaveGeneration++;
+}
+
+// What the page script and Chrome reported about the page (its theme colour, media, blocked count, a crash…) belongs
+// to the tab: a tab moved to another window, or parked while its view remounts, takes it to its next view, which
+// sends it again (attach), as packages/cef's Client kept it across views. The page script reports a change only, so
+// without it the moved tab lost its colour until the page changed it.
+- (void)stashPageReports {
+  NSMutableDictionary *reports = [NSMutableDictionary dictionary];
+  reports[@"url"] = _tab.url ?: @"";
+  reports[@"theme"] = _pageTheme;
+  reports[@"themeSource"] = _pageThemeSource;
+  reports[@"blocked"] = @(_blockedCount);
+  reports[@"lastBlocked"] = _lastBlocked;
+  reports[@"media"] = _mediaFrames;
+  reports[@"nowPlaying"] = _nowPlaying;
+  reports[@"nowPlayingFrame"] = _nowPlayingFrame;
+  reports[@"notifications"] = _notificationFrames;
+  reports[@"displayRequests"] = _displayRequests;
+  reports[@"pinch"] = @(_pinchScale);
+  reports[@"capturing"] = @(_capturing);
+  reports[@"crashed"] = @(_crashed);
+  reports[@"seen"] = @(_seenByUser);
+  reports[@"pip"] = @(_inPictureInPicture);
+  reports[@"autoPip"] = @(_autoPictureInPictureActive);
+  if (!_tab.closed) objc_setAssociatedObject(_tab, &kPageReportsKey, reports, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  [self takeReports:nil];
+}
+
+- (void)takePageReports {
+  NSDictionary *reports = objc_getAssociatedObject(_tab, &kPageReportsKey);
+  objc_setAssociatedObject(_tab, &kPageReportsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  // Unless the tab went to another page meanwhile (no view heard that page's reports).
+  [self takeReports:[reports[@"url"] isEqual:_tab.url ?: @""] ? reports : nil];
+}
+
+- (void)takeReports:(NSDictionary *)reports {
+  _pageTheme = reports[@"theme"];
+  _pageThemeSource = reports[@"themeSource"];
+  _blockedCount = [reports[@"blocked"] integerValue];
+  _lastBlocked = reports[@"lastBlocked"];
+  _mediaFrames = reports[@"media"];
+  _nowPlaying = reports[@"nowPlaying"];
+  _nowPlayingFrame = reports[@"nowPlayingFrame"];
+  _notificationFrames = reports[@"notifications"];
+  _displayRequests = reports[@"displayRequests"];
+  _pinchScale = [reports[@"pinch"] doubleValue];
+  _capturing = [reports[@"capturing"] boolValue];
+  _crashed = [reports[@"crashed"] boolValue];
+  if (reports[@"seen"]) _seenByUser = [reports[@"seen"] boolValue];
+  _inPictureInPicture = [reports[@"pip"] boolValue];
+  _autoPictureInPictureActive = [reports[@"autoPip"] boolValue];
+}
+
+- (void)closeBrowser {
+  // A tab still being made for this view is no longer wanted.
+  _createGeneration++;
+  _creating = NO;
+  if (!_tab) return;
+  ArcadiaCoreTab *tab = _tab;
+  if (_handingOff && _transferKey.length && !tab.closed) {
+    // The app keeps the tab: its page waits for the tab's next view (takeTransferredTab) or the app's release.
+    [self detach];
+    [ParkingView() addSubview:tab.view];
+    Parked()[_transferKey] = tab;
+    return;
+  }
+  _closing = YES;
+  // Again as it closes (bindRestoreKey), for a key that changed since.
+  if (_transferKey.length && !arcadiacore_host::IsIncognito(_profile) && ArcadiaCoreHost.isStarted)
+    [ArcadiaCoreServices call:@"ac_tab_restore_tag" profile:_profile args:@{@"tab" : @(tab.tabId), @"key" : _transferKey}
+              completion:^(NSDictionary *) {}];
+  [[ArcadiaCoreWindowController holding:tab] noteClosing:tab];
+  [self detach];
+  // As CEF's CloseBrowser(true): the app already dropped the tab, so no beforeunload keeps it alive unseen.
+  if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+  else [tab close];
+}
+
+- (void)placeTab {
+  ArcadiaCoreWindowController *controller = self.controller;
+  if (!_tab || !controller || ![controller.coreWindow respondsToSelector:@selector(placeTab:index:pinned:)]) return;
+  controller.hostChanges++;
+  [controller.coreWindow placeTab:_tab index:(int)_tabIndex pinned:_pinned];
+  controller.hostChanges--;
+}
+
+// MARK: From the window
+
+- (void)openedTab:(ArcadiaCoreTab *)tab adoptId:(NSString *)adoptId disposition:(NSString *)disposition {
+  [self announceOpenedTab:tab adoptId:adoptId disposition:disposition tries:0];
+}
+
+// window.open makes its contents before it navigates them: wait (briefly) for the URL it is going to.
+- (void)announceOpenedTab:(ArcadiaCoreTab *)tab adoptId:(NSString *)adoptId disposition:(NSString *)disposition tries:(int)tries {
+  if (tab.closed) return;
+  NSString *url = tab.url;
+  if ((!url.length || [url isEqualToString:@"about:blank"]) && tries < 20) {
+    __weak ArcadiaCoreWebView *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 25 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      [weakSelf announceOpenedTab:tab adoptId:adoptId disposition:disposition tries:tries + 1];
+    });
+    return;
+  }
+  NSMutableDictionary *payload = [@{
+    @"url" : url ?: @"",
+    @"disposition" : disposition,
+    @"adoptId" : adoptId,
+    @"userGesture" : @YES,
+    @"postBody" : @NO,
+  } mutableCopy];
+  // A private tab: the regular profile it's off the record of, whose private window takes it.
+  if (tab.profile.offTheRecord) payload[@"profile"] = arcadiacore_host::OriginalProfileNameOf(tab.profile);
+  [self emit:@"openWindow" payload:payload];
+}
+
+- (void)tabRemovedFromWindow:(ArcadiaCoreWindow *)window {
+  if (_moving || _closing || !_tab) return;
+  // A tab Chrome deleted without telling the view (a New Tab page's prewarm, which a window's close or the quit drops
+  // first, and either may still be refused): the view lets it go, and its next load makes another. A move keeps it.
+  {
+    ArcadiaCoreTab *removed = _tab;
+    __weak ArcadiaCoreWebView *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      ArcadiaCoreWebView *view = weakSelf;
+      if (view && view->_tab == removed && removed.closed) [view detach];
+    });
+  }
+  // A stage 1 engine says when Chrome closes a tab (tabWillClose:); a removal is then a move (an extension's
+  // tabs.move to another window), which keeps the tab.
+  if (arcadiacore_host::EngineHasTabModel()) return;
+  // Chrome closed it (window.close(), an extension): the app closes the tab (onWindowClose).
+  [self detach];
+  [self emit:@"windowClose" payload:@{}];
+}
+
+- (void)tabActivatedByChrome:(BOOL)chromes {
+  if (TraceVisibility()) NSLog(@"[arcadiacore-vis] %@ chrome-activated tab=%d byChrome=%d", _transferKey, _tab ? (int)_tab.tabId : -1, chromes);
+  if (_standalone) return;
+  [self emit:@"tabStrip"
+      payload:@{
+        @"index" : @(MAX(_tabIndex, 0)),
+        @"active" : @YES,
+        @"pinned" : @(_pinned),
+        @"activated" : @YES,
+        @"byApp" : @(!chromes),
+      }];
+}
+
+- (void)devToolsChanged:(NSView *)devToolsView {
+  if (_devtoolsView && _devtoolsView != devToolsView && _devtoolsView.superview == self) {
+    AcceptDrops(_devtoolsView, YES);
+    [_devtoolsView removeFromSuperview];
+  }
+  _devtoolsView = devToolsView;
+  if (devToolsView && devToolsView.superview != self) {
+    [devToolsView removeFromSuperview];
+    NSView *page = _tab.view;
+    if (page.superview == self) [self addSubview:devToolsView positioned:NSWindowBelow relativeTo:page];
+    else [self addSubview:devToolsView];
+    AcceptDrops(devToolsView, _visible);
+  }
+  [self layoutPage];
+}
+
+- (void)dropDevTools {
+  AcceptDrops(_devtoolsView, YES);
+  if (_devtoolsView.superview == self) [_devtoolsView removeFromSuperview];
+  _devtoolsView = nil;
+}
+
+// MARK: Layout and painting
+
+- (void)setFrameSize:(NSSize)newSize {
+  [super setFrameSize:newSize];
+  [self layoutPage];
+}
+
+- (void)layoutPage {
+  NSView *page = _tab.view;
+  if (!page || page.superview != self) return;
+  if (_devtoolsView) {
+    NSRect devtools = NSZeroRect, pageFrame = self.bounds;
+    [_tab devToolsLayoutForSize:self.bounds.size devTools:&devtools page:&pageFrame];
+    _devtoolsView.frame = devtools;
+    page.frame = pageFrame;
+  } else {
+    page.frame = self.bounds;
+  }
+}
+
+- (BOOL)paints {
+  return _visible || _warm || _leaving;
+}
+
+- (void)applyPainting {
+  self.alphaValue = _visible || !(_warm || _leaving) ? 1 : 0;
+  const BOOL shown = self.paints;
+  for (NSView *sub in self.subviews) {
+    sub.hidden = !shown;
+    AcceptDrops(sub, _visible);
+  }
+  if (TraceVisibility())
+    NSLog(@"[arcadiacore-vis] %@ paint visible=%d warm=%d tab=%d page=%@ inWindow=%ld hiddenAncestor=%d", _transferKey,
+          _visible, _warm, _tab ? (int)_tab.tabId : -1, _tab.view.superview == self ? @"here" : @"elsewhere",
+          (long)self.window.windowNumber, _tab.view.isHiddenOrHasHiddenAncestor);
+}
+
+- (void)setWarm:(BOOL)warm {
+  if (_warm == warm) return;
+  _warm = warm;
+  [self schedulePainting];
+}
+
+// Whether the user sees `tab` (-seenByUser: both panes of a split are seen), for Chrome's automatic Picture in Picture
+// and permission prompts, which would otherwise follow Chrome's strip: the app shows pages over its active tab (New Tab,
+// another Space) and a split's other pane beside it (engine: ac_host_visibility.h). Shown at once; hidden once that held
+// 300 ms (each change restarts the wait), so a switch settles first and a tab moving between views never reads as
+// hidden.
++ (void)noteShown:(ArcadiaCoreTab *)tab {
+  if (![tab respondsToSelector:@selector(noteShownByHost:)]) return;
+  static NSMapTable<ArcadiaCoreTab *, NSNumber *> *changes = [NSMapTable weakToStrongObjectsMapTable];
+  const NSUInteger change = [changes objectForKey:tab].unsignedIntegerValue + 1;
+  [changes setObject:@(change) forKey:tab];
+  ArcadiaCoreWebView *view = [ArcadiaCoreTabs viewForTab:tab];
+  if (view.seenByUser) return [tab noteShownByHost:YES];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+    if ([changes objectForKey:tab].unsignedIntegerValue != change) return;
+    ArcadiaCoreWebView *now = [ArcadiaCoreTabs viewForTab:tab];
+    if (!now.seenByUser) [tab noteShownByHost:NO];
+  });
+}
+
+- (void)setVisible:(BOOL)visible {
+  if (_visible == visible) return;
+  _visible = visible;
+  // A page the app stops showing leaves full screen, pointer lock and keyboard lock, as on a tab switch in Chrome: the
+  // app can hide one without Chrome's tab strip changing (its New Tab page, another Space). A split pane that only
+  // loses focus stays shown and keeps them.
+  if (!visible && [_tab respondsToSelector:@selector(exitExclusiveAccess)]) [_tab exitExclusiveAccess];
+  // A page painting already (warm, or just left the screen: its view shown, at alpha 0) shows with the rest of the
+  // batch: Chrome has nothing to draw first. Deferred to the end of the turn, the next tab of a window a tab was torn
+  // off from (kept warm through the drag, ContentCard) missed the commit the torn page's new window made meanwhile,
+  // and the window showed an empty card for a few frames. By what's applied, not the warm prop, which the same batch
+  // can clear first.
+  if (visible && self.alphaValue < 1 && _tab.view.superview == self && !_tab.view.hidden) self.alphaValue = 1;
+  [self schedulePainting];
+  // Field timing (a tab switch): the commit that shows this page.
+  if (visible) ACFieldMarkAtCommit(_transferKey, @"view");
+  [self userSightChanged];
+}
+
+// The one rule for "the user left this page", which automatic Picture in Picture and Chrome's reading of shown tabs
+// follow: the app stopped showing it (a tab switch, its New Tab page, another Space), or its window left the user
+// (covered, another app). The window's full-screen transitions never count (+[ArcadiaCoreWindowController userSees:]).
+- (BOOL)seenByUser {
+  return _visible && [ArcadiaCoreWindowController userSees:self.window];
+}
+
+- (void)userSightChanged {
+  if (_tab) [ArcadiaCoreWebView noteShown:_tab];
+  const BOOL seen = self.seenByUser;
+  if (seen == _seenByUser) return;
+  _seenByUser = seen;
+  [self traceAutoPictureInPicture:seen ? @"app: the user sees the tab" : @"app: the user left the tab"];
+  [self updateAutoPictureInPicture];
+}
+
+// ARCADIA_TRACE_PIP: the app's view of the tab (its now-playing state, what the page says) and Chrome's auto PiP inputs.
+- (void)traceAutoPictureInPicture:(NSString *)what {
+  if (!TracingPictureInPicture() || ![_tab respondsToSelector:@selector(tracePictureInPicture:withInputs:)]) return;
+  NSDictionary *np = _nowPlaying[_nowPlayingFrame ?: @""];
+  [_tab tracePictureInPicture:[NSString stringWithFormat:@"%@ (%@): autoPictureInPicture=%d capturing=%d nowPlaying=%@ actions=%@",
+                                                         what, _tab.url, _autoPictureInPicture, _capturing,
+                                                         np[@"playbackState"] ?: @"none", JSONString(np[@"actions"] ?: @[])]
+                   withInputs:YES];
+  ArcadiaCoreTab *tab = _tab;
+  [_tab evaluate:@"post('result', JSON.stringify({ documentPictureInPicture: 'documentPictureInPicture' in window, "
+                  "window: !!window.documentPictureInPicture?.window, videoPip: !!document.pictureInPictureElement, "
+                  "brands: navigator.userAgentData?.brands?.map((b) => b.brand + '/' + b.version), visibility: document.visibilityState }))"
+      completion:^(NSString *json) { [tab tracePictureInPicture:[@"page: " stringByAppendingString:json ?: @"(no answer)"] withInputs:NO]; }];
+}
+
+// A tab switch arrives as one batch of view updates, and showing a page makes Chrome commit the Core Animation
+// transaction there and then: the screen got the half-applied batch (the new page's first tiles over the old page,
+// the old tab's toolbar) for a frame. The pages change once the batch is done, before the turn's transaction commits
+// (Core Animation's commit observer runs at order 2000000): the ones leaving first, then the ones coming in. The
+// visible and warm props both go through here, so a page going from warm to visible (a profile swipe) never hides.
+- (void)schedulePainting {
+  [PendingPainting() addObject:self];
+  if (gPaintingScheduled) return;
+  gPaintingScheduled = true;
+  CFRunLoopObserverRef observer = CFRunLoopObserverCreateWithHandler(nil, kCFRunLoopBeforeWaiting, false, 0, ^(CFRunLoopObserverRef, CFRunLoopActivity) {
+    [ArcadiaCoreWebView drainPainting];
+  });
+  CFRunLoopAddObserver(CFRunLoopGetMain(), observer, kCFRunLoopCommonModes);
+  CFRelease(observer);
+}
+
++ (void)drainPainting {
+  gPaintingScheduled = false;
+  NSArray<ArcadiaCoreWebView *> *views = PendingPainting().allObjects;
+  [PendingPainting() removeAllObjects];
+  for (ArcadiaCoreWebView *view in views) {
+    if (view->_visible) continue;
+    [view leaveScreen];
+    [view applyPainting];
+  }
+  for (ArcadiaCoreWebView *view in views)
+    if (view->_visible) [view applyPainting];
+}
+
+// Hiding Chrome's view tells the page it's hidden, and Chrome drops its layers at once, on its own schedule: the page
+// went blank (or kept a few tiles) for a frame before the app's switch to the next tab reached the screen. A page
+// leaving the screen goes transparent with the rest of the switch and stays visible to Chrome a few frames more.
+- (void)leaveScreen {
+  const NSUInteger generation = ++_leaveGeneration;
+  NSView *page = _tab.view;
+  // Only a page on screen now (not one already hidden, nor a warm one, which keeps painting anyway).
+  _leaving = !_visible && !_warm && page.superview == self && !page.hidden && self.alphaValue > 0;
+  if (!_leaving) return;
+  __weak ArcadiaCoreWebView *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kLeaveScreenDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    ArcadiaCoreWebView *view = weakSelf;
+    if (!view || view->_leaveGeneration != generation) return;
+    view->_leaving = NO;
+    [view schedulePainting];
+  });
+}
+
+- (void)setFrozen:(BOOL)frozen {
+  _frozen = frozen;
+  if ([_tab respondsToSelector:@selector(setFrozen:)]) _tab.frozen = frozen;
+}
+
+- (void)setPageBackgroundColor:(NSColor *)color {
+  _pageBackgroundColor = color;
+  if ([_tab respondsToSelector:@selector(setPageBackgroundColor:)]) _tab.pageBackgroundColor = color;
+}
+
+// MARK: Events
+
+- (void)emit:(NSString *)name payload:(NSDictionary *)payload {
+  // Events reach JS in the order they happened: a held navigation report goes first.
+  if (_navigationQueued && ![name isEqualToString:@"navigation"]) [self emitNavigation];
+  if (_tab) NoteEvent(arcadiacore_host::BrowserId(_tab), name, payload);
+  [self.delegate webView:self event:name payload:payload];
+}
+
+// Field timing turned on or off: every page there is starts or stops reporting (page_script.js › Field timing).
+void ArcadiaCoreWebViewsSetFieldTiming(BOOL on) {
+  for (ArcadiaCoreWebView *view in LiveViews().allObjects)
+    if (view->_tab) [view callFrame:@"" kind:@"fieldTiming" json:on ? @"{\"on\":true}" : @"{\"on\":false}"];
+}
+
++ (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId {
+  return RecentEvents()[@(browserId)] ?: @[];
+}
+
++ (void)setDisplayMediaPicker:(BOOL)enabled {
+  gDisplayMediaPicker = enabled;
+}
+
++ (void)setAutoPictureInPictureEnabled:(BOOL)enabled {
+  if ([ArcadiaCoreEngine respondsToSelector:@selector(setAutoPictureInPicture:)]) [ArcadiaCoreEngine setAutoPictureInPicture:enabled];
+}
+
++ (void)setSearchEngineName:(NSString *)name {
+  gSearchEngineName = name.length ? [name copy] : @"Google";
+}
+
++ (NSInteger)devWindowNumberForBrowser:(int)browserId {
+  ArcadiaCoreTab *tab = arcadiacore_host::TabWithBrowserId(browserId);
+  ArcadiaCoreWebView *view = tab ? [ArcadiaCoreTabs viewForTab:tab] : nil;
+  return view.window.windowNumber;
+}
+
+// Tests: a click into the page as the user's. As a mouse down does, its window becomes key (a test instance's key window
+// is AppKit's as the app-active seam has it, ArcadiaCoreActivation.mm) and the page first responder, taking focus afresh
+// even if it had it; Chrome's own focus path runs (GotFocus → OnWebContentsFocused → tabDidGainFocus:), and nothing is
+// activated.
++ (BOOL)devFocusPageOfBrowser:(int)browserId {
+#if DEBUG
+  ArcadiaCoreTab *tab = arcadiacore_host::TabWithBrowserId(browserId);
+  NSWindow *window = tab.view.window;
+  NSView *page = nil;
+  for (NSMutableArray<NSView *> *queue = [NSMutableArray arrayWithObject:tab.view ?: [NSView new]]; queue.count && !page;) {
+    NSView *v = queue.firstObject;
+    [queue removeObjectAtIndex:0];
+    if ([NSStringFromClass(v.class) isEqual:@"RenderWidgetHostViewCocoa"]) page = v;
+    [queue addObjectsFromArray:v.subviews];
+  }
+  if (!window || !page) return NO;
+  [window makeKeyWindow];
+  [window makeFirstResponder:nil];
+  return [window makeFirstResponder:page];
+#else
+  return NO;
+#endif
+}
+
+- (void)emitNavigation {
+  _navigationQueued = NO;
+  if (!_tab) return;
+  // The page script's colour (its <meta name="theme-color">, else the colour at the top of the page), as packages/cef
+  // reports it; Chrome's meta theme-color until the page script has said.
+  NSString *theme = _pageTheme ?: ([_tab respondsToSelector:@selector(themeColor)] ? _tab.themeColor : nil);
+  NSString *themeSource = _pageTheme ? _pageThemeSource : (theme ? @"meta" : nil);
+  NSString *url = _tab.url ?: @"";
+  // A renderer debug URL (chrome://crash, kill, hang…) never commits: Chrome runs it in the page's renderer and its
+  // pending entry stays visible. As on CEF (the main frame's URL), the tab keeps the page it had, so a reload or the
+  // restored session doesn't crash it again.
+  if (IsRendererDebugURL(url)) url = _sentNavigation[@"url"] ?: @"";
+  NSDictionary *navigation = @{
+        @"url" : url,
+        @"title" : ReportedTitle(_tab.title, url, _tab.loading),
+        @"canGoBack" : @(_tab.canGoBack),
+        @"canGoForward" : @(_tab.canGoForward),
+        @"isLoading" : @(_tab.loading),
+        @"themeColor" : theme ?: NSNull.null,
+        @"themeColorSource" : themeSource ?: NSNull.null,
+  };
+  // The first load after a crash: CEF's dead main frame has no URL, so its first report there says none and the app
+  // (ContentCard) takes the reload for a new page and drops the sad tab. The same here, before the real report.
+  if (_crashed && _tab.loading) {
+    _crashed = NO;
+    NSMutableDictionary *gone = [navigation mutableCopy];
+    gone[@"url"] = @"";
+    _sentNavigation = gone;
+    [self emit:@"navigation" payload:gone];
+  }
+  // As packages/cef (ACClient): a report that changes nothing isn't sent.
+  if ([navigation isEqualToDictionary:_sentNavigation]) return;
+  _sentNavigation = navigation;
+  [self emit:@"navigation" payload:navigation];
+}
+
+// Title, URL, loading and history change together during a navigation: one report per run-loop turn.
+- (void)queueNavigation {
+  if (_navigationQueued) return;
+  _navigationQueued = YES;
+  __weak ArcadiaCoreWebView *weakSelf = self;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    ArcadiaCoreWebView *view = weakSelf;
+    if (view && view->_navigationQueued) [view emitNavigation];
+  });
+}
+
+- (void)tabDidChangeTitle:(ArcadiaCoreTab *)tab {
+  [self queueNavigation];
+}
+
+- (void)tabDidChangeURL:(ArcadiaCoreTab *)tab {
+  [self queueNavigation];
+}
+
+- (void)tabDidChangeLoading:(ArcadiaCoreTab *)tab {
+  // A page starting to load starts its blocked count again, as CEF's at each main-frame navigation request.
+  if (tab.loading) [self resetBlocked:YES];
+  if (tab.loading) ACFieldMarkNow(_transferKey, @"start");
+  [self queueNavigation];
+}
+
+- (void)resetBlocked:(BOOL)report {
+  _blockedGeneration++;
+  _blockedEmitQueued = NO;
+  const BOOL had = _blockedCount || _lastBlocked;
+  _blockedCount = 0;
+  _lastBlocked = nil;
+  if (report && had) [self emit:@"contentBlocked" payload:@{@"count" : @0, @"url" : @""}];
+}
+
+- (void)tabDidChangeNavigationState:(ArcadiaCoreTab *)tab {
+  [self queueNavigation];
+}
+
+- (void)tabDidChangeThemeColor:(ArcadiaCoreTab *)tab {
+  [self queueNavigation];
+}
+
+// The page script's colour was the last document's: Chrome's (the new page's meta theme-color) until the new document's
+// script says, and none on a page it doesn't run in (an error page, chrome://). A page back from the back/forward cache
+// says again as it shows (page_script.js, pageshow).
+- (void)tabDidCommitDocument:(ArcadiaCoreTab *)tab {
+  ACFieldMarkNow(_transferKey, @"commit");
+  _pageTheme = nil;
+  _pageThemeSource = nil;
+  [self queueNavigation];
+}
+
+// Load progress at most 10 times a second; its start and end at once (as packages/cef's ACClient).
+- (void)tabDidChangeProgress:(ArcadiaCoreTab *)tab {
+  const double progress = tab.progress;
+  const CFTimeInterval wait = _sentProgressAt + 0.1 - CACurrentMediaTime();
+  if (progress <= 0.1 || progress >= 1 || wait <= 0) return [self sendProgress];
+  if (_progressQueued) return;
+  _progressQueued = YES;
+  __weak ArcadiaCoreWebView *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    ArcadiaCoreWebView *view = weakSelf;
+    if (view && view->_progressQueued) [view sendProgress];
+  });
+}
+
+- (void)sendProgress {
+  _progressQueued = NO;
+  if (!_tab || _tab.progress == _sentProgress) return;
+  _sentProgress = _tab.progress;
+  _sentProgressAt = CACurrentMediaTime();
+  [self emit:@"progress" payload:@{@"progress" : @(_sentProgress)}];
+}
+
+// A browser page's link to an app page (arcadia:) opens in its tab as if typed: the app maps it (core/appUrls).
+- (void)tab:(ArcadiaCoreTab *)tab didRequestAppURL:(NSString *)url userGesture:(BOOL)userGesture {
+  [self emit:@"openWindow" payload:@{@"url" : url ?: @"", @"disposition" : @"current", @"userGesture" : @(userGesture)}];
+}
+
+- (void)tabDidChangeFavicon:(ArcadiaCoreTab *)tab {
+  NSImage *image = tab.favicon;
+  if (!image) return;
+  NSString *url = [tab respondsToSelector:@selector(faviconURL)] ? tab.faviconURL : nil;
+  if (url.length) [ArcadiaCoreFavicons noteImage:image forURL:url profile:_profile];
+  else url = PNGDataURL(image);
+  if (!url.length || [url isEqualToString:_lastFavicon]) return;
+  _lastFavicon = url;
+  [self emit:@"favicon" payload:@{@"url" : url, @"urls" : @[ url ]}];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab didFindMatches:(int)count active:(int)active final:(BOOL)final {
+  [self emit:@"find" payload:@{@"count" : @(count), @"active" : @(active), @"final" : @(final)}];
+}
+
+// The page script's messages from every frame (packages/cef/helper/page_script.js; ACClient::OnPageMessage on CEF).
+// The page runs it in its own world, so every field is untrusted.
+- (void)tab:(ArcadiaCoreTab *)tab didReceivePageMessage:(NSString *)kind json:(NSString *)json frame:(NSString *)frameId main:(BOOL)main {
+  id data = JSONValue(json);
+  NSDictionary *dict = [data isKindOfClass:NSDictionary.class] ? data : nil;
+  frameId = frameId ?: @"";
+  if ([kind isEqualToString:@"hello"]) {
+    // A new main document: the old page's media and now-playing went with it (CEF's OnLoadStart).
+    if (main) [self resetPageMedia];
+    // A real document committed (not a new tab's initial about:blank): the app's request didn't become a download.
+    if (main && ![(Text(dict, @"url", 8192) ?: @"about:") hasPrefix:@"about:"]) _requestedURL = nil;
+    AnswerHello(tab, _profile, dict, frameId, main);
+  } else if ([kind isEqualToString:@"selection"] && main) {
+    [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
+  } else if ([kind isEqualToString:@"linkDrop"] && main) {
+    // A link dragged out of the page and let go over it, nothing there taking it (page_script.js › Link drags): Chrome
+    // drops nothing on the page a drag came from, so it opens in a new tab. The page can send this whenever it likes, so
+    // only from the page on screen, once, and only for a drag that just ended in a release over this page: the button is
+    // up, the release came after the drag's last move (not a drag cancelled with Escape after an earlier click) and the
+    // pointer is over the page in this window (not another app's window above it).
+    NSString *url = Text(dict, @"url", 8192);
+    NSString *scheme = (url.length ? [NSURL URLWithString:url].scheme.lowercaseString : nil) ?: @"";
+    const CFTimeInterval now = CACurrentMediaTime();
+    const CGEventSourceStateID state = kCGEventSourceStateCombinedSessionState;
+    const double sinceUp = CGEventSourceSecondsSinceLastEventType(state, kCGEventLeftMouseUp);
+    const BOOL released = !(NSEvent.pressedMouseButtons & 1) && sinceUp < 1 &&
+                          sinceUp <= CGEventSourceSecondsSinceLastEventType(state, kCGEventLeftMouseDragged);
+    const NSPoint mouse = NSEvent.mouseLocation;
+    NSWindow *window = self.window;
+    const BOOL over = window && [NSWindow windowNumberAtPoint:mouse belowWindowWithWindowNumber:0] == window.windowNumber &&
+                      NSPointInRect([self convertPoint:[window convertPointFromScreen:mouse] fromView:nil], self.bounds);
+    if (_visible && [@[ @"http", @"https" ] containsObject:scheme] && released && over && now - _linkDropAt > 1) {
+      _linkDropAt = now;
+      [self emit:@"openWindow" payload:@{@"url" : url, @"disposition" : @"foreground", @"userGesture" : @YES}];
+    }
+  } else if ([kind isEqualToString:@"perf"] && main && ACFieldTimingEnabled()) {
+    // Field timing: epoch ms from the page's clock, kept only when plausible.
+    for (NSString *what in @[ @"fcp", @"shown" ]) {
+      NSNumber *at = [dict[what] isKindOfClass:NSNumber.class] ? dict[what] : nil;
+      if (at && fabs(at.doubleValue - ACFieldNow()) < 600000) ACFieldMark(_transferKey, what, at.doubleValue);
+    }
+  } else if ([kind isEqualToString:@"scroll"] && main) {
+    // The page's scroll direction, for the toolbar that hides while scrolling (page_script.js › Scroll direction).
+    NSString *state = Text(dict, @"state", 8);
+    if ([@[ @"down", @"up", @"top" ] containsObject:state ?: @""])
+      [self emit:@"pageMessage" payload:@{@"kind" : @"scroll", @"data" : @{@"state" : state}}];
+  } else if ([kind isEqualToString:@"media"] && dict) {
+    NSString *mediaFrame = Text(dict, @"frame", 64);
+    if (!mediaFrame) return;
+    if (!_mediaFrames) _mediaFrames = [NSMutableDictionary dictionary];
+    NSString *key = [NSString stringWithFormat:@"%@:%@", frameId, mediaFrame];
+    if (_mediaFrames.count >= 256 && !_mediaFrames[key]) return;
+    _mediaFrames[key] = @(Flag(dict, @"playing"));
+    [self emitMedia];
+  } else if ([kind isEqualToString:@"nowPlaying"]) {
+    if (!_nowPlaying) _nowPlaying = [NSMutableDictionary dictionary];
+    if (dict) _nowPlaying[frameId] = NowPlayingState(dict);
+    else [_nowPlaying removeObjectForKey:frameId];
+    _nowPlayingFrame = dict ? frameId : _nowPlaying.allKeys.firstObject;
+    for (NSString *f in _nowPlaying)
+      if ([_nowPlaying[f][@"playbackState"] isEqual:@"playing"]) _nowPlayingFrame = f;
+    NSMutableDictionary *state = [_nowPlaying[_nowPlayingFrame ?: @""] mutableCopy];
+    [state removeObjectForKey:@"frame"];
+    [self emit:@"nowPlaying" payload:@{@"state" : state ?: NSNull.null}];
+  } else if ([kind isEqualToString:@"theme"]) {
+    if (!main || !dict) return;
+    NSString *color = [dict[@"color"] isKindOfClass:NSString.class] ? Text(dict, @"color", 64) : nil;
+    NSString *source = [dict[@"source"] isKindOfClass:NSString.class] ? Text(dict, @"source", 32) : nil;
+    _pageTheme = color;
+    _pageThemeSource = source;
+    [self queueNavigation];
+  } else if ([kind isEqualToString:@"pinch"] && main && dict) {
+    double scale;
+    if (!Finite(dict, @"scale", &scale) || scale <= 0) return;
+    _pinchScale = MIN(scale, 100);
+    [self emitZoom];
+  } else if ([kind isEqualToString:@"pipTrace"]) {
+    if (TracingPictureInPicture() && [_tab respondsToSelector:@selector(tracePictureInPicture:withInputs:)])
+      [_tab tracePictureInPicture:[NSString stringWithFormat:@"page (%@): %@", main ? @"main frame" : @"subframe", JSONString(dict ?: @{})]
+                       withInputs:NO];
+  } else if ([kind isEqualToString:@"pip"] && dict) {
+    NSNumber *active = [dict[@"active"] isKindOfClass:NSNumber.class] ? dict[@"active"] : nil;
+    NSString *pipKind = [dict[@"kind"] isEqual:@"document"] ? @"document" : @"video";
+    if (!active) return;
+    _inPictureInPicture = active.boolValue;
+    [self emit:@"pictureInPicture" payload:@{@"kind" : pipKind, @"active" : active}];
+    if (active.boolValue) arcadiacore_pip::WatchZoom();
+    // Chrome's video window, styled and handled as on CEF (ArcadiaCorePictureInPicture).
+    if ([pipKind isEqual:@"video"]) arcadiacore_pip::VideoChanged(self, [NSURL URLWithString:tab.url ?: @""].host ?: @"", frameId, active.boolValue);
+  } else if ([kind isEqualToString:@"notification"] && dict) {
+    NSString *nid = Text(dict, @"id", 128);
+    NSString *origin = OriginOf(tab.url);
+    if (!nid.length || !Text(dict, @"title", 1024) || !origin) return;
+    if (!_notificationFrames || _notificationFrames.count > 500) _notificationFrames = [NSMutableDictionary dictionary];
+    _notificationFrames[nid] = frameId;
+    [self emit:@"notification"
+        payload:@{
+          @"id" : nid,
+          @"title" : Text(dict, @"title", 1024),
+          @"body" : Text(dict, @"body", 4096) ?: @"",
+          @"icon" : Text(dict, @"icon", 1 << 20) ?: NSNull.null,
+          @"tag" : Text(dict, @"tag", 1024) ?: @"",
+          @"silent" : @(Flag(dict, @"silent")),
+          @"requireInteraction" : @(Flag(dict, @"requireInteraction")),
+          @"origin" : origin,
+          @"browserId" : @(arcadiacore_host::BrowserId(tab)),
+          @"isMainFrame" : @(main),
+        }];
+  } else if ([kind isEqualToString:@"notificationClose"] && dict) {
+    NSString *nid = Text(dict, @"id", 128);
+    if (!nid.length) return;
+    [_notificationFrames removeObjectForKey:nid];
+    [self emit:@"notificationClose" payload:@{@"id" : nid}];
+  } else if ([kind isEqualToString:@"displayMedia"] && dict) {
+    double pageId;
+    if (!Finite(dict, @"id", &pageId) || pageId < 1 || pageId > INT_MAX || pageId != floor(pageId)) return;
+    if (!_displayRequests) _displayRequests = [NSMutableDictionary dictionary];
+    if (_displayRequests.count >= 16) return;
+    NSString *requestId = NSUUID.UUID.UUIDString;
+    _displayRequests[requestId] = @{@"frame" : frameId, @"id" : @((int)pageId), @"audio" : @(Flag(dict, @"audio"))};
+    [self emit:@"displayMediaRequest"
+        payload:@{@"id" : requestId, @"origin" : OriginOf(tab.url) ?: @"", @"audio" : @(Flag(dict, @"audio")), @"sources" : ArcadiaCoreHost.displayMediaSources}];
+  }
+}
+
+// Engines without per-frame messages: main-frame posts only.
+- (void)tab:(ArcadiaCoreTab *)tab didReceivePageMessage:(NSString *)kind json:(NSString *)json {
+  [self tab:tab didReceivePageMessage:kind json:json frame:@"" main:YES];
+}
+
+- (void)callFrame:(NSString *)frameId kind:(NSString *)kind json:(NSString *)json {
+  if (frameId.length && [_tab respondsToSelector:@selector(callFrame:kind:json:)]) [_tab callFrame:frameId kind:kind json:json];
+  else if ([_tab respondsToSelector:@selector(callPage:json:)]) [_tab callPage:kind json:json];
+}
+
+- (void)emitMedia {
+  BOOL playing = NO;
+  for (NSNumber *p in _mediaFrames.allValues) playing |= p.boolValue;
+  // As packages/cef's EmitMedia: playing is the page script's (a muted tab's video still "plays"; Chrome's audibility
+  // lags a pause by its hold time), muted is Chrome's own state.
+  const BOOL muted = [_tab respondsToSelector:@selector(muted)] ? _tab.muted : _muted;
+  [self emit:@"media" payload:@{@"playing" : @(playing), @"muted" : @(muted)}];
+}
+
+- (void)emitZoom {
+  const double zoom = [_tab respondsToSelector:@selector(zoomFactor)] ? _tab.zoomFactor : 1;
+  [self emit:@"zoom"
+      payload:@{
+        @"zoom" : @(round(zoom * 100) / 100),
+        @"host" : [NSURL URLWithString:_tab.url ?: @""].host.lowercaseString ?: @"",
+        @"isDefault" : @(fabs(zoom - 1) < 0.001),
+        @"pinchScale" : @(_pinchScale ?: 1),
+      }];
+}
+
+- (void)tabDidChangeZoom:(ArcadiaCoreTab *)tab {
+  [self emitZoom];
+}
+
+- (void)tabDidChangeSecurity:(ArcadiaCoreTab *)tab {
+  if (NSDictionary *info = tab.securityInfo) [self emit:@"security" payload:info];
+}
+
+- (void)tabWillClose:(ArcadiaCoreTab *)tab {
+  if (_closing || tab != _tab) return;
+  [self detach];
+  [self emit:@"windowClose" payload:@{}];
+}
+
+// The page's media state starts again (a new main document, a crash), as packages/cef's OnLoadStart and
+// OnRenderProcessTerminated: nothing plays and nothing is now playing until the page says so.
+- (void)resetPageMedia {
+  const BOOL hadMedia = _mediaFrames.count > 0, hadNowPlaying = _nowPlaying.count > 0;
+  [_mediaFrames removeAllObjects];
+  [_nowPlaying removeAllObjects];
+  _nowPlayingFrame = nil;
+  if (hadMedia) [self emitMedia];
+  if (hadNowPlaying) [self emit:@"nowPlaying" payload:@{@"state" : NSNull.null}];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab rendererGone:(NSString *)status code:(int)code {
+  _crashed = YES;
+  [self resetPageMedia];
+  [self emit:@"crashed" payload:@{@"status" : @(code), @"reason" : status ?: @"unknown", @"code" : @(code)}];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab didFailLoad:(NSString *)url code:(int)code description:(NSString *)text {
+  [self emit:@"loadError" payload:@{@"url" : url ?: @"", @"code" : @(code), @"text" : text ?: @""}];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab didChangeStatusText:(NSString *)text {
+  [self emit:@"status" payload:@{@"text" : text ?: @""}];
+}
+
+- (void)tabDidGainFocus:(ArcadiaCoreTab *)tab {
+  [self emit:@"focus" payload:@{}];
+}
+
+- (void)tabDidChangeAudio:(ArcadiaCoreTab *)tab {
+  [self emitMedia];
+}
+
+// MARK: Commands
+
+- (void)loadURL:(NSString *)url {
+  [self loadURL:url userInitiated:NO];
+}
+
+- (void)loadURL:(NSString *)url userInitiated:(BOOL)userInitiated {
+  if (!url.length) return;
+  NSString *transferred = _transferredURL;
+  _transferredURL = nil;
+  NSString *creating = _creatingURL;
+  _creatingURL = nil;
+  if (_tab && SamePage(url, transferred)) return;
+  // Only the page's own first request, which follows the view's creation at once.
+  if ((_tab || _creating) && [url isEqualToString:creating] && CACurrentMediaTime() - _creatingAt < 2) return;
+  if (_tab) return [self loadNow:url userInitiated:userInitiated];
+  _pendingURL = url;
+  _pendingUserInitiated = userInitiated;
+  if (self.window) [self ensureTab];
+}
+
+- (void)loadNow:(NSString *)url userInitiated:(BOOL)userInitiated {
+  if ([self skipsNavigationDownload:url userInitiated:userInitiated]) return;
+  ACFieldMarkNow(_transferKey, @"request");
+  if ([_tab respondsToSelector:@selector(loadURL:userInitiated:)]) [_tab loadURL:url userInitiated:userInitiated];
+  else [_tab loadURL:url];
+  [self focusAfterLoad];
+}
+
+// The page on screen takes keyboard focus after a load the app asked for, as on CEF (LoadURL and a new browser's
+// first navigation call OnSetFocus(FOCUS_SOURCE_NAVIGATION), which ACClient allows only for a visible view): typing
+// goes to the page, and Chrome's page focus (autofill on a click, find…) holds in a window that isn't key.
+- (void)focusAfterLoad {
+  if (_visible && _tab) [self focusPage];
+}
+
+// A restored or reopened tab whose first page was a download stays empty instead of downloading it again (CEF's
+// OnBeforeBrowse); the user asking for it again downloads it. Notes the request otherwise.
+- (BOOL)skipsNavigationDownload:(NSString *)url userInitiated:(BOOL)userInitiated {
+  const BOOL first = !_loadedOnce;
+  _loadedOnce = YES;
+  _pendingUserInitiated = NO;
+  if (first && !userInitiated && arcadiacore_host::WasNavigationDownload(url, _profile)) {
+    // After the tab it opens instead is attached (a new view's tab is made right after this).
+    __weak ArcadiaCoreWebView *weakSelf = self;
+    NSDictionary *payload = @{@"url" : url ?: @"", @"committedUrl" : @"", @"skipped" : @YES};
+    dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf emit:@"downloadNavigation" payload:payload]; });
+    return YES;
+  }
+  _requestedURL = url;
+  return NO;
+}
+
+- (void)loadOpenedURL:(NSInteger)openedId url:(NSString *)url {
+  // ArcadiaCore never keeps navigations for later ("open:<id>" is CEF's): load the URL.
+  [self loadURL:url userInitiated:NO];
+}
+
+- (void)goBack {
+  [_tab goBack];
+}
+
+- (void)goForward {
+  [_tab goForward];
+}
+
+- (void)goToHistoryOffset:(NSInteger)offset {
+  if ([_tab respondsToSelector:@selector(goToOffset:)]) [_tab goToOffset:(int)offset];
+  else if (offset == -1) [_tab goBack];
+  else if (offset == 1) [_tab goForward];
+}
+
+- (void)reload {
+  [_tab reload];
+}
+
+- (void)reloadIgnoringCache {
+  if ([_tab respondsToSelector:@selector(reloadIgnoringCache)]) [_tab reloadIgnoringCache];
+  else [_tab reload];
+}
+
+- (void)stopLoading {
+  [_tab stop];
+}
+
+- (void)focusPage {
+  [_tab focus];
+}
+
+- (void)setMuted:(BOOL)muted {
+  _muted = muted;
+  if ([_tab respondsToSelector:@selector(setMuted:)]) _tab.muted = muted;
+}
+
+- (void)setZoomFactor:(double)factor {
+  if ([_tab respondsToSelector:@selector(setZoomFactor:)]) _tab.zoomFactor = factor;
+}
+
+- (void)zoomStep:(NSInteger)direction {
+  if ([_tab respondsToSelector:@selector(zoomStep:)]) [_tab zoomStep:(int)direction];
+}
+
+- (void)find:(NSString *)text forward:(BOOL)forward findNext:(BOOL)findNext {
+  [_tab find:text forward:forward];
+}
+
+- (void)stopFinding:(BOOL)clearSelection {
+  [_tab stopFinding];
+}
+
+- (void)print {
+  [self runChromeCommand:35003];  // IDC_PRINT
+}
+
+- (void)runChromeCommand:(int)command {
+  if ([_tab respondsToSelector:@selector(executeChromeCommand:)]) [_tab executeChromeCommand:command];
+}
+
+- (void)showDevTools {
+  [_tab showDevTools];
+}
+
+- (void)showDevToolsPanel:(NSString *)panel {
+  // As packages/cef's: Chrome's own commands, so a second ⌥⌘I closes DevTools and ⌥⌘J/⌥⌘C open their panel.
+  const int command = [panel isEqualToString:@"console"]   ? 40005  // IDC_DEV_TOOLS_CONSOLE
+                      : [panel isEqualToString:@"inspect"] ? 40023  // IDC_DEV_TOOLS_INSPECT
+                      : [panel isEqualToString:@"toggle"]  ? 40237  // IDC_DEV_TOOLS_TOGGLE
+                                                           : 0;
+  if (command && [_tab respondsToSelector:@selector(executeChromeCommand:)]) [self runChromeCommand:command];
+  else [_tab showDevTools];
+}
+
+- (void)runPageCommand:(NSString *)name {
+  const int command = [name isEqualToString:@"savePage"]        ? 35004   // IDC_SAVE_PAGE
+                      : [name isEqualToString:@"systemPrint"]   ? 35007   // IDC_BASIC_PRINT
+                      : [name isEqualToString:@"caretBrowsing"] ? 40260   // IDC_CARET_BROWSING_TOGGLE
+                                                                : 0;
+  if (command) [self runChromeCommand:command];
+}
+
+- (void)executeJavaScript:(NSString *)code {
+  if ([_tab respondsToSelector:@selector(executeJavaScript:)]) [_tab executeJavaScript:code];
+}
+
+- (void)evaluate:(NSString *)code completion:(void (^)(NSString *))completion {
+  if (![_tab respondsToSelector:@selector(evaluate:completion:)]) return completion(nil);
+  [_tab evaluate:code completion:completion];
+}
+
+// The page as painted (packages/cef's capturePicture, for the dragged tab's picture): a JPEG of the viewport and the
+// view's frame in its window from the top-left; nil after a second (a hung or unpainted page).
+- (void)capturePicture:(double)scale completion:(void (^)(NSDictionary<NSString *, id> *))completion {
+  NSWindow *window = self.window;
+  if (!_tab || !window || self.hidden || ![_tab respondsToSelector:@selector(devToolsCall:params:completion:)]) return completion(nil);
+  NSRect inWindow = [self convertRect:self.bounds toView:nil];
+  CGFloat top = NSHeight(window.contentView.frame);
+  NSArray *frame = @[ @(NSMinX(inWindow)), @(top - NSMaxY(inWindow)), @(NSWidth(inWindow)), @(NSHeight(inWindow)) ];
+  __block BOOL answered = NO;
+  void (^answer)(NSDictionary *) = ^(NSDictionary *result) {
+    if (answered) return;
+    answered = YES;
+    completion(result);
+  };
+  NSDictionary *params = @{@"format" : @"jpeg", @"quality" : @(scale < 0.5 ? 55 : 75), @"optimizeForSpeed" : @YES};
+  void (^done)(NSDictionary *, NSString *) = ^(NSDictionary *shot, NSString *error) {
+    NSString *data = shot[@"data"];
+    answer([data isKindOfClass:NSString.class] ? @{@"data" : data, @"frame" : frame} : nil);
+  };
+  // With a deadline the engine forgets the call (and detaches its DevTools client): a hung page keeps Chrome's hang
+  // reporting, which ignores pages a debugger is attached to.
+  SEL timed = NSSelectorFromString(@"devToolsCall:params:timeout:completion:");
+  if ([_tab respondsToSelector:timed])
+    ((void (*)(id, SEL, NSString *, NSDictionary *, NSTimeInterval, id))objc_msgSend)(_tab, timed, @"Page.captureScreenshot", params, 1.0, done);
+  else
+    [_tab devToolsCall:@"Page.captureScreenshot" params:params completion:done];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ answer(nil); });
+}
+
+- (void)navigationEntries:(void (^)(NSArray<NSDictionary<NSString *, id> *> *))completion {
+  completion([_tab respondsToSelector:@selector(navigationEntries)] ? _tab.navigationEntries : @[]);
+}
+
+- (void)downloadFavicon:(NSString *)url name:(NSString *)name completion:(void (^)(NSDictionary<NSString *, id> *))completion {
+  [ArcadiaCoreFavicons fetch:url profile:_profile name:name completion:completion];
+}
+
+- (void)downloadImage:(NSString *)url maxPixels:(NSInteger)maxPixels completion:(void (^)(NSDictionary<NSString *, id> *))completion {
+  [ArcadiaCoreFavicons fetch:url profile:_profile name:nil completion:completion];
+}
+
+- (void)mediaCommand:(NSString *)action seconds:(double)seconds {
+  [self callFrame:_nowPlayingFrame ?: @"" kind:@"media" json:JSONString(@{@"action" : action ?: @"", @"seconds" : @(seconds)})];
+}
+
+- (void)requestPictureInPicture:(void (^)(BOOL))completion {
+  if (![_tab respondsToSelector:@selector(evaluate:completion:)]) return completion(NO);
+  [self evaluateWithGesture:@"(async () => {"
+                  "  const videos = [...document.querySelectorAll('video')].filter(v => v.readyState > 0 && !v.disablePictureInPicture);"
+                  "  videos.sort((a, b) => (b.paused ? 0 : 1) - (a.paused ? 0 : 1) || b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);"
+                  "  if (!videos.length) return post('result', 'false');"
+                  "  if (document.pictureInPictureElement === videos[0]) return post('result', 'true');"
+                  "  try { await videos[0].requestPictureInPicture(); post('result', 'true'); } catch (e) { post('result', 'false'); }"
+                  "})()"
+      completion:^(NSString *json) { completion([json isEqualToString:@"true"]); }];
+}
+
+// Picture in Picture needs the user activation a click would give (CEF's EvaluateWithGesture).
+- (void)evaluateWithGesture:(NSString *)code completion:(void (^)(NSString *))completion {
+  if ([_tab respondsToSelector:@selector(evaluate:userGesture:completion:)]) return [_tab evaluate:code userGesture:YES completion:completion];
+  [_tab evaluate:code completion:completion];
+}
+
+// Auto Picture in Picture (Arc's): a playing video goes into PiP when the user leaves it (-seenByUser). A page the user
+// sees again takes its video back, however it went into PiP (ours, the app's menus, the page's own button).
+- (void)updateAutoPictureInPicture {
+  if (!_tab) return;
+  NSDictionary *np = _nowPlaying[_nowPlayingFrame ?: @""];
+  const BOOL playingVideo = [np[@"hasVideo"] boolValue] && [np[@"playbackState"] isEqual:@"playing"];
+  // A page that handles Media Session's "enterpictureinpicture" (a call, a player with its own PiP) opens its own
+  // document Picture in Picture, as on CEF (WantsDocumentPictureInPicture).
+  const BOOL handles = [np[@"actions"] isKindOfClass:NSArray.class] && [np[@"actions"] containsObject:@"enterpictureinpicture"];
+  const BOOL wantsDocument = handles && (_capturing || [np[@"playbackState"] isEqual:@"playing"]);
+  if (!_seenByUser && _autoPictureInPicture && wantsDocument) {
+    // Chrome's own automatic PiP calls the page's handler on a tab switch too (a call: the camera or microphone in use,
+    // https, the setting on), as in Chrome and Dia: the handler runs once, or its second requestWindow closes the first
+    // window. Chrome hears of the switch about when this view hides (or 300 ms later, from setVisible:): ask after that.
+    __weak ArcadiaCoreWebView *weakSelf = self;
+    ArcadiaCoreTab *tab = _tab;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 450 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      ArcadiaCoreWebView *view = weakSelf;
+      if (!view || view->_seenByUser || view->_tab != tab || !view->_autoPictureInPicture) return;
+      if ([tab respondsToSelector:@selector(autoPictureInPictureIsChromes)] && tab.autoPictureInPictureIsChromes) {
+        [view traceAutoPictureInPicture:@"app: auto PiP left to Chrome"];
+        return;
+      }
+      [view traceAutoPictureInPicture:@"app: auto PiP by the app (the page's handler)"];
+      view->_autoPictureInPictureActive = YES;
+      // The page's handler needs a user activation: an empty gesture first, then the action.
+      [view evaluateWithGesture:@"post('result', '0')" completion:^(NSString *) {
+        ArcadiaCoreWebView *now = weakSelf;
+        if (now && !now->_seenByUser && now->_autoPictureInPictureActive) [now mediaCommand:@"enterpictureinpicture" seconds:0];
+      }];
+    });
+  } else if (!_seenByUser && _autoPictureInPicture && playingVideo) {
+    [self traceAutoPictureInPicture:@"app: auto PiP by the app (the video)"];
+    _autoPictureInPictureActive = YES;
+    // The user may be back before the window opens: it closes again then.
+    __weak ArcadiaCoreWebView *weakSelf = self;
+    [self requestPictureInPicture:^(BOOL ok) {
+      ArcadiaCoreWebView *view = weakSelf;
+      if (ok && view && view->_seenByUser) [view exitPictureInPicture];
+    }];
+  } else if (_seenByUser && (_autoPictureInPictureActive || _inPictureInPicture)) {
+    _autoPictureInPictureActive = NO;
+    [self exitPictureInPicture];
+  }
+}
+
+// Back to Tab from our PiP menu: the video's own frame leaves Picture in Picture (CEF kept the CefFrame).
+- (void)exitPictureInPictureInFrame:(NSString *)frameId {
+  if (frameId.length && [_tab respondsToSelector:@selector(executeJavaScript:frame:)])
+    [_tab executeJavaScript:@"document.pictureInPictureElement && document.exitPictureInPicture()" frame:frameId];
+  else
+    [self exitPictureInPicture];
+}
+
+- (void)exitPictureInPicture {
+  [self executeJavaScript:@"document.pictureInPictureElement && document.exitPictureInPicture();"
+                           "window.documentPictureInPicture && documentPictureInPicture.window && documentPictureInPicture.window.close()"];
+}
+
+- (void)securityInfo:(void (^)(NSDictionary<NSString *, id> *))completion {
+  if ([_tab respondsToSelector:@selector(securityInfo)] && _tab.securityInfo) return completion(_tab.securityInfo);
+  NSString *url = _tab.url ?: @"";
+  NSString *scheme = [NSURL URLWithString:url].scheme.lowercaseString;
+  NSString *level = [scheme isEqualToString:@"https"] ? @"secure" : [scheme isEqualToString:@"http"] ? @"insecure" : @"local";
+  completion(@{@"level" : level, @"url" : url, @"origin" : NSNull.null});
+}
+
+- (void)openBlockedPopup:(NSString *)popupId always:(BOOL)always {
+  if ([_tab respondsToSelector:@selector(openBlockedPopup:always:)]) [_tab openBlockedPopup:popupId always:always];
+}
+
+// Requests the content blocker stopped (ERR_BLOCKED_BY_CLIENT), new since the last report: the page's total at most
+// every 150 ms, as CEF's ACClient::NoteBlocked.
+- (void)tab:(ArcadiaCoreTab *)tab didBlockRequests:(int)count lastURL:(NSString *)url {
+  if (tab != _tab) return;
+  _blockedCount += count;
+  _lastBlocked = url;
+  if (_blockedEmitQueued) return;
+  _blockedEmitQueued = YES;
+  __weak ArcadiaCoreWebView *weakSelf = self;
+  const NSUInteger generation = _blockedGeneration;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+    ArcadiaCoreWebView *view = weakSelf;
+    // Reset (a new page, the tab gone or replaced) since: not this page's count any more.
+    if (!view || view->_blockedGeneration != generation || !view->_tab) return;
+    view->_blockedEmitQueued = NO;
+    [view emit:@"contentBlocked" payload:@{@"count" : @(view->_blockedCount), @"url" : view->_lastBlocked ?: @""}];
+  });
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab didBlockPopup:(NSDictionary<NSString *, NSString *> *)popup {
+  [self emit:@"popupBlocked" payload:popup];
+}
+
+// An extension popup's page sized itself (Chrome's auto-resize): the app sizes the popup to it.
+- (void)tab:(ArcadiaCoreTab *)tab preferredSizeDidChange:(NSSize)size {
+  [self emit:@"preferredSize" payload:@{@"width" : @(size.width), @"height" : @(size.height)}];
+}
+
+- (void)clearSiteData:(void (^)(NSDictionary<NSString *, id> *))completion {
+  NSString *origin = OriginOf(_tab.url);
+  if (!origin) return completion(@{@"cookies" : @NO, @"storage" : @NO});
+  [ArcadiaCoreServices clearSiteData:_profile origin:origin completion:completion];
+}
+
+- (void)resolvePasswordPrompt:(NSString *)action username:(NSString *)username password:(NSString *)password {
+  [_tab resolvePasswordPrompt:action username:username password:password];
+}
+
+- (void)resolveAutofillPrompt:(NSInteger)promptId action:(NSString *)action {
+  if ([_tab respondsToSelector:@selector(resolveAutofillPrompt:action:)]) [_tab resolveAutofillPrompt:promptId action:action];
+}
+
+- (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned {
+  _tabIndex = index;
+  _pinned = pinned;
+  if (_tab) [ArcadiaCoreTabStrip setPinned:pinned tab:_tab];
+  [self placeTab];
+}
+
+- (NSString *)executeExtensionAction:(NSString *)extensionId {
+  return [_tab respondsToSelector:@selector(executeExtensionAction:)] ? [_tab executeExtensionAction:extensionId] : nil;
+}
+
+- (void)resolveDisplayMedia:(NSString *)requestId sourceId:(NSString *)sourceId {
+  NSDictionary *request = requestId ? _displayRequests[requestId] : nil;
+  if (!request) return;
+  [_displayRequests removeObjectForKey:requestId];
+  // The picked source, granted to that frame's next desktop getUserMedia (once, within 15 s).
+  if (sourceId.length && _tab && [ArcadiaCoreEngine respondsToSelector:@selector(allowDesktopCapture:tab:frame:origin:)])
+    [ArcadiaCoreEngine allowDesktopCapture:sourceId
+                                  tab:_tab
+                                frame:[request[@"frame"] length] ? request[@"frame"] : nil
+                               origin:nil];
+  [self callFrame:request[@"frame"] kind:@"displayMedia"
+             json:JSONString(@{@"id" : request[@"id"], @"sourceId" : sourceId.length ? sourceId : NSNull.null})];
+}
+
+- (NSString *)mediaCaptureSourceId {
+  return [_tab respondsToSelector:@selector(mediaCaptureSourceId)] ? _tab.mediaCaptureSourceId : nil;
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab navigationBecameDownload:(NSString *)url {
+  arcadiacore_host::NoteNavigationDownload(url, _profile);
+  if (_requestedURL && ![_requestedURL isEqualToString:url]) arcadiacore_host::NoteNavigationDownload(_requestedURL, _profile);
+  _requestedURL = nil;
+  [self emit:@"downloadNavigation" payload:@{@"url" : url ?: @"", @"committedUrl" : tab.url ?: @"", @"skipped" : @NO}];
+}
+
+// The page's menu is Chrome's; the app adds "Search <engine> for …" after Copy, as CEF did, and runs it itself
+// (onCommand "search", the app's engine and opening rules, with the keys held).
+- (NSArray<NSDictionary<NSString *, NSString *> *> *)tab:(ArcadiaCoreTab *)tab
+                           contextMenuItemsForSelection:(NSString *)text {
+  return @[ @{
+    @"id" : @"search",
+    @"title" : [NSString stringWithFormat:@"Search %@ for “%@”", gSearchEngineName, SelectionLabel(text)],
+    @"replaces" : @"search",
+  } ];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab
+    contextMenuCommand:(NSString *)itemId
+                  text:(NSString *)selection
+             modifiers:(NSDictionary<NSString *, NSNumber *> *)modifiers {
+  if ([itemId isEqualToString:@"search"])
+    [self emit:@"command" payload:@{@"command" : @"search", @"text" : selection ?: @"", @"modifiers" : modifiers ?: @{}}];
+}
+
+// The autofill suggestions Chrome showed for the page (tests: in the dev event log).
+- (void)tab:(ArcadiaCoreTab *)tab didShowAutofillSuggestions:(NSArray<NSDictionary<NSString *, NSString *> *> *)items {
+  NoteEvent(arcadiacore_host::BrowserId(tab), @"autofillSuggestions", @{@"items" : items ?: @[]});
+}
+
+// Background mode (or ARCADIA_CONTEXT_MENU_LOG): the menu Chrome would have shown, not shown. In the dev event log
+// (devEvents), and as packages/cef has it: a line in activation.log, or with ARCADIA_CONTEXT_MENU_LOG the menu
+// dumped there and the item its ".pick" file names run (Client::RunContextMenu).
+- (void)tab:(ArcadiaCoreTab *)tab didShowContextMenu:(NSArray<NSDictionary *> *)items {
+  [self tab:tab runContextMenu:@{@"items" : items ?: @[]}];
+}
+
+- (NSDictionary<NSString *, id> *)tab:(ArcadiaCoreTab *)tab runContextMenu:(NSDictionary<NSString *, id> *)menu {
+  NSArray *items = Field<NSArray>(menu, @"items") ?: @[];
+  NoteEvent(arcadiacore_host::BrowserId(tab), @"contextMenu", @{@"items" : items});
+  static const char *log = getenv("ARCADIA_CONTEXT_MENU_LOG");
+  if (!log) {
+    // CEF's background guard logs the NSMenu it didn't pop up: its titled items, top level.
+    if (arcadiacore_host::Background()) {
+      NSMutableArray<NSString *> *titles = [NSMutableArray array];
+      for (NSDictionary *item in items)
+        if (MenuItemType(item) != kMenuSeparator && Field<NSString>(item, @"label").length) [titles addObject:MenuTitle(item[@"label"])];
+      arcadiacore_host::LogActivation([NSString stringWithFormat:@"context menu (not shown): %@", [titles componentsJoinedByString:@" | "]]);
+    }
+    return nil;
+  }
+  NSString *path = @(log), *pickPath = [path stringByAppendingString:@".pick"];
+  NSDictionary *dump = @{
+    @"url" : Field<NSString>(menu, @"url") ?: tab.url ?: @"",
+    @"link" : Field<NSString>(menu, @"link") ?: @"",
+    @"items" : DescribeMenu(items),
+  };
+  [JSONString(dump) writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  NSString *pick = [NSString stringWithContentsOfFile:pickPath encoding:NSUTF8StringEncoding error:nil];
+  [NSFileManager.defaultManager removeItemAtPath:pickPath error:nil];
+  pick = [pick stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+  // "<label>\t<flags>" picks it as if with those keys held (cef_event_flags_t, the same bits as Chrome's ui::EventFlags).
+  NSArray<NSString *> *parts = [pick componentsSeparatedByString:@"\t"];
+  NSDictionary *found = pick.length ? FindMenuItem(items, parts[0]) : nil;
+  if (!found) return nil;
+  return @{@"command" : found[@"command"], @"path" : found[@"path"], @"flags" : @(parts.count > 1 ? parts[1].intValue : 0)};
+}
+
+// Chrome's own picture-in-picture windows: a document's is reported here only (a video's state comes from the page
+// script, as on CEF).
+- (void)tab:(ArcadiaCoreTab *)tab didChangePictureInPicture:(NSDictionary<NSString *, id> *)state {
+  if (![state[@"kind"] isEqual:@"document"]) return;
+  _inPictureInPicture = [state[@"active"] boolValue];
+  [self emit:@"pictureInPicture" payload:@{@"kind" : @"document", @"active" : @([state[@"active"] boolValue])}];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab requestsActivation:(NSString *)reason {
+  // Any reason: Chrome's Back to Tab asks as a "page", its window having left Picture in Picture by then.
+  arcadiacore_pip::TabRequestedActivation(self);
+  [self emit:@"activateRequest" payload:@{@"reason" : reason ?: @"page"}];
+}
+
+- (void)notificationAction:(NSString *)notificationId action:(NSString *)action {
+  NSString *frame = notificationId ? _notificationFrames[notificationId] : nil;
+  if (!frame) return;
+  if (![action isEqualToString:@"click"]) [_notificationFrames removeObjectForKey:notificationId];
+  [self callFrame:frame kind:@"notification" json:JSONString(@{@"id" : notificationId, @"action" : action ?: @""})];
+}
+
+- (void)resolveUnresponsive:(BOOL)terminate {
+  if ([_tab respondsToSelector:@selector(resolveUnresponsive:)]) [_tab resolveUnresponsive:terminate];
+}
+
+// What the discard did, for the app to record only that: "discarded" (Chrome discarded the page now: its renderer goes,
+// the tab and its history stay, and it loads again when shown), "already", "refused" (Chrome wouldn't, or no page yet),
+// or "unsupported" for unload: ArcadiaCore keeps a regular profile (and its tabs) loaded, and a private one goes with its
+// windows, so no tab is ever closed to let a profile go (CEF closed the browser).
+- (NSString *)discard:(BOOL)unload {
+  if (unload) return @"unsupported";
+  if (![_tab respondsToSelector:@selector(discard)]) return @"refused";
+  if (_tab.discarded) return @"already";
+  return [_tab discard] && _tab.discarded ? @"discarded" : @"refused";
+}
+
+- (BOOL)discarded {
+  return [_tab respondsToSelector:@selector(discarded)] && _tab.discarded;
+}
+
+- (void)tabDidChangeDiscarded:(ArcadiaCoreTab *)tab {
+  // As CEF's onDiscarded: the page's URL, to load again when it shows. Loading again (shown or navigated), the tab is
+  // ready again, as CEF said.
+  if (tab.discarded) [self emit:@"discarded" payload:@{@"url" : tab.url ?: @""}];
+  else [self emit:@"ready" payload:@{@"browserId" : @(arcadiacore_host::BrowserId(tab)), @"tabId" : @(tab.tabId)}];
+}
+
+- (void)tabBecameUnresponsive:(ArcadiaCoreTab *)tab {
+  [self emit:@"unresponsive" payload:@{}];
+}
+
+- (void)tabBecameResponsive:(ArcadiaCoreTab *)tab {
+  [self emit:@"responsive" payload:@{}];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab didChangeMediaAccess:(NSDictionary<NSString *, NSNumber *> *)access {
+  _capturing = [access[@"camera"] boolValue] || [access[@"microphone"] boolValue] || [access[@"screen"] boolValue];
+  [self emit:@"mediaAccess" payload:access ?: @{}];
+}
+
+- (void)tab:(ArcadiaCoreTab *)tab externalAppRequest:(NSDictionary<NSString *, id> *)request {
+  [self emit:@"externalApp" payload:request ?: @{}];
+}
+
+// MARK: ⌘-scroll zoom (packages/cef's ACZoom, the same rules)
+
+namespace {
+
+// Set by devScrollZoom: the device a synthetic scroll claims to come from, and the ⌘-scrolls that zoomed.
+int gDevTrackpad = -1;
+NSUInteger gZoomScrolls = 0;
+// Why the monitor let a devScrollZoom step through (nil: it never saw the step).
+NSString *gDevZoomMiss = nil;
+bool gGestureTrackpad = false;
+
+// Scroll events look the same from a trackpad and a Magic Mouse; the HID service that sent one doesn't. The sender
+// is an AppleMultitouchDevice whose parent driver says which: AppleMultitouchTrackpadHIDEventDriver for built-in
+// trackpads and Magic Trackpads, AppleMultitouchMouseHIDEventDriver for a Magic Mouse (measured on the owner's
+// MacBook, macOS 27: the sender's own class never names the device). Momentum events have no sender.
+BOOL FromTrackpad(NSEvent *event) {
+  if (gDevTrackpad >= 0) return gDevTrackpad;
+  static auto copyHIDEvent = (CFTypeRef (*)(CGEventRef))dlsym(RTLD_DEFAULT, "CGEventCopyIOHIDEvent");
+  static auto senderOf = (uint64_t (*)(CFTypeRef))dlsym(RTLD_DEFAULT, "IOHIDEventGetSenderID");
+  CGEventRef cg = event.CGEvent;
+  CFTypeRef hid = copyHIDEvent && senderOf && cg ? copyHIDEvent(cg) : nullptr;
+  if (!hid) return NO;
+  uint64_t sender = senderOf(hid);
+  CFRelease(hid);
+  if (!sender) return NO;
+  static NSMutableDictionary<NSNumber *, NSNumber *> *trackpads = [NSMutableDictionary dictionary];
+  if (NSNumber *known = trackpads[@(sender)]) return known.boolValue;
+  BOOL trackpad = NO;
+  io_registry_entry_t entry = IOServiceGetMatchingService(kIOMainPortDefault, IORegistryEntryIDMatching(sender));
+  // The sender and up to three of its ancestors; the first event driver among them decides.
+  for (int depth = 0; entry && depth < 4; depth++) {
+    io_name_t name;
+    if (IOObjectGetClass(entry, name) == KERN_SUCCESS) {
+      if (strstr(name, "Trackpad")) trackpad = YES;
+      if (trackpad || strstr(name, "EventDriver")) break;
+    }
+    io_registry_entry_t parent = 0;
+    if (IORegistryEntryGetParentEntry(entry, kIOServicePlane, &parent) != KERN_SUCCESS) parent = 0;
+    IOObjectRelease(entry);
+    entry = parent;
+  }
+  if (entry) IOObjectRelease(entry);
+  trackpads[@(sender)] = @(trackpad);
+  return trackpad;
+}
+
+// A trackpad pinches to zoom; ⌘ with two fingers is a thumb resting on the key while scrolling (zoom::CommandScrollZooms).
+bool CommandScrollZooms(NSEvent *event, bool trackpad) {
+  if (event.phase & (NSEventPhaseBegan | NSEventPhaseMayBegin)) gGestureTrackpad = trackpad;
+  else if (event.phase == NSEventPhaseNone && event.momentumPhase == NSEventPhaseNone) gGestureTrackpad = false;
+  else gGestureTrackpad = gGestureTrackpad || trackpad;
+  return (event.modifierFlags & NSEventModifierFlagCommand) && !gGestureTrackpad;
+}
+
+}  // namespace
+
++ (void)installScrollZoom {
+  static id monitor, touchMonitor;
+  if (monitor) return;
+  static double accumulated = 0;
+  static NSUInteger touching = 0;
+  static NSTimeInterval touchedAt = 0;
+  touchMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskGesture handler:^NSEvent *(NSEvent *event) {
+    touching = [event touchesMatchingPhase:NSTouchPhaseTouching inView:nil].count;
+    touchedAt = event.timestamp;
+    return event;
+  }];
+  monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel handler:^NSEvent *(NSEvent *event) {
+    // Two fingers down is a trackpad too (a Magic Mouse scrolls with one), when AppKit reports touches.
+    BOOL fingers = (event.phase & (NSEventPhaseBegan | NSEventPhaseMayBegin)) && touching >= 2 && event.timestamp - touchedAt < 0.5;
+    BOOL trackpad = event.phase != NSEventPhaseNone && (fingers || FromTrackpad(event));
+    if (gDevTrackpad >= 0) gDevZoomMiss = @"not a zoom (a trackpad gesture, or no ⌘)";
+    if (!CommandScrollZooms(event, trackpad)) return event;
+    NSWindow *window = event.window;
+    NSPoint point = event.locationInWindow;
+    if (!window) {
+      // No window: the location is on the screen (packages/cef's ACZoom does the same).
+      NSPoint screen = event.locationInWindow;
+      for (NSWindow *w in NSApp.orderedWindows)
+        if (w.isVisible && !w.ignoresMouseEvents && NSPointInRect(screen, w.frame)) {
+          window = w;
+          break;
+        }
+      point = [window convertPointFromScreen:screen];
+    }
+    NSView *content = window.contentView;
+    NSView *hit = content ? [content hitTest:[content.superview convertPoint:point fromView:nil]] : nil;
+    while (hit && ![hit isKindOfClass:ArcadiaCoreWebView.class]) hit = hit.superview;
+    ArcadiaCoreWebView *view = (ArcadiaCoreWebView *)hit;
+    if (gDevTrackpad >= 0 && (!view || !view->_tab))
+      gDevZoomMiss = [NSString stringWithFormat:@"not over a page: window %ld %@, hit %@", (long)window.windowNumber,
+                                                NSStringFromPoint(point), [content hitTest:[content.superview convertPoint:point fromView:nil]]];
+    // Over the sidebar, the toolbar or another window: not a page's to zoom.
+    if (!view || !view->_tab) return event;
+    if (event.phase == NSEventPhaseBegan) accumulated = 0;
+    accumulated += event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 30;
+    gZoomScrolls++;
+    if (fabs(accumulated) >= 30) {
+      [view zoomStep:accumulated > 0 ? 1 : -1];
+      accumulated = 0;
+    }
+    return nil;
+  }];
+}
+
+// DEV: ⌘-scroll events over the visible page through the app's event dispatch, as packages/cef's.
+// Each step is {phase: "wheel" | "mayBegin" | "began" | "changed" | "ended" | "momentum", dy, trackpad}; the result
+// says, per step, whether the scroll zoomed the page instead of scrolling it.
++ (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps browser:(int)browserId {
+  ArcadiaCoreWebView *view = nil;
+  // The page asked for (a run has several windows: the last visible view needn't be the check's).
+  for (ArcadiaCoreWebView *v in LiveViews())
+    if (v.window.isVisible && !v.isHiddenOrHasHiddenAncestor && v->_tab && v->_visible &&
+        (!browserId || arcadiacore_host::BrowserId(v->_tab) == browserId))
+      view = v;
+  if (!view) return @[];
+  NSWindow *window = view.window;
+  // A point of the page no app overlay covers (a toast, a bar, a prompt left from before): the first of a grid over
+  // the page whose hit test lands in it.
+  const NSRect b = view.bounds;
+  NSView *content = window.contentView;
+  NSPoint inWindow = [view convertPoint:NSMakePoint(NSMidX(b), NSMidY(b)) toView:nil];
+  BOOL uncovered = NO;
+  for (int i = 1; i < 8; i++)
+    for (int j = 1; j < 8; j++) {
+      const NSPoint candidate = [view convertPoint:NSMakePoint(NSMinX(b) + NSWidth(b) * j / 8, NSMinY(b) + NSHeight(b) * i / 8) toView:nil];
+      NSView *hit = [content hitTest:[content.superview convertPoint:candidate fromView:nil]];
+      while (hit && hit != view) hit = hit.superview;
+      if (hit) {
+        inWindow = candidate;
+        uncovered = YES;
+        i = j = 8;
+      }
+    }
+  if (!uncovered)
+    NSLog(@"[scroll-zoom] the page is covered everywhere: %@ over its centre",
+          [content hitTest:[content.superview convertPoint:inWindow fromView:nil]]);
+  NSPoint screen = [window convertPointToScreen:inWindow];
+  static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
+  NSMutableArray *zoomed = [NSMutableArray array];
+  for (NSDictionary *step in steps) {
+    NSString *phase = step[@"phase"];
+    BOOL wheel = [phase isEqualToString:@"wheel"];
+    int32_t dy = (int32_t)[step[@"dy"] intValue];
+    CGEventRef cg = CGEventCreateScrollWheelEvent2(NULL, wheel ? kCGScrollEventUnitLine : kCGScrollEventUnitPixel, 1, dy, 0, 0);
+    CGEventSetFlags(cg, kCGEventFlagMaskCommand);
+    CGEventSetIntegerValueField(cg, kCGScrollWheelEventIsContinuous, !wheel);
+    if (!wheel) CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1, dy);
+    if ([phase isEqualToString:@"momentum"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventMomentumPhase, kCGMomentumScrollPhaseContinue);
+    else if (!wheel)
+      CGEventSetIntegerValueField(cg, kCGScrollWheelEventScrollPhase,
+                                  [phase isEqualToString:@"mayBegin"] ? kCGScrollPhaseMayBegin
+                                  : [phase isEqualToString:@"began"]  ? kCGScrollPhaseBegan
+                                  : [phase isEqualToString:@"ended"]  ? kCGScrollPhaseEnded
+                                                                      : kCGScrollPhaseChanged);
+    CGEventSetLocation(cg, CGPointMake(screen.x, NSHeight(NSScreen.screens.firstObject.frame) - screen.y));
+    CGEventSetIntegerValueField(cg, (CGEventField)51, window.windowNumber);
+    if (setWindowLocation) setWindowLocation(cg, CGPointMake(inWindow.x, NSHeight(window.frame) - inWindow.y));
+    NSEvent *event = [NSEvent eventWithCGEvent:cg];
+    CFRelease(cg);
+    gDevTrackpad = [step[@"trackpad"] boolValue];
+    NSUInteger before = gZoomScrolls;
+    gDevZoomMiss = nil;
+    [NSApp sendEvent:event];
+    gDevTrackpad = -1;
+    [zoomed addObject:@(gZoomScrolls > before)];
+    // A wheel step should always zoom: say why one didn't (the acceptance run quotes it).
+    if (wheel && gZoomScrolls == before)
+      NSLog(@"[scroll-zoom] a ⌘-wheel step didn't zoom: %@", gDevZoomMiss ?: @"the zoom monitor never saw it");
+  }
+  return zoomed;
+}
+
+@end
+
+// MARK: - Tabs
+
+namespace {
+
+NSMapTable<ArcadiaCoreTab *, ArcadiaCoreWebView *> *Views() {
+  static NSMapTable *views = [NSMapTable weakToWeakObjectsMapTable];
+  return views;
+}
+
+NSMutableDictionary<NSString *, ArcadiaCoreTab *> *Offered() {
+  static NSMutableDictionary *offered = [NSMutableDictionary dictionary];
+  return offered;
+}
+
+// A tab Chrome opened that the app never adopts (it chose to open the URL fresh, in a private window, say).
+constexpr int64_t kOfferSeconds = 30;
+
+}  // namespace
+
+@implementation ArcadiaCoreTabs
+
++ (void)setView:(ArcadiaCoreWebView *)view forTab:(ArcadiaCoreTab *)tab {
+  if (view) [Views() setObject:view forKey:tab];
+  else [Views() removeObjectForKey:tab];
+}
+
++ (ArcadiaCoreWebView *)viewForTab:(ArcadiaCoreTab *)tab {
+  return [Views() objectForKey:tab];
+}
+
++ (NSString *)offerTab:(ArcadiaCoreTab *)tab {
+  return [self offerTab:tab prefix:@"arcadiacore"];
+}
+
++ (NSString *)offerTab:(ArcadiaCoreTab *)tab prefix:(NSString *)prefix {
+  NSString *adoptId = [NSString stringWithFormat:@"%@:%d", prefix, arcadiacore_host::BrowserId(tab)];
+  Offered()[adoptId] = tab;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kOfferSeconds * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    if (Offered()[adoptId] != tab) return;
+    [Offered() removeObjectForKey:adoptId];
+    if (![ArcadiaCoreTabs viewForTab:tab]) [tab close];
+  });
+  return adoptId;
+}
+
++ (ArcadiaCoreTab *)takeOffered:(NSString *)adoptId {
+  ArcadiaCoreTab *tab = Offered()[adoptId];
+  if (tab) [Offered() removeObjectForKey:adoptId];
+  return tab;
+}
+
++ (void)forget:(ArcadiaCoreTab *)tab {
+  [Views() removeObjectForKey:tab];
+  for (NSString *key in [Offered() allKeysForObject:tab]) [Offered() removeObjectForKey:key];
+}
+
+@end
+
+namespace arcadiacore_host {
+
+bool EngineHasTabModel() {
+  static const bool has = [ArcadiaCoreWindow instancesRespondToSelector:@selector(adoptTab:)];
+  return has;
+}
+
+namespace {
+const void *kBrowserIdKey = &kBrowserIdKey;
+NSMapTable<NSNumber *, ArcadiaCoreTab *> *TabsById() {
+  static NSMapTable *tabs = [NSMapTable strongToWeakObjectsMapTable];
+  return tabs;
+}
+}  // namespace
+
+int BrowserId(ArcadiaCoreTab *tab) {
+  static int next = 0;
+  NSNumber *id_ = objc_getAssociatedObject(tab, kBrowserIdKey);
+  if (!id_) {
+    id_ = @(++next);
+    objc_setAssociatedObject(tab, kBrowserIdKey, id_, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [TabsById() setObject:tab forKey:id_];
+  }
+  return id_.intValue;
+}
+
+ArcadiaCoreTab *TabWithBrowserId(int browserId) {
+  return [TabsById() objectForKey:@(browserId)];
+}
+
+}  // namespace arcadiacore_host

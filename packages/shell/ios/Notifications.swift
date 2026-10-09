@@ -6,7 +6,7 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
 
   var onResponse: ((String, String, [String: Any]) -> Void)?
   private var pending: [(String, String, [String: Any])] = []
-  private static let dismissibleCategory = "netnyahoo.dismissible"
+  private static let dismissibleCategory = "arcadia.dismissible"
 
   private var center: UNUserNotificationCenter { .current() }
 
@@ -79,7 +79,7 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
       guard let data, !data.isEmpty else { return DispatchQueue.main.async { completion(nil) } }
       let ext = (response?.mimeType == "image/png" || url.absoluteString.hasPrefix("data:image/png")) ? "png"
         : (response?.suggestedFilename as NSString?)?.pathExtension.nonEmpty ?? "png"
-      let file = FileManager.default.temporaryDirectory.appendingPathComponent("nn-notification-\(id).\(ext)")
+      let file = FileManager.default.temporaryDirectory.appendingPathComponent("ac-notification-\(id).\(ext)")
       do {
         try data.write(to: file)
         DispatchQueue.main.async { make(file) }

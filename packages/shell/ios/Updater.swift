@@ -8,15 +8,15 @@ public final class AppUpdater: NSObject {
 
   static var feedOverride: String? {
     let env = ProcessInfo.processInfo.environment
-    if let feed = env["NETNYAHOO_UPDATE_FEED_URL"] ?? UserDefaults.standard.string(forKey: "NNUpdateFeedURL") { return feed }
+    if let feed = env["ARCADIA_UPDATE_FEED_URL"] ?? UserDefaults.standard.string(forKey: "ACUpdateFeedURL") { return feed }
     // SUFeedURL (netnyahoo.com) counts checks as copies in use; background instances go straight to the same file.
-    return env["NETNYAHOO_BACKGROUND"] == "1" ? "https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml" : nil
+    return env["ARCADIA_BACKGROUND"] == "1" ? "https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml" : nil
   }
 
-  // A test instance (NNIsolation.h) checks for updates only when it's given a feed, and keeps Sparkle's state
+  // A test instance (ACIsolation.h) checks for updates only when it's given a feed, and keeps Sparkle's state
   // (last check, skipped version, its settings) in its data dir's defaults.
   private static var isOff: Bool {
-    NNIsolatedDataDirectory() != nil && ProcessInfo.processInfo.environment["NETNYAHOO_UPDATE_FEED_URL"] == nil
+    ACIsolatedDataDirectory() != nil && ProcessInfo.processInfo.environment["ARCADIA_UPDATE_FEED_URL"] == nil
   }
 
   #if canImport(Sparkle)
@@ -55,7 +55,7 @@ public final class AppUpdater: NSObject {
     do {
       try controller.updater.start()
     } catch {
-      NSLog("Netnyahoo: couldn't start the updater: \(error.localizedDescription)")
+      NSLog("Arcadia: couldn't start the updater: \(error.localizedDescription)")
     }
     NotificationCenter.default.addObserver(self, selector: #selector(fullScreenChanged), name: NSWindow.didExitFullScreenNotification, object: nil)
     #endif
@@ -65,8 +65,8 @@ public final class AppUpdater: NSObject {
     #if canImport(Sparkle)
     guard isConfigured else {
       // A hidden instance never blocks on an alert.
-      if ProcessInfo.processInfo.environment["NETNYAHOO_BACKGROUND"] == "1" {
-        return NSLog("Netnyahoo: update checks are off in this instance")
+      if ProcessInfo.processInfo.environment["ARCADIA_BACKGROUND"] == "1" {
+        return NSLog("Arcadia: update checks are off in this instance")
       }
       return showNotSetUp()
     }
@@ -167,7 +167,7 @@ extension AppUpdater: SPUUpdaterDelegate {
   }
 }
 
-/// The app's kill switches (src/lib/killSwitches.ts) as native code reads them: this launch's NETNYAHOO_SWITCHES
+/// The app's kill switches (src/lib/killSwitches.ts) as native code reads them: this launch's ARCADIA_SWITCHES
 /// ("name=off,other=on"), else the answer the app saved from netnyahoo.com/switches.json (switches-cache.json in the
 /// data dir), else on. Only `live` switches are read here: the app rewrites the file at launch and this reads it each time.
 enum KillSwitch {
@@ -178,7 +178,7 @@ enum KillSwitch {
     environment: [String: String] = ProcessInfo.processInfo.environment,
     cache: () -> String? = { DocumentStore.read(cacheDocument) }
   ) -> Bool {
-    for part in (environment["NETNYAHOO_SWITCHES"] ?? "").split(separator: ",") {
+    for part in (environment["ARCADIA_SWITCHES"] ?? "").split(separator: ",") {
       let pair = part.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
       guard pair.count == 2, pair[0] == name else { continue }
       if ["off", "0", "false"].contains(pair[1]) { return false }
@@ -194,7 +194,7 @@ enum KillSwitch {
 }
 
 /// Runs an update Sparkle has staged for install-on-quit once, hidden, before the user launches it (main.swift's
-/// NETNYAHOO_PREWARM: it exits before NSApp, a window or the data dir). macOS checks a copy it hasn't run at its first
+/// ARCADIA_PREWARM: it exits before NSApp, a window or the data dir). macOS checks a copy it hasn't run at its first
 /// exec, and that stays with the bundle's files through Sparkle's move into place. Sparkle's own `gktool scan` (when it
 /// applies) covers Gatekeeper's scan of the bundle (4.5 s for 0.2.27 on a calm Mac); the exec also covers what only a
 /// launch does (130–190 ms more before main), and all of it when Sparkle's scan didn't take
@@ -212,9 +212,9 @@ enum UpdatePrewarm {
     DispatchQueue.global(qos: .utility).async {
       let task = Process()
       task.executableURL = executable
-      var env = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("NETNYAHOO_") && !$0.key.hasPrefix("DYLD_") }
+      var env = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("ARCADIA_") && !$0.key.hasPrefix("DYLD_") }
       // Every version this updates to has it (it came with this code; Sparkle never installs an older one).
-      env["NETNYAHOO_PREWARM"] = "1"
+      env["ARCADIA_PREWARM"] = "1"
       task.environment = env
       task.standardInput = FileHandle.nullDevice
       task.standardOutput = FileHandle.nullDevice
@@ -223,20 +223,20 @@ enum UpdatePrewarm {
       task.terminationHandler = { ended in
         DispatchQueue.main.async {
           if running == ended.processIdentifier { running = 0 }
-          NSLog("Netnyahoo: prewarmed update \(version) in \(Int(Date().timeIntervalSince(began) * 1000)) ms (status \(ended.terminationStatus))")
+          NSLog("Arcadia: prewarmed update \(version) in \(Int(Date().timeIntervalSince(began) * 1000)) ms (status \(ended.terminationStatus))")
         }
       }
       do {
         try task.run()
       } catch {
-        return NSLog("Netnyahoo: couldn't prewarm update \(version): \(error.localizedDescription)")
+        return NSLog("Arcadia: couldn't prewarm update \(version): \(error.localizedDescription)")
       }
       let pid = task.processIdentifier
       DispatchQueue.main.async {
         if task.isRunning { running = pid }
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
           guard running == pid, task.isRunning else { return }
-          NSLog("Netnyahoo: update prewarm still running after \(Int(timeout)) s; stopping it")
+          NSLog("Arcadia: update prewarm still running after \(Int(timeout)) s; stopping it")
           stop()
         }
       }

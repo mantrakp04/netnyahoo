@@ -1,4 +1,4 @@
-import type { CalendarParticipant, SystemCalendarEvent } from "@netnyahoo/shell";
+import type { CalendarParticipant, SystemCalendarEvent } from "@arcadia/shell";
 
 export type CalendarEvent = SystemCalendarEvent;
 export type MeetingProvider = "meet" | "zoom" | "teams" | "webex" | "other";

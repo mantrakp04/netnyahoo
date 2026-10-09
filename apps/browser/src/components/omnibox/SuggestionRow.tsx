@@ -1,5 +1,5 @@
-import { displayUrl, type Suggestion } from "@netnyahoo/core";
-import { Symbol } from "@netnyahoo/shell";
+import { displayUrl, type Suggestion } from "@arcadia/core";
+import { Symbol } from "@arcadia/shell";
 import { memo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";

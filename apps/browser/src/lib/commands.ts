@@ -6,8 +6,8 @@ import {
   prompt,
   setAppearance,
   type CommandEvent,
-} from "@netnyahoo/shell";
-import { markdownLink } from "@netnyahoo/core";
+} from "@arcadia/shell";
+import { markdownLink } from "@arcadia/core";
 import { useBrowser } from "../store/browser";
 import { activeTabId, bookmarkProfileId, resolveWindowId } from "../store/model";
 import {
@@ -40,7 +40,7 @@ import { shareTab } from "../components/site/share";
 import { openProfileMenu } from "../components/ProfileIndicator";
 import { groupOf } from "../store/organize";
 import { isSmall, mainWindowFor, originalProfile } from "../store/small";
-import { closeSmallYahu, openInMainWindow, openSmallYahu } from "../components/smallYahu/actions";
+import { closeLittleArcadia, openInMainWindow, openLittleArcadia } from "../components/littleArcadia/actions";
 
 export function runCommand({ command, arg, windowId: requested }: CommandEvent) {
   const s = useBrowser.getState();
@@ -49,7 +49,7 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     if (command === "closeTab") return void closeNativeWindow(requested!);
     requested = null;
   }
-  if (isSmall(s, requested) && runSmallYahuCommand(command, requested!)) return;
+  if (isSmall(s, requested) && runLittleArcadiaCommand(command, requested!)) return;
 
   switch (command) {
     case "newWindow":
@@ -57,10 +57,10 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "newIncognitoWindow":
       // From the window it's asked in (a private one: its own regular profile), else the last active profile.
       return void openWindow({ incognito: true, profileId: originalProfile(s, s.windows[requested ?? ""]) });
-    case "newSmallYahu":
-      return void openSmallYahu();
-    case "toggleOpenLinksInSmallYahu":
-      return s.updateSettings({ openLinksInSmallYahu: !s.settings.openLinksInSmallYahu });
+    case "newLittleArcadia":
+      return void openLittleArcadia();
+    case "toggleOpenLinksInLittleArcadia":
+      return s.updateSettings({ openLinksInLittleArcadia: !s.settings.openLinksInLittleArcadia });
     case "reopenClosedWindow":
       return s.reopenClosedWindow();
     case "setAppearance":
@@ -95,8 +95,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     }
   }
 
-  // From Small Yahu, tabs, windows and the sidebar's commands act on the main window.
-  if (isSmall(s, requested) && !SMALL_YAHU_PAGE_COMMANDS.has(command)) {
+  // From Little Arcadia, tabs, windows and the sidebar's commands act on the main window.
+  if (isSmall(s, requested) && !LITTLE_ARCADIA_PAGE_COMMANDS.has(command)) {
     requested = mainWindowFor(s, s.windows[requested!]!.profileId) ?? null;
     if (requested) focus(requested);
   }
@@ -280,9 +280,9 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
   }
 }
 
-// What Small Yahu runs on its own page; everything else goes to the main window (menuState disables the tab and
+// What Little Arcadia runs on its own page; everything else goes to the main window (menuState disables the tab and
 // sidebar commands that make no sense from there).
-const SMALL_YAHU_PAGE_COMMANDS = new Set<string>([
+const LITTLE_ARCADIA_PAGE_COMMANDS = new Set<string>([
   "print", "printWithSystemDialog", "savePage", "caretBrowsing", "emailPageLocation", "stop", "share", "copyUrl",
   "copyUrlAsMarkdown", "findInPage", "findAndReplace", "jumpToSelection", "useSelectionForFind", "findNext", "findPrevious",
   "reload", "forceReload", "zoomIn", "zoomOut", "zoomReset", "devTools", "toggleDevTools", "inspectElements",
@@ -290,16 +290,16 @@ const SMALL_YAHU_PAGE_COMMANDS = new Set<string>([
   "cast", "openExtension", "addExtension", "autofill", "reopenClosedTab", "restoreClosed", "downloads",
 ]);
 
-function runSmallYahuCommand(command: string, windowId: string): boolean {
+function runLittleArcadiaCommand(command: string, windowId: string): boolean {
   const s = useBrowser.getState();
   const tabId = activeTabId(s, windowId);
   const tab = tabId ? s.tabs[tabId] : undefined;
   switch (command) {
     case "closeTab":
-      // A blank Small Yahu (⌘⌥N, nothing typed yet) closes with its field open.
+      // A blank Little Arcadia (⌘⌥N, nothing typed yet) closes with its field open.
       if (s.windowUi[windowId]?.panel.open && tab?.url) s.closePanel(windowId);
       else if (tabId && s.find[tabId]?.open) closeFind(tabId);
-      else closeSmallYahu(windowId);
+      else closeLittleArcadia(windowId);
       return true;
     case "focusCommandBar":
       s.openPanel(windowId, tab?.url ?? "");

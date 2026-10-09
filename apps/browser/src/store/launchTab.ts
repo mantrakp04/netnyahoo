@@ -2,7 +2,7 @@ import { switchOn } from "../lib/killSwitches";
 import type { BrowserState } from "./browser";
 import { engineProfile } from "./model";
 
-/** The page a launch shows first: what the engine starts loading before the app's window is up (NNCoreWebView
+/** The page a launch shows first: what the engine starts loading before the app's window is up (ArcadiaCoreWebView
  *  startLaunchTab:), and the app claims once its store is hydrated (lib/tabPages.ts). */
 export type LaunchTab = { id: string; url: string; profile: string };
 
@@ -12,12 +12,12 @@ export type LaunchTab = { id: string; url: string; profile: string };
  */
 export const earlyLaunchTabOn = () => switchOn("launchTab");
 
-// A web page: never one of the app's own (netnyahoo://, which has no WebView) or Chrome's.
+// A web page: never one of the app's own (arcadia://, which has no WebView) or Chrome's.
 const WEB = /^https?:\/\//i;
 
 /**
  * The window's active tab, when it is a web page a launch would load: the focused window of a session as saved (its
- * hint for the next launch) or as just hydrated (what that launch shows). None for a private or Small Yahu window, a
+ * hint for the next launch) or as just hydrated (what that launch shows). None for a private or Little Arcadia window, a
  * session the user doesn't restore, or one of the app's own pages.
  */
 export function launchTab(s: Pick<BrowserState, "windows" | "tabs" | "settings">, windowId: string | null | undefined): LaunchTab | null {

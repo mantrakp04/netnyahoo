@@ -100,15 +100,15 @@ test("cleanUrl keeps the rest of the URL exactly as it was", () => {
   assert.equal(cleanUrl("https://user:pw@example.com:8443/p?utm_term=x&k"), "https://user:pw@example.com:8443/p?k");
 });
 
-test("displayed URLs say netnyahoo://, never chrome://", () => {
-  assert.equal(urlForDisplay("netnyahoo://version/"), "netnyahoo://version");
-  assert.equal(urlForDisplay("chrome://version/"), "netnyahoo://version");
-  assert.equal(urlForDisplay("chrome://settings/languages"), "netnyahoo://settings/languages");
-  assert.equal(urlForDisplay("netnyahoo://history/?q=a"), "netnyahoo://history?q=a");
-  assert.equal(displayUrl("chrome://gpu/"), "netnyahoo://gpu");
-  assert.deepEqual(breadcrumb("netnyahoo://version/", "About Version"), { host: "netnyahoo://version", trail: ["About Version"] });
-  assert.deepEqual(breadcrumb("netnyahoo://history", "History"), { host: "netnyahoo://history", trail: [] });
-  assert.deepEqual(breadcrumb("chrome://flags/", "Experiments"), { host: "netnyahoo://flags", trail: ["Experiments"] });
+test("displayed URLs say arcadia://, never chrome://", () => {
+  assert.equal(urlForDisplay("arcadia://version/"), "arcadia://version");
+  assert.equal(urlForDisplay("chrome://version/"), "arcadia://version");
+  assert.equal(urlForDisplay("chrome://settings/languages"), "arcadia://settings/languages");
+  assert.equal(urlForDisplay("arcadia://history/?q=a"), "arcadia://history?q=a");
+  assert.equal(displayUrl("chrome://gpu/"), "arcadia://gpu");
+  assert.deepEqual(breadcrumb("arcadia://version/", "About Version"), { host: "arcadia://version", trail: ["About Version"] });
+  assert.deepEqual(breadcrumb("arcadia://history", "History"), { host: "arcadia://history", trail: [] });
+  assert.deepEqual(breadcrumb("chrome://flags/", "Experiments"), { host: "arcadia://flags", trail: ["Experiments"] });
 });
 
 // Chrome's AutocompleteInput::Parse (components/omnibox/browser/autocomplete_input.cc): a host with a port is a URL, a

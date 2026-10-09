@@ -57,7 +57,7 @@ export function setToolbarPeek(tabId: string, on: boolean) {
 }
 
 export type ToolbarModeInput = {
-  // The setting and a toolbar to hide (not the sidebar's address bar, Small Yahu or fullscreen).
+  // The setting and a toolbar to hide (not the sidebar's address bar, Little Arcadia or fullscreen).
   enabled: boolean;
   // A page with an address: the New Tab page and the app's own pages keep the bar.
   hasPage: boolean;

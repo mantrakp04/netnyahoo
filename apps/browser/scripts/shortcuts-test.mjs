@@ -1,6 +1,6 @@
 // Every shortcut in every focus, then a few for real, in a hidden instance.
 //
-//   node apps/browser/scripts/shortcuts-test.mjs <Debug Netnyahoo.app> [cdpPort]
+//   node apps/browser/scripts/shortcuts-test.mjs <Debug Arcadia.app> [cdpPort]
 //
 // One line per focus (the shortcuts that failed in it) and per real check; the table and the details go to
 // shortcuts-test.log beside the instance's data.
@@ -13,10 +13,10 @@ import { launch, reporter, session, sleep } from "../../../scripts/lib/instance.
 const [appArg, port] = process.argv.slice(2);
 const appPath = appArg && resolve(appArg);
 if (!appPath) {
-  console.error("usage: node shortcuts-test.mjs <Debug Netnyahoo.app> [cdpPort]");
+  console.error("usage: node shortcuts-test.mjs <Debug Arcadia.app> [cdpPort]");
   process.exit(2);
 }
-const scratch = mkdtempSync(join(tmpdir(), "nn-shortcuts-"));
+const scratch = mkdtempSync(join(tmpdir(), "ac-shortcuts-"));
 const data = join(scratch, "data");
 const rep = reporter(join(scratch, "shortcuts-test.log"), { name: "shortcuts-test" });
 
@@ -54,12 +54,12 @@ app = await launch(appPath, {
     tabs: ids.map((id) => tab(id, id.startsWith("pin"))),
   }),
   switches: "--disable-backgrounding-occluded-windows",
-  ready: "return !!nn.shell.devKeyEquivalent",
+  ready: "return !!ac.shell.devKeyEquivalent",
 });
 rep.log(`instance: pid ${app.pid}, DevTools port ${app.port}, data ${data}`);
 await sleep(3000);
 
-const nn = (body, timeout = 60000) => app.eval(body, { timeout }).catch((error) => {
+const ac = (body, timeout = 60000) => app.eval(body, { timeout }).catch((error) => {
   error.message += `\n${body}`;
   throw error;
 });
@@ -76,10 +76,10 @@ async function cdp(urlPart, expression) {
   }
 }
 
-const state = () => nn(`const s = nn.store.getState(), w = s.windows.w1;
+const state = () => ac(`const s = ac.store.getState(), w = s.windows.w1;
   return { profile: w.profileId, active: w.activeTabIds[w.profileId], tabs: w.tabIds.length, panel: !!s.windowUi.w1?.panel.open };`);
-const activeUrl = async () => (await nn(`const s = nn.store.getState(), w = s.windows.w1; return w ? s.tabs[w.activeTabIds[w.profileId]]?.url ?? "" : "no window w1";`));
-const press = (key, options) => nn(`return nn.shell.devKeyEquivalent("w1", ${JSON.stringify({ ...key, ...options })});`);
+const activeUrl = async () => (await ac(`const s = ac.store.getState(), w = s.windows.w1; return w ? s.tabs[w.activeTabIds[w.profileId]]?.url ?? "" : "no window w1";`));
+const press = (key, options) => ac(`return ac.shell.devKeyEquivalent("w1", ${JSON.stringify({ ...key, ...options })});`);
 
 const F = (code) => String.fromCharCode(code);
 const K = (key, keyCode, ...modifiers) => ({ key, keyCode, modifiers });
@@ -128,7 +128,7 @@ const shortcuts = [
   ["⌘S", cmd("s", 1), { command: "toggleSidebar" }, "⌘S"],
   ["⇧⌘L", cmd("L", 37, "shift"), { command: "toggleSidebar" }, "(Chrome's)"],
   ["⇧⌘F", cmd("F", 3, "shift"), { command: "toggleSidebar" }, "(Chrome's)"],
-  ["⌥⌘N", cmd("n", 45, "option"), { command: "newSmallYahu" }, "Arc's Little Arc"],
+  ["⌥⌘N", cmd("n", 45, "option"), { command: "newLittleArcadia" }, "Arc's Little Arc"],
   ["⌃⇧=", K("+", 24, "control", "shift"), { command: "openSplitPane" }, "⌃⇧="],
   ["⌃⇧]", K("}", 30, "control", "shift"), { command: "focusNextPane" }, "⌃⇧]"],
   ["⌃⇧[", K("{", 33, "control", "shift"), { command: "focusPreviousPane" }, "⌃⇧["],
@@ -202,7 +202,7 @@ const describe = (r) =>
     (r.matched?.length ? ` (matched ${r.matched.map((m) => `${m.command ?? m.title}${m.enabled ? "" : " disabled"}`).join(", ")})` : "");
 
 async function showPage(name) {
-  await nn(`nn.store.getState().activate("${name}");`);
+  await ac(`ac.store.getState().activate("${name}");`);
   for (let i = 0; i < 40; i++) {
     if ((await cdp(`?${name}`, "document.readyState")) === "complete") return;
     await sleep(250);
@@ -215,18 +215,18 @@ const focuses = {
   commandBar: {
     press: { asKey: true },
     before: async () => {
-      await nn(`nn.runCommand({ command: "focusCommandBar", arg: null, windowId: "w1" });`);
+      await ac(`ac.runCommand({ command: "focusCommandBar", arg: null, windowId: "w1" });`);
       await sleep(400);
     },
-    teardown: () => nn(`nn.store.getState().closePanel("w1");`),
+    teardown: () => ac(`ac.store.getState().closePanel("w1");`),
   },
   devTools: {
     press: { focus: "devtools", asKey: true, wait: 800 },
     setup: async () => {
-      await nn(`nn.runCommand({ command: "devTools", arg: null, windowId: "w1" });`);
+      await ac(`ac.runCommand({ command: "devTools", arg: null, windowId: "w1" });`);
       await sleep(3000);
     },
-    teardown: () => nn(`nn.runCommand({ command: "devTools", arg: null, windowId: "w1" });`),
+    teardown: () => ac(`ac.runCommand({ command: "devTools", arg: null, windowId: "w1" });`),
   },
 };
 
@@ -275,15 +275,15 @@ const check = (name, ok, detail) => {
   if (!ok) failures++;
   since = Date.now();
 };
-await nn(`globalThis.selections = []; nn.store.subscribe((s, p) => { const w = s.windows.w1, a = w?.activeTabIds[w.profileId];
+await ac(`globalThis.selections = []; ac.store.subscribe((s, p) => { const w = s.windows.w1, a = w?.activeTabIds[w.profileId];
   if (a !== p.windows.w1?.activeTabIds[p.windows.w1.profileId]) globalThis.selections.push(a); }); return 1;`);
 const real = async (label, key, focus, expectUrl) => {
-  await nn(`globalThis.selections.length = 0; return 1;`);
+  await ac(`globalThis.selections.length = 0; return 1;`);
   const r = await press(key, focus);
   await sleep(300);
   const url = await activeUrl();
   const ok = url.endsWith(`?${expectUrl}`);
-  const selected = ok ? [] : await nn(`return globalThis.selections;`);
+  const selected = ok ? [] : await ac(`return globalThis.selections;`);
   check(`${label}: selects ${expectUrl}`, ok, ok ? url : `${url}; ${describe(r)}, first responder ${r.firstResponder}, selected ${selected.join(" → ")}`);
 };
 const sidebar = { focus: "window" };
@@ -301,7 +301,7 @@ await real("⌘9 in a page's text field", cmd("9", 25), page, "t9");
 await showPage("t3");
 await cdp("?t3", "document.getElementById('f').focus(), true");
 await real("⌘4 in a page's text field", cmd("4", 21), page, "t2");
-await nn(`nn.runCommand({ command: "focusCommandBar", arg: null, windowId: "w1" });`);
+await ac(`ac.runCommand({ command: "focusCommandBar", arg: null, windowId: "w1" });`);
 await sleep(600);
 await real("⌘2 in the command bar", cmd("2", 19), { asKey: true }, "pin2");
 check("…and the command bar closes", !(await state()).panel, "");
@@ -312,12 +312,12 @@ await real("⌃⇟ (Next Tab)", K(F(0xf72d), 121, "control", "function"), sideba
 await showPage("t3");
 await sleep(2000);
 {
-  const next = await nn(`const s = nn.store.getState(), w = s.windows.w1, ids = w.tabIds.filter((id) => s.tabs[id].profileId === w.profileId);
+  const next = await ac(`const s = ac.store.getState(), w = s.windows.w1, ids = w.tabIds.filter((id) => s.tabs[id].profileId === w.profileId);
     return ids[ids.indexOf("t3") + 1];`);
   const before = await activeUrl();
   const r = await press(cmd("}", 30, "shift"), page);
   await sleep(300);
-  const now = await nn(`const s = nn.store.getState(), w = s.windows.w1; return w.activeTabIds[w.profileId];`);
+  const now = await ac(`const s = ac.store.getState(), w = s.windows.w1; return w.activeTabIds[w.profileId];`);
   check("⇧⌘] in a page selects the next tab", before.endsWith("?t3") && now === next, `${next} expected, ${now} selected; ${describe(r)}`);
 }
 
@@ -326,7 +326,7 @@ await press(cmd("t", 17), sidebar);
 await sleep(400);
 let after = await state();
 check("⌘T opens a tab and selects it", after.tabs === s.tabs + 1 && (await activeUrl()) === "", `${s.tabs} → ${after.tabs} tabs`);
-await nn(`const s = nn.store.getState(), w = s.windows.w1; s.navigate(w.activeTabIds[w.profileId], "${pages}/?closed");`);
+await ac(`const s = ac.store.getState(), w = s.windows.w1; s.navigate(w.activeTabIds[w.profileId], "${pages}/?closed");`);
 await sleep(1500);
 await press(cmd("w", 13), sidebar);
 await sleep(400);
@@ -345,7 +345,7 @@ await showPage("t3");
 await press(cmd("l", 37), sidebar);
 await sleep(400);
 check("⌘L opens the command bar", (await state()).panel, "");
-await nn(`nn.store.getState().closePanel("w1");`);
+await ac(`ac.store.getState().closePanel("w1");`);
 await showPage("t3");
 await sleep(2000);
 await cdp("?t3", "(f => (f.value = 'hello field', f.focus(), f.setSelectionRange(0, 0), true))(document.getElementById('f'))");

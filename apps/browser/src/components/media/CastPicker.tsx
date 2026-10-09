@@ -1,5 +1,5 @@
-import { CastMode, preferredCastMode, startCasting, stopCasting, type CastSink } from "@netnyahoo/nncore";
-import { openExternalURL, showMenu, Symbol } from "@netnyahoo/shell";
+import { CastMode, preferredCastMode, startCasting, stopCasting, type CastSink } from "@arcadia/arcadiacore";
+import { openExternalURL, showMenu, Symbol } from "@arcadia/shell";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
@@ -39,7 +39,7 @@ export function CastPicker({ tabId, paneWidth }: { tabId: string; paneWidth: num
 
         {dialog.permissionRejected ? (
           <Message
-            text="Netnyahoo needs Local Network access to find Cast devices."
+            text="Arcadia needs Local Network access to find Cast devices."
             link="Open Local Network Settings"
             onLink={() => void openExternalURL("x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork")}
           />

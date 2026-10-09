@@ -1,7 +1,7 @@
 // Hovering moves or resizes nothing but a HoverSlot's contents, in the sidebar, the tab strip and the downloads popover.
 // Launches a hidden instance with a fixture (tabs, an open and a collapsed group, a live folder with an open item, a
 // finished download) and runs the dev harness's check (src/lib/hoverShift.ts) on each surface.
-//   node apps/browser/scripts/hover-shift-test.mjs <Debug Netnyahoo.app> [cdpPort]
+//   node apps/browser/scripts/hover-shift-test.mjs <Debug Arcadia.app> [cdpPort]
 // One line per surface; the details go to hover-shift-test.log beside the instance's data.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,10 +10,10 @@ import { launch, reporter, session, sleep } from "../../../scripts/lib/instance.
 
 const [appArg, port] = process.argv.slice(2);
 if (!appArg) {
-  console.error("usage: node hover-shift-test.mjs <Debug Netnyahoo.app> [cdpPort]");
+  console.error("usage: node hover-shift-test.mjs <Debug Arcadia.app> [cdpPort]");
   process.exit(2);
 }
-const scratch = mkdtempSync(join(tmpdir(), "nn-hover-shift-"));
+const scratch = mkdtempSync(join(tmpdir(), "ac-hover-shift-"));
 const data = join(scratch, "data");
 mkdirSync(data);
 const rep = reporter(join(scratch, "hover-shift-test.log"), { name: "hover-shift-test" });
@@ -32,19 +32,19 @@ try {
   app = await launch(resolve(appArg), {
     data, port,
     session: session({ profiles: ["Personal", "Work"], windows: [{ id: "w1", tabIds: ids, activeTabIds: { default: "t2" } }], tabs: ids.map(tab) }),
-    ready: "return !!nn.hoverShift",
+    ready: "return !!ac.hoverShift",
   });
-  const nn = (body) => app.eval(body, { timeout: 120000 });
+  const ac = (body) => app.eval(body, { timeout: 120000 });
 
   // The fixture: groups, a live folder with an open item (its row shows ✕ on hover) and a finished download.
-  await nn(`
-    const s = nn.store.getState();
+  await ac(`
+    const s = ac.store.getState();
     s.createGroup(["a1", "a2", "a3"], { name: "Open group" });
     const shut = s.createGroup(["b1", "b2"], { name: "Shut group", color: "blue" });
     s.updateGroup(shut, { collapsed: true });
-    const { store, engine } = nn.live;
+    const { store, engine } = ac.live;
     const folder = store.createFolder("default", "pullRequests");
-    const pr = (n, extra) => ({ number: n, repo: "netnyahoo/app", author: "a", authorAvatar: null, draft: false, headRef: "h" + n, baseRef: "main",
+    const pr = (n, extra) => ({ number: n, repo: "arcadia/app", author: "a", authorAvatar: null, draft: false, headRef: "h" + n, baseRef: "main",
       review: null, mergeable: "mergeable", checks: [], comments: 0, unresolvedThreads: 0, additions: 1, deletions: 1, changedFiles: 1, ...extra });
     const item = (n, extra) => ({ id: "pr" + n, source: "github", url: "https://example.com/pr/" + n, title: "Pull request " + n + " with a long title",
       subtitle: "", icon: null, updatedAt: Date.now() - n, section: "authored", pr: pr(n, extra) });
@@ -53,22 +53,22 @@ try {
     store.setStatus(folder, { state: "idle", lastFetch: Date.now(), error: null });
     engine.openLiveItem("w1", folder, items[1], { background: true });
     engine.openLiveItem("w1", folder, items[2], { background: true });
-    nn.store.setState((st) => ({ downloads: [{ id: "d1", url: "https://example.com/report.pdf", filename: "report.pdf", path: ${JSON.stringify(file)},
+    ac.store.setState((st) => ({ downloads: [{ id: "d1", url: "https://example.com/report.pdf", filename: "report.pdf", path: ${JSON.stringify(file)},
       state: "finished", paused: false, received: 9, total: 9, speed: 0, mimeType: "application/pdf" }, ...st.downloads] }));
     return true;
   `);
   await sleep(1500);
 
   const surfaces = [
-    ["sidebar", `nn.store.getState().updateSettings({ tabLayout: "sidebar" });`, ["Sidebar"]],
-    ["tab strip", `nn.store.getState().updateSettings({ tabLayout: "top" });`, ["TopTabStrip"]],
-    ["downloads", `nn.store.getState().updateSettings({ tabLayout: "sidebar" }); nn.store.getState().setDownloadsOpen("w1", true);`, ["DownloadsPopover"]],
+    ["sidebar", `ac.store.getState().updateSettings({ tabLayout: "sidebar" });`, ["Sidebar"]],
+    ["tab strip", `ac.store.getState().updateSettings({ tabLayout: "top" });`, ["TopTabStrip"]],
+    ["downloads", `ac.store.getState().updateSettings({ tabLayout: "sidebar" }); ac.store.getState().setDownloadsOpen("w1", true);`, ["DownloadsPopover"]],
   ];
   for (const [name, setup, scopes] of surfaces) {
     await rep.check(name, async () => {
-      await nn(`${setup} return true;`);
+      await ac(`${setup} return true;`);
       await sleep(1200);
-      const { hovered, shifts } = await nn(`return nn.hoverShift.check({ scopes: ${JSON.stringify(scopes)} });`);
+      const { hovered, shifts } = await ac(`return ac.hoverShift.check({ scopes: ${JSON.stringify(scopes)} });`);
       if (!hovered) throw new Error("nothing hover-tracked found");
       if (shifts.length) {
         throw new Error([`${shifts.length} views moved or resized (${hovered} hovered)`,

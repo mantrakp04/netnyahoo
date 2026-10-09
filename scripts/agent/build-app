@@ -4,7 +4,7 @@
 #   scripts/agent/build-app [--as NAME] [--config Debug|Release] [--force] [--wait SECS]
 #   scripts/agent/build-app -h | --help
 #
-# --as NAME     your agent name (default: $NN_LOCKED_AS, else "dev"). Builds into apps/browser/build-NAME, and is
+# --as NAME     your agent name (default: $AC_LOCKED_AS, else "dev"). Builds into apps/browser/build-NAME, and is
 #               passed to `locked` so a chromium take of yours covers the engine staging.
 # --config      Debug (default) or Release.
 # --force       build even when no native file changed.
@@ -30,7 +30,7 @@ usage() {
   exit 64
 }
 
-name=${NN_LOCKED_AS:-dev} config=Debug force="" wait=1500
+name=${AC_LOCKED_AS:-dev} config=Debug force="" wait=1500
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h | --help) help ;;
@@ -52,8 +52,8 @@ repo=$(cd "$(dirname "$0")/../.." && pwd)
 app_dir="$repo/apps/browser"
 dd="$app_dir/build-$name"
 log="$dd/build-app.log"
-app="$dd/Build/Products/$config/Netnyahoo.app"
-stamp_file="$dd/.nn-native-stamp-$config"
+app="$dd/Build/Products/$config/Arcadia.app"
+stamp_file="$dd/.ac-native-stamp-$config"
 
 # Everything the native build reads that git sees, plus the Pods install and the engine framework. A change
 # anywhere else is JS (or docs, tests…), which Metro serves to every instance. A pathspec with a wildcard matches whole
@@ -64,8 +64,8 @@ native_stamp() {
     git ls-files -co --exclude-standard -- \
       apps/browser/macos apps/browser/app.json apps/browser/react-native.config.js \
       'packages/*/ios/*' 'packages/*/expo-module.config.json' packages/shell/docktile \
-      packages/nncore/scripts/embed.sh packages/nncore/scripts/stage-framework.sh packages/nncore/scripts/ubol.sh \
-      packages/nncore/scripts/signing engine/nncore/src/netnyahoo/core/public patches pnpm-lock.yaml
+      packages/arcadiacore/scripts/embed.sh packages/arcadiacore/scripts/stage-framework.sh packages/arcadiacore/scripts/ubol.sh \
+      packages/arcadiacore/scripts/signing engine/arcadiacore/src/arcadia/core/public patches pnpm-lock.yaml
     echo apps/browser/macos/Pods/Manifest.lock
   ) | python3 -c '
 import hashlib, os, sys
@@ -80,7 +80,7 @@ if os.path.exists(binary):
     st = os.stat(binary)
     h.update(("engine %s %d %d" % (framework, st.st_mtime, st.st_size)).encode())
 print(h.hexdigest())
-' "$repo" "${NNCORE_FRAMEWORK:-$HOME/chromium-build/chromium_git/chromium/src/out/Release_GN_arm64/Chromium Framework.framework}"
+' "$repo" "${ARCADIACORE_FRAMEWORK:-$HOME/chromium-build/chromium_git/chromium/src/out/Release_GN_arm64/Chromium Framework.framework}"
 }
 
 stamp=$(native_stamp) || { echo "build-app: couldn't hash the native files" >&2; exit 1; }
@@ -97,7 +97,7 @@ echo "build-app: $config into ${dd#"$repo"/} (log: ${log#"$repo"/})"
 (
   cd "$app_dir" &&
     "$repo/scripts/agent/locked" xcodebuild --wait "$wait" --as "$name" -- \
-      xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath "$dd" \
+      xcodebuild -workspace macos/Arcadia.xcworkspace -scheme Arcadia-macOS -derivedDataPath "$dd" \
       -destination 'platform=macOS,arch=arm64' -configuration "$config" -hideShellScriptEnvironment build
 ) >"$log" 2>&1
 status=$?

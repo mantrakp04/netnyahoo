@@ -8,7 +8,7 @@ import {
   setAsDefaultBrowser,
   setLaunchAtLogin,
   Symbol,
-} from "@netnyahoo/shell";
+} from "@arcadia/shell";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { PROFILE_COLORS, themeFor, useTheme } from "../../lib/theme";
@@ -99,13 +99,13 @@ export function DefaultBrowserStep() {
       preview={<SystemPreview isDefault={!!defaultOn} dock={!!(system?.inDock || dock)} login={login} />}
     >
       <Reveal delay={60}>
-        <StepTitle title="Fast, secure, and packed with all your browser essentials" subtitle="Netnyahoo works best as your default browser." />
+        <StepTitle title="Fast, secure, and packed with all your browser essentials" subtitle="Arcadia works best as your default browser." />
       </Reveal>
       <Reveal delay={140} style={{ gap: 6 }}>
         <CheckRow
           icon="globe"
-          title="Set Netnyahoo as default browser"
-          subtitle={system?.isDefault ? "Netnyahoo is already your default browser" : "Open links and web pages in Netnyahoo by default"}
+          title="Set Arcadia as default browser"
+          subtitle={system?.isDefault ? "Arcadia is already your default browser" : "Open links and web pages in Arcadia by default"}
           value={defaultOn}
           disabled={!system || system.isDefault}
           onChange={setSetDefault}
@@ -113,16 +113,16 @@ export function DefaultBrowserStep() {
         {!system?.isDefault && setDefault ? (
           <CheckRow
             icon="calendar"
-            title="Try Netnyahoo as your default for seven days"
+            title="Try Arcadia as your default for seven days"
             subtitle="We'll check in to make sure you love it."
             value={trial}
             onChange={setTrial}
           />
         ) : null}
         {system && !system.inDock ? (
-          <CheckRow icon="dock.rectangle" title="Add Netnyahoo to Dock" subtitle="Quick access to Netnyahoo whenever you need it" value={dock} onChange={setDock} />
+          <CheckRow icon="dock.rectangle" title="Add Arcadia to Dock" subtitle="Quick access to Arcadia whenever you need it" value={dock} onChange={setDock} />
         ) : null}
-        <CheckRow icon="power" title="Open Netnyahoo at login" subtitle="Automatically open Netnyahoo when you sign in" value={login} onChange={setLogin} />
+        <CheckRow icon="power" title="Open Arcadia at login" subtitle="Automatically open Arcadia when you sign in" value={login} onChange={setLogin} />
       </Reveal>
     </StepLayout>
   );
@@ -305,7 +305,7 @@ export function ImportStep() {
           title="Bring your browsing with you"
           subtitle={
             opened
-              ? "Finish up in the import window, then continue here. You can import more any time from the Netnyahoo menu."
+              ? "Finish up in the import window, then continue here. You can import more any time from the Arcadia menu."
               : "Import bookmarks, history, passwords and tabs from the browser you use now, and stay signed in to your sites. It all stays on this Mac."
           }
         />
@@ -341,7 +341,7 @@ export function PinnedTabsStep() {
       preview={<PinnedPreview selected={selected} />}
     >
       <Reveal delay={60}>
-        <StepTitle title="Keep your favorite apps handy" subtitle="Pin important apps so they're always available when you open Netnyahoo." />
+        <StepTitle title="Keep your favorite apps handy" subtitle="Pin important apps so they're always available when you open Arcadia." />
       </Reveal>
       <Reveal delay={140} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {PINNABLE_SITES.map((site) => (

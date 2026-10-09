@@ -1,5 +1,5 @@
 // Dev harness check: hovering moves or resizes nothing but a HoverSlot's contents.
-// `nn.hoverShift.check({ scopes })` hovers every view whose hover is tracked by `useHover`/`useRowHover` inside the
+// `ac.hoverShift.check({ scopes })` hovers every view whose hover is tracked by `useHover`/`useRowHover` inside the
 // named components, one at a time, and compares the frames of every view around it (its parent's subtree) before and
 // while hovered. Run by apps/browser/scripts/hover-shift-test.mjs.
 import { HoverSlot } from "../components/HoverSlot";

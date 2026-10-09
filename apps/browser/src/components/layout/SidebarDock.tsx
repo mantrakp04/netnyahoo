@@ -1,4 +1,4 @@
-import { setTrafficLightsCenter, Surface } from "@netnyahoo/shell";
+import { setTrafficLightsCenter, Surface } from "@arcadia/shell";
 import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
@@ -167,7 +167,7 @@ function SidebarDock({
   const peek = usePeek(!open && !moving && !fullscreen, arc);
   const peeking = !open && !fullscreen && peek.live;
   useEffect(() => setPeekShown(windowId, peek.live), [windowId, peek.live]);
-  // Development: the dev harness opens and closes the peek without a pointer (nnLayout.peek[windowId].show()).
+  // Development: the dev harness opens and closes the peek without a pointer (acLayout.peek[windowId].show()).
   if (__DEV__) devPeeks[windowId] = peek;
   useEffect(() => () => setPeekShown(windowId, false), [windowId]);
   const panel = useRef(false);

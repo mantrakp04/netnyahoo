@@ -24,7 +24,7 @@ const flags = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) (args[i].startsWith("--") ? (flags[args[i].slice(2)] = args[++i]) : positional.push(args[i]));
 const [beforeRev = "f3417151^", afterRev = "f3417151"] = positional;
-const out = resolve(flags.out ?? join(process.env.TMPDIR ?? "/tmp", "nn-ratchet-proof"));
+const out = resolve(flags.out ?? join(process.env.TMPDIR ?? "/tmp", "ac-ratchet-proof"));
 
 // The workload: a 1000-tab window (every 10th pair a split, groups of 20), one tab retitled, then the sidebar's
 // entries asked for. Same code on both revisions.

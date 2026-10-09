@@ -76,7 +76,7 @@ createServer(async (req, res) => {
   if (p === "/github/login/device/code") return send(res, 200, { device_code: "mock-device", user_code: "WDJB-MJHT", verification_uri: `http://127.0.0.1:${port}/github/login/device`, expires_in: 900, interval: 1 });
   if (p === "/github/login/device") {
     if (url.searchParams.get("approve")) approved = true;
-    return send(res, 200, `<!doctype html><title>Device Activation</title><body style="font:15px -apple-system;padding:40px"><h2>Mock GitHub device activation</h2><p>Code WDJB-MJHT</p>${approved ? "<p id=done>Authorized. You can close this tab.</p>" : `<a id=approve href="?approve=1">Authorize Netnyahoo</a>`}</body>`, "text/html");
+    return send(res, 200, `<!doctype html><title>Device Activation</title><body style="font:15px -apple-system;padding:40px"><h2>Mock GitHub device activation</h2><p>Code WDJB-MJHT</p>${approved ? "<p id=done>Authorized. You can close this tab.</p>" : `<a id=approve href="?approve=1">Authorize Arcadia</a>`}</body>`, "text/html");
   }
   if (p === "/github/login/oauth/access_token") return send(res, 200, approved ? { access_token: "mock-token", token_type: "bearer" } : { error: "authorization_pending" });
   if (p === "/github/graphql") {

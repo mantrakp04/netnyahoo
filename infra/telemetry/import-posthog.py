@@ -5,7 +5,7 @@
 
 Input: JSONL, one PostHog event per line: {"uuid", "event", "distinct_id", "timestamp", "properties",
 ["person_id"], ["elements_chain"]} (the export made with PostHog's MCP, docs/growth.md "Telemetry").
-Credentials: ~/.config/netnyahoo/telemetry.env (CLICKHOUSE_URL and CLICKHOUSE_IMPORTER_PASSWORD); the
+Credentials: ~/.config/arcadia/telemetry.env (CLICKHOUSE_URL and CLICKHOUSE_IMPORTER_PASSWORD); the
 "importer" user can only add rows to telemetry.posthog_events.
 
 Safe to re-run and to feed overlapping exports: rows keep PostHog's uuid, and the table collapses rows
@@ -19,7 +19,7 @@ import os
 import sys
 import urllib.request
 
-ENV = os.path.expanduser("~/.config/netnyahoo/telemetry.env")
+ENV = os.path.expanduser("~/.config/arcadia/telemetry.env")
 BATCH = 5000
 
 

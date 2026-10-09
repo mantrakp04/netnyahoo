@@ -1,5 +1,5 @@
 {
-  "name": "@netnyahoo/shaders",
+  "name": "@arcadia/shaders",
   "version": "0.0.0",
   "private": true,
   "description": "Metal shaders: Dia-style new-tab area light and grained OKLab window backdrop",

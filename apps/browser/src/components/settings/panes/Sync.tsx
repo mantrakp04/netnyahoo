@@ -1,5 +1,5 @@
-import { showMenu, Symbol } from "@netnyahoo/shell";
-import { SyncNative, type FolderInfo } from "@netnyahoo/sync";
+import { showMenu, Symbol } from "@arcadia/shell";
+import { SyncNative, type FolderInfo } from "@arcadia/sync";
 import { useEffect, useState } from "react";
 import { Linking, Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";

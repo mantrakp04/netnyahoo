@@ -1,14 +1,14 @@
 #!/bin/bash
-# Removes agents' test builds from LaunchServices. Every Netnyahoo.app an agent builds or launches registers
-# under the real bundle id (com.netnyahoo.browser), and macOS may then pick one of them when the owner opens
-# Netnyahoo or clicks a link: on 2026-10-01 the owner's browser came back up as an agent's half-finished
-# Release build, on their real data. Keeps /Applications/Netnyahoo.app and dist/*-rc/export builds (the RCs
+# Removes agents' test builds from LaunchServices. Every Arcadia.app an agent builds or launches registers
+# under the real bundle id (com.arcadia.browser), and macOS may then pick one of them when the owner opens
+# Arcadia or clicks a link: on 2026-10-01 the owner's browser came back up as an agent's half-finished
+# Release build, on their real data. Keeps /Applications/Arcadia.app and dist/*-rc/export builds (the RCs
 # the owner tries); a running app keeps running. `locked xcodebuild` runs this after every build.
 lsr=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-"$lsr" -dump 2>/dev/null | sed -n 's/^path: *\(.*\/Netnyahoo[^/]*\.app\) (0x.*/\1/p' | grep -v '/Contents/' | sort -u |
+"$lsr" -dump 2>/dev/null | sed -n 's/^path: *\(.*\/Arcadia[^/]*\.app\) (0x.*/\1/p' | grep -v '/Contents/' | sort -u |
   while IFS= read -r app; do
     case "$app" in
-      /Applications/Netnyahoo.app | */dist/*-rc/export/Netnyahoo.app) ;;
+      /Applications/Arcadia.app | */dist/*-rc/export/Arcadia.app) ;;
       *) "$lsr" -u "$app" 2>/dev/null ;;
     esac
   done

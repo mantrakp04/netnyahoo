@@ -1,11 +1,11 @@
-import type * as ImportApi from "@netnyahoo/import";
+import type * as ImportApi from "@arcadia/import";
 
 let api: typeof ImportApi | null | undefined;
 
 export function importModule(): typeof ImportApi | null {
   if (api === undefined) {
     try {
-      api = require("@netnyahoo/import") as typeof ImportApi;
+      api = require("@arcadia/import") as typeof ImportApi;
     } catch {
       api = null;
     }

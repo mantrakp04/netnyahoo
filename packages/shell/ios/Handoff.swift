@@ -34,11 +34,11 @@ public enum Handoff {
 
 /// Shares one page (its URL and title) through macOS's sharing services: the share sheet (the site popover's Share…,
 /// the command bar), File › Share's submenu and the tab menu's Share submenu. A hidden test instance
-/// (NETNYAHOO_BACKGROUND) never shows the sheet or runs a service: it logs what it would share to activation.log.
+/// (ARCADIA_BACKGROUND) never shows the sheet or runs a service: it logs what it would share to activation.log.
 enum SharePicker {
   private static var current: NSSharingServicePicker?
   private static let delegate = ShareDelegate()
-  private static let background = ProcessInfo.processInfo.environment["NETNYAHOO_BACKGROUND"] == "1"
+  private static let background = ProcessInfo.processInfo.environment["ARCADIA_BACKGROUND"] == "1"
 
   /// `anchor`: the control's rect in the window, from its top left (RN's measureInWindow); else the top of the page.
   /// `done` runs once the sheet closes.
@@ -116,9 +116,9 @@ enum SharePicker {
     "url=\(url) title=\"\(title ?? "")\""
   }
 
-  // The same file the activation guards and file panels report to (NNCoreActivation.mm).
+  // The same file the activation guards and file panels report to (ArcadiaCoreActivation.mm).
   private static func log(_ line: String) {
-    guard let dir = ProcessInfo.processInfo.environment["NETNYAHOO_DATA_DIR"] else { return }
+    guard let dir = ProcessInfo.processInfo.environment["ARCADIA_DATA_DIR"] else { return }
     let path = (dir as NSString).appendingPathComponent("activation.log")
     let stamp = ISO8601DateFormatter().string(from: Date())
     guard let data = "\(stamp) \(line)\n".data(using: .utf8) else { return }

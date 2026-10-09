@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 
 // scripts/agent/cpu-cap keeps our processes on background QoS (efficiency cores) and SIGSTOPs the busiest while the Mac is
 // over its cap. Frame timings from a run it touched are invalid: its log says when it paused one of this run's processes.
-const CAP_LOG = process.env.NN_CPU_CAP_LOG ?? "/private/tmp/claude-501/-Users-barreloflube-Documents-netnyahoo/a6e87140-35e6-4a65-85e0-018a5c019c75/scratchpad/cpu-cap.log";
+const CAP_LOG = process.env.AC_CPU_CAP_LOG ?? "/private/tmp/claude-501/-Users-barreloflube-Documents-arcadia/a6e87140-35e6-4a65-85e0-018a5c019c75/scratchpad/cpu-cap.log";
 const capRunning = () => spawnSync("pgrep", ["-f", "scripts/agent/cpu-cap"]).status === 0;
 const capSize = () => {
   try {
@@ -161,51 +161,51 @@ export function windowStats(rec, a, b, refresh) {
 // Each `go(c)` starts the interaction and returns its start (epoch ms, the interaction's own clock); `after(c)` puts the app back.
 function interactions(c) {
   const { app, key, sleep, run, W, probe, base } = c;
-  const seedTab = `(() => { const s = nn.store.getState(); return Object.keys(s.tabs).find((id) => s.tabs[id].url.includes("id=seed")); })()`;
-  const reset = () => run(`const s = nn.store.getState(); const w = ${W};
+  const seedTab = `(() => { const s = ac.store.getState(); return Object.keys(s.tabs).find((id) => s.tabs[id].url.includes("id=seed")); })()`;
+  const reset = () => run(`const s = ac.store.getState(); const w = ${W};
     if (s.windowUi[w]?.panel.open) s.closePanel(w);
-    for (const id of s.windows[w].tabIds) if (!s.tabs[id].url && s.windows[w].tabIds.length > 1) nn.store.getState().closeTab(id);
-    const seed = ${seedTab}; if (seed && s.windows[w].activeTabIds[s.windows[w].profileId] !== seed) nn.store.getState().activate(seed);
+    for (const id of s.windows[w].tabIds) if (!s.tabs[id].url && s.windows[w].tabIds.length > 1) ac.store.getState().closeTab(id);
+    const seed = ${seedTab}; if (seed && s.windows[w].activeTabIds[s.windows[w].profileId] !== seed) ac.store.getState().activate(seed);
     return true;`);
-  const store = (code) => run(`globalThis.nnPerf?.reset(); const t = nn.now(); ${code}; return t;`);
+  const store = (code) => run(`globalThis.acPerf?.reset(); const t = ac.now(); ${code}; return t;`);
   let k = 0;
   // The sidebar in the state an interaction starts from (a toggle each repetition would alternate), with its swap settled.
   const want = async (open) => {
-    if ((await run(`return ${"nn.store.getState().windows[" + W + "].sidebarOpen"};`)) !== open) {
-      await run(`nn.store.getState().toggleSidebar(${W}); return 1;`);
+    if ((await run(`return ${"ac.store.getState().windows[" + W + "].sidebarOpen"};`)) !== open) {
+      await run(`ac.store.getState().toggleSidebar(${W}); return 1;`);
       await sleep(2500);
     }
   };
   const arcLayout = async (on) => {
     const value = on ? "sidebar" : "toolbar";
-    if ((await run(`return nn.store.getState().settings.addressBar;`)) === value) return;
-    await run(`nn.store.getState().updateSettings({ addressBar: "${value}" }); return 1;`);
+    if ((await run(`return ac.store.getState().settings.addressBar;`)) === value) return;
+    await run(`ac.store.getState().updateSettings({ addressBar: "${value}" }); return 1;`);
     await sleep(1500);
   };
-  const ui = `nn.store.getState().windowUi[${W}]?.panel.open`;
-  const win = `nn.store.getState().windows[${W}]`;
+  const ui = `ac.store.getState().windowUi[${W}]?.panel.open`;
+  const win = `ac.store.getState().windows[${W}]`;
   return [
     { name: "idle (no interaction)", window: 1500, go: async () => Date.now() },
-    { name: "new tab with the command bar (⌘T)", window: 600, verify: `const s = nn.store.getState(); return s.windows[${W}].tabIds.some((id) => !s.tabs[id].url);`, go: () => key("cmd+t"), after: async () => { await sleep(900); } },
-    { name: "close the new tab (⌘W)", window: 600, before: () => key.open("cmd+t"), verify: `const s = nn.store.getState(); return !s.windows[${W}].tabIds.some((id) => !s.tabs[id].url);`, go: () => key("cmd+w"), after: reset },
+    { name: "new tab with the command bar (⌘T)", window: 600, verify: `const s = ac.store.getState(); return s.windows[${W}].tabIds.some((id) => !s.tabs[id].url);`, go: () => key("cmd+t"), after: async () => { await sleep(900); } },
+    { name: "close the new tab (⌘W)", window: 600, before: () => key.open("cmd+t"), verify: `const s = ac.store.getState(); return !s.windows[${W}].tabIds.some((id) => !s.tabs[id].url);`, go: () => key("cmd+w"), after: reset },
     { name: "command bar open (⌘L)", window: 600, verify: `return !!${ui};`, before: reset, go: () => key("cmd+l"), after: async () => { await sleep(900); } },
     { name: "command bar close (Esc, from ⌘L)", window: 600, verify: `return !${ui};`, before: async () => { await reset(); await key.open("cmd+l"); }, go: () => key("esc"), after: reset },
-    { name: "tab switch", window: 500, verify: `const s = nn.store.getState(); return s.windows[${W}].activeTabIds[s.windows[${W}].profileId] === globalThis.__frameTarget;`, before: reset, go: () => run(`globalThis.nnPerf?.reset(); const t = nn.now(); const s = nn.store.getState(); const w = ${W};
+    { name: "tab switch", window: 500, verify: `const s = ac.store.getState(); return s.windows[${W}].activeTabIds[s.windows[${W}].profileId] === globalThis.__frameTarget;`, before: reset, go: () => run(`globalThis.acPerf?.reset(); const t = ac.now(); const s = ac.store.getState(); const w = ${W};
         const ids = s.windows[w].tabIds.filter((id) => !s.tabs[id].pinned); const id = ids[(${k++} * 7 + 3) % ids.length];
-        globalThis.__frameTarget = id; nn.actions.switchToTab(id); return t;`) },
-    { name: "sidebar collapse", window: 800, verify: `return !${win}.sidebarOpen;`, before: async () => { await reset(); await want(true); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`) },
-    { name: "sidebar expand", window: 800, verify: `return ${win}.sidebarOpen;`, before: async () => { await reset(); await want(false); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`), after: () => sleep(300) },
+        globalThis.__frameTarget = id; ac.actions.switchToTab(id); return t;`) },
+    { name: "sidebar collapse", window: 800, verify: `return !${win}.sidebarOpen;`, before: async () => { await reset(); await want(true); }, go: () => store(`ac.store.getState().toggleSidebar(${W})`) },
+    { name: "sidebar expand", window: 800, verify: `return ${win}.sidebarOpen;`, before: async () => { await reset(); await want(false); }, go: () => store(`ac.store.getState().toggleSidebar(${W})`), after: () => sleep(300) },
     // Arc's layout (the address bar in the sidebar): no toolbar row on the card, Arc's 100 ms hide (SidebarDock.tsx).
-    { name: "sidebar collapse (address bar in the sidebar)", window: 800, verify: `return !${win}.sidebarOpen;`, before: async () => { await reset(); await arcLayout(true); await want(true); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`) },
-    { name: "sidebar expand (address bar in the sidebar)", window: 800, verify: `return ${win}.sidebarOpen;`, before: async () => { await reset(); await arcLayout(true); await want(false); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`), after: async () => { await sleep(300); await arcLayout(false); } },
-    { name: "profile swipe (next profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: async () => { await reset(); await run(`globalThis.__frameProfile = ${win}.profileId; return 1;`); }, go: () => store(`nn.runCommand({ command: "nextProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
-    { name: "profile swipe (previous profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: () => run(`globalThis.__frameProfile = ${win}.profileId; return 1;`), go: () => store(`nn.runCommand({ command: "previousProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
+    { name: "sidebar collapse (address bar in the sidebar)", window: 800, verify: `return !${win}.sidebarOpen;`, before: async () => { await reset(); await arcLayout(true); await want(true); }, go: () => store(`ac.store.getState().toggleSidebar(${W})`) },
+    { name: "sidebar expand (address bar in the sidebar)", window: 800, verify: `return ${win}.sidebarOpen;`, before: async () => { await reset(); await arcLayout(true); await want(false); }, go: () => store(`ac.store.getState().toggleSidebar(${W})`), after: async () => { await sleep(300); await arcLayout(false); } },
+    { name: "profile swipe (next profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: async () => { await reset(); await run(`globalThis.__frameProfile = ${win}.profileId; return 1;`); }, go: () => store(`ac.runCommand({ command: "nextProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
+    { name: "profile swipe (previous profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: () => run(`globalThis.__frameProfile = ${win}.profileId; return 1;`), go: () => store(`ac.runCommand({ command: "previousProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
     { name: "sidebar scroll (200 tabs, flick down and back)", window: 2300, before: reset,
-      go: async () => { await run(`globalThis.nnPerf?.reset(); return 1;`); const t = Date.now(); await probe("scroll", { distance: 4000, seconds: 1, back: true }, false); return t; } },
-    { name: "sidebar hover (20 rows, 60 ms apart)", window: 1500, before: reset, go: async () => { await run(`globalThis.nnPerf?.reset(); return 1;`); const t = Date.now(); await probe("hover", { rows: 20, gapMs: 60 }, false); return t; } },
-    { name: "new window", window: 1200, verify: `return nn.store.getState().windowOrder.length > globalThis.__frameWindows;`, before: async () => { await reset(); await run(`globalThis.__frameWindows = nn.store.getState().windowOrder.length; return 1;`); },
-      go: () => store(`nn.actions.openWindow({ url: "${base()}/static?id=fw${k++}" })`),
-      after: async () => { await sleep(1500); await run(`const s = nn.store.getState(); for (const id of s.windowOrder) if (s.windows[id] && id !== ${W} && !s.windows[id].kind) nn.store.getState().closeWindow(id); return true;`); await sleep(1500); } },
+      go: async () => { await run(`globalThis.acPerf?.reset(); return 1;`); const t = Date.now(); await probe("scroll", { distance: 4000, seconds: 1, back: true }, false); return t; } },
+    { name: "sidebar hover (20 rows, 60 ms apart)", window: 1500, before: reset, go: async () => { await run(`globalThis.acPerf?.reset(); return 1;`); const t = Date.now(); await probe("hover", { rows: 20, gapMs: 60 }, false); return t; } },
+    { name: "new window", window: 1200, verify: `return ac.store.getState().windowOrder.length > globalThis.__frameWindows;`, before: async () => { await reset(); await run(`globalThis.__frameWindows = ac.store.getState().windowOrder.length; return 1;`); },
+      go: () => store(`ac.actions.openWindow({ url: "${base()}/static?id=fw${k++}" })`),
+      after: async () => { await sleep(1500); await run(`const s = ac.store.getState(); for (const id of s.windowOrder) if (s.windows[id] && id !== ${W} && !s.windows[id].kind) ac.store.getState().closeWindow(id); return true;`); await sleep(1500); } },
   ];
 }
 
@@ -221,7 +221,7 @@ export async function framesRun(c, side, i, { counts }) {
   if (counts) writeFileSync(join(dir, "perf-probe"), "");
   const app = new Instance(side, dir);
   app.frames = true;
-  app.env.push("NN_BENCH_FRAMES=1");
+  app.env.push("AC_BENCH_FRAMES=1");
   const rec = new Records(join(dir, "bench-frames.jsonl"));
   const run = (code) => app.run(code);
   let seq = 0;
@@ -268,7 +268,7 @@ export async function framesRun(c, side, i, { counts }) {
     }
     return false;
   };
-  const jsCounts = () => run(`const p = globalThis.nnPerf?.read(); if (!p) return null; const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+  const jsCounts = () => run(`const p = globalThis.acPerf?.read(); if (!p) return null; const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
     const top = (o, n = 6) => Object.entries(o).sort((x, y) => y[1] - x[1]).slice(0, n).map(([k, v]) => k + " " + v).join(", ");
     return { commits: p.commits, hostUpdates: p.hostUpdates, renders: sum(p.renders), storeUpdates: sum(p.storeUpdates), tasks: sum(p.tasks),
       what: { renders: top(p.renders), tasks: top(p.tasks), timers: top(p.timers), storeKeys: top(p.storeKeys) } };`);
@@ -306,7 +306,7 @@ export async function framesRun(c, side, i, { counts }) {
         try {
           if (it.before) await it.before();
           if (!(await quiet(5000))) out.notQuiet = (out.notQuiet ?? 0) + 1;
-          if (counts) await run(`globalThis.nnPerf?.reset(); return 1;`);
+          if (counts) await run(`globalThis.acPerf?.reset(); return 1;`);
           const c0 = await counters();
 
           const t0 = await it.go();

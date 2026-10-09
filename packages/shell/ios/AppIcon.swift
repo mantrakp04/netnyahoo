@@ -9,7 +9,7 @@ enum AppIcons {
     let mono: Bool
   }
 
-  static let defaultsKey = "NNAppIcon"
+  static let defaultsKey = "ACAppIcon"
   static func changedNotification(bundleId: String) -> Notification.Name { .init("\(bundleId).AppIconChanged") }
 
   static let variants: [Variant] = [

@@ -6,10 +6,10 @@ index cac171e70c9fa225cdec45b205086342a0d50f06..3e63c9761e540e6450448b5241fe55b9
  #if TARGET_OS_OSX // [macOS avoids duplicating effects of textInputDid(Begin|End)Editing calls
    BOOL _isCurrentlyEditing;
  #endif // macOS]
-+#if TARGET_OS_OSX // [Netnyahoo: the edit in progress (counted), and whether a click began it with its focus props to come
++#if TARGET_OS_OSX // [Arcadia: the edit in progress (counted), and whether a click began it with its focus props to come
 +  NSUInteger _editSession;
 +  BOOL _clickFocused;
-+#endif // Netnyahoo]
++#endif // Arcadia]
  }
  
  #if !TARGET_OS_OSX // [macOS]
@@ -17,11 +17,11 @@ index cac171e70c9fa225cdec45b205086342a0d50f06..3e63c9761e540e6450448b5241fe55b9
      return;
    }
    _isCurrentlyEditing = YES;
-+  // [Netnyahoo
++  // [Arcadia
 +  _editSession++;
 +  NSEventType began = NSApp.currentEvent.type;
 +  _clickFocused = began == NSEventTypeLeftMouseDown || began == NSEventTypeRightMouseDown || began == NSEventTypeOtherMouseDown;
-+  // Netnyahoo]
++  // Arcadia]
  #endif // macOS]
    
    [_eventDispatcher sendTextEventWithType:RCTTextEventTypeFocus
@@ -29,9 +29,9 @@ index cac171e70c9fa225cdec45b205086342a0d50f06..3e63c9761e540e6450448b5241fe55b9
  
  #pragma mark - Focus Control
  
-+#if TARGET_OS_OSX // [Netnyahoo
++#if TARGET_OS_OSX // [Arcadia
 +// Being edited: its window's first responder is the field editor (single line) or the view itself (multiline).
-+- (BOOL)nn_isEditing
++- (BOOL)ac_isEditing
 +{
 +  NSView *backed = self.backedTextInputView;
 +  NSResponder *responder = backed.window.firstResponder;
@@ -39,9 +39,9 @@ index cac171e70c9fa225cdec45b205086342a0d50f06..3e63c9761e540e6450448b5241fe55b9
 +                       ([backed isKindOfClass:[NSTextField class]] && responder == [(NSTextField *)backed currentEditor]));
 +}
 +
-+- (void)nn_applyFocusPropsInSession:(NSUInteger)session
++- (void)ac_applyFocusPropsInSession:(NSUInteger)session
 +{
-+  if (session != _editSession || ![self nn_isEditing]) {
++  if (session != _editSession || ![self ac_isEditing]) {
 +    return;
 +  }
 +  if (_clearTextOnFocus) {
@@ -51,27 +51,27 @@ index cac171e70c9fa225cdec45b205086342a0d50f06..3e63c9761e540e6450448b5241fe55b9
 +    [self.backedTextInputView selectAll:nil];
 +  }
 +}
-+#endif // Netnyahoo]
++#endif // Arcadia]
 +
  - (void)reactFocus
  {
-+#if TARGET_OS_OSX // [Netnyahoo: focus() on a field already being edited leaves the edit as it is. A press in a TextInput
++#if TARGET_OS_OSX // [Arcadia: focus() on a field already being edited leaves the edit as it is. A press in a TextInput
 +  // calls focus() (TextInput.js skips its "already focused" check on macOS), and making an editing NSTextField first
 +  // responder again ends its edit (a blur), starts a new one and selects all: a click in the command bar closed it.
 +  // A field a click just focused (AppKit, on mouse-down) gets its focus props once, after that click: run inside the
 +  // click's mouse tracking, the caret it places would land after them.
-+  if ([self nn_isEditing]) {
++  if ([self ac_isEditing]) {
 +    if (_clickFocused) {
 +      _clickFocused = NO;
 +      NSUInteger session = _editSession;
 +      __weak RCTBaseTextInputView *weakSelf = self;
 +      [[NSRunLoop mainRunLoop] performInModes:@[ NSDefaultRunLoopMode ] block:^{
-+        [weakSelf nn_applyFocusPropsInSession:session];
++        [weakSelf ac_applyFocusPropsInSession:session];
 +      }];
 +    }
 +    return;
 +  }
-+#endif // Netnyahoo]
++#endif // Arcadia]
    [self.backedTextInputView reactFocus];
  
    if (_clearTextOnFocus) {
@@ -79,9 +79,9 @@ index cac171e70c9fa225cdec45b205086342a0d50f06..3e63c9761e540e6450448b5241fe55b9
      [self.backedTextInputView setSelectedTextRange:NSMakeRange(NSNotFound, 0) notifyDelegate:NO];
  #endif // macOS]
    }
-+#if TARGET_OS_OSX // [Netnyahoo: applied here
++#if TARGET_OS_OSX // [Arcadia: applied here
 +  _clickFocused = NO;
-+#endif // Netnyahoo]
++#endif // Arcadia]
  }
  
  - (void)reactBlur
@@ -165,7 +165,7 @@ index a37a1c106a04752c1baeb6dd2170402ce5f34f71..c096a10720e76e449619a026d4b756ec
  }
  
 -- (void)setTransform3D:(CATransform3D)transform3D
-+// [Netnyahoo: the layer transform for transform3D at the view's current size. On macOS, layer.anchorPoint is
++// [Arcadia: the layer transform for transform3D at the view's current size. On macOS, layer.anchorPoint is
 +// {0, 0} instead of {0.5, 0.5} as on iOS, so the transform is moved to apply from the view's center; that depends
 +// on the size, so it's worked out again each time it's applied.
 +static CATransform3D RCTUIViewLayerTransform(RCTUIView *view)
@@ -218,7 +218,7 @@ index a37a1c106a04752c1baeb6dd2170402ce5f34f71..c096a10720e76e449619a026d4b756ec
 +    RCTUIViewApplyTransform3D(self);
 +  }
  }
-+// Netnyahoo]
++// Arcadia]
  
  - (NSView *)hitTest:(NSPoint)point
  {
@@ -229,7 +229,7 @@ index a37a1c106a04752c1baeb6dd2170402ce5f34f71..c096a10720e76e449619a026d4b756ec
 -  if (_hasCustomTransform3D && !CATransform3DEqualToTransform(layer.transform, _transform3D)) {
 -    layer.transform = _transform3D;
 +  if (_hasCustomTransform3D) {
-+    RCTUIViewApplyTransform3D(self); // [Netnyahoo]
++    RCTUIViewApplyTransform3D(self); // [Arcadia]
    }
  
    if (_respondsToDisplayLayer) {
@@ -255,12 +255,12 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
 +#if !TARGET_OS_OSX // [macOS]
 +static const NSTimeInterval kMinimumSleepInterval = 1;
 +#else // [macOS
-+// [Netnyahoo: sleep on an NSTimer whenever the next timer is more than two frames out, not a second. The display
++// [Arcadia: sleep on an NSTimer whenever the next timer is more than two frames out, not a second. The display
 +// link wakes the JS thread every frame (120 times a second on ProMotion), so an app with a few timers a second kept it
 +// running much of the time at idle. The NSTimer fires at the target; the display link stays for what is due within a
 +// couple of frames (requestAnimationFrame, short timeouts).
 +static const NSTimeInterval kMinimumSleepInterval = 2 * kFrameDuration;
-+// Netnyahoo]
++// Arcadia]
 +#endif // macOS]
 +
  @interface _RCTTimer : NSObject
@@ -271,10 +271,10 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
    BOOL _inBackground;
    id<RCTTimingDelegate> _timingDelegate;
 +#if TARGET_OS_OSX // [macOS]
-+  // [Netnyahoo: whether NSApp is hidden (written on the main thread), and the run loop timers are created on (JS).
++  // [Arcadia: whether NSApp is hidden (written on the main thread), and the run loop timers are created on (JS).
 +  std::atomic<bool> _appHidden;
 +  NSRunLoop *_timingRunLoop;
-+  // Netnyahoo]
++  // Arcadia]
 +#endif // macOS]
  }
  
@@ -289,7 +289,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
        [self appDidMoveToBackground];
      }
 +#else // [macOS
-+    // [Netnyahoo: background only while the app is hidden. This read `![NSApp isHidden]`, so a visible app went to
++    // [Arcadia: background only while the app is hidden. This read `![NSApp isHidden]`, so a visible app went to
 +    // background at launch and never came back: the display link stopped and every timer, requestAnimationFrame
 +    // included, ran off a one-shot NSTimer, as fast as JS asked (about 1000 frames a second). Observed here, on the
 +    // main thread with the first read, so no hide or unhide falls between them.
@@ -300,7 +300,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
 +                                                 object:nil];
 +    }
 +    [self appHiddenDidChange];
-+    // Netnyahoo]
++    // Arcadia]
 +#endif
    });
  
@@ -310,7 +310,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
  }
  
 +#if TARGET_OS_OSX // [macOS]
-+// [Netnyahoo: AppKit tells the main thread; the timing thread (JS) switches, where the display link calls in and the
++// [Arcadia: AppKit tells the main thread; the timing thread (JS) switches, where the display link calls in and the
 +// sleep timer must live (on the main run loop, default mode only, a menu or a live resize would hold every timer). It
 +// reads the latest state whenever it switches, so a late or repeated nudge can't leave it stale; before the first
 +// timer there's nothing to nudge, and the first createTimer catches up.
@@ -349,7 +349,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
 +    [self appDidMoveToForeground];
 +  }
 +}
-+// Netnyahoo]
++// Arcadia]
 +#endif // [macOS]
 +
  - (void)dealloc
@@ -360,12 +360,12 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
  - (void)scheduleSleepTimer:(NSDate *)sleepTarget
  {
 +#if TARGET_OS_OSX // [macOS]
-+  // [Netnyahoo: a hidden app keeps running, with no display link to pace it: a frame apart at least, or a
++  // [Arcadia: a hidden app keeps running, with no display link to pace it: a frame apart at least, or a
 +  // requestAnimationFrame loop comes back as fast as the run loop turns.
 +  if (_inBackground) {
 +    sleepTarget = [sleepTarget laterDate:[NSDate dateWithTimeIntervalSinceNow:kFrameDuration]];
 +  }
-+  // Netnyahoo]
++  // Arcadia]
 +#endif // [macOS]
    @synchronized(self) {
      if (!_sleepTimer || !_sleepTimer.valid) {
@@ -380,20 +380,20 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
      // Immediately dispatch frame, so we don't have to wait on the displaylink.
      [self didUpdateFrame:nil];
 +#else // [macOS
-+    // [Netnyahoo: fire what's due without waking the display link for it, then sleep until the next timer, or start
++    // [Arcadia: fire what's due without waking the display link for it, then sleep until the next timer, or start
 +    // the display link if that one is due within a couple of frames (a timer's callback that asks for a frame starts
 +    // it from createTimer).
 +    [self didUpdateFrame:nil];
 +    if (_paused && !_inBackground) {
 +      [self sleepOrStartTimers];
 +    }
-+    // Netnyahoo]
++    // Arcadia]
 +#endif // macOS]
 +  }
 +}
 +
 +#if TARGET_OS_OSX // [macOS]
-+// [Netnyahoo
++// [Arcadia
 +- (void)sleepOrStartTimers
 +{
 +  NSDate *next = nil;
@@ -408,7 +408,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
 +    [self scheduleSleepTimer:next];
    }
  }
-+// Netnyahoo]
++// Arcadia]
 +#endif // macOS]
  
  /**
@@ -418,7 +418,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
                          repeats:(BOOL)repeats
  {
 +#if TARGET_OS_OSX // [macOS]
-+  [self syncWithAppHidden]; // [Netnyahoo]
++  [self syncWithAppHidden]; // [Arcadia]
 +#endif // macOS]
    NSTimeInterval jsSchedulingOverhead = MAX(-jsSchedulingTime.timeIntervalSinceNow, 0);
  
@@ -428,7 +428,7 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
  RCT_EXPORT_METHOD(setSendIdleEvents : (BOOL)sendIdleEvents)
  {
 +#if TARGET_OS_OSX // [macOS]
-+  [self syncWithAppHidden]; // [Netnyahoo]
++  [self syncWithAppHidden]; // [Arcadia]
 +#endif // macOS]
    _sendIdleEvents = sendIdleEvents;
    if (sendIdleEvents) {
@@ -441,7 +441,7 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..b93796f 100644
    NSTrackingArea *_trackingArea;
    BOOL _hasMouseOver;
    BOOL _mouseDownCanMoveWindow;
-+  // [Netnyahoo: the clip view whose bounds changes this view observes, if any (viewDidMoveToWindow). Netnyahoo]
++  // [Arcadia: the clip view whose bounds changes this view observes, if any (viewDidMoveToWindow). Arcadia]
 +  __weak NSClipView *_observedClipView;
 +  BOOL _observesBounds;
  #endif // macOS]
@@ -452,7 +452,7 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..b93796f 100644
    // both of which would not cause the mouseExited to be invoked.
  
 -  if ([self window] == nil) {
-+  // [Netnyahoo: one registration per view. AppKit calls this again whenever a view already in the window is
++  // [Arcadia: one registration per view. AppKit calls this again whenever a view already in the window is
 +  // re-added (didUpdateReactSubviews re-adds every subview each time a container's children change), and each call
 +  // added another observer: a long-lived row in a scroll view piled up dozens, every removal scans them all, so
 +  // each view leaving the window cost a little more the longer the app ran (profile switches, which mount and unmount
@@ -476,7 +476,7 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..b93796f 100644
 +    _observesBounds = YES;
 +    _observedClipView = clipView;
    }
-+  // Netnyahoo]
++  // Arcadia]
  
    [self reactViewDidMoveToWindow]; // [macOS] Github#1412
  
@@ -495,8 +495,8 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..b93796f 100644
 -  }
 -  [layer setTransform:transform];
 -#endif // macOS]
-+  // [Netnyahoo: the anchor point compensation that was here moved to -[RCTUIView setTransform3D:], which
-+  // UIView+React's updateTransform now goes through; doing it here as well applied it twice. Netnyahoo]
++  // [Arcadia: the anchor point compensation that was here moved to -[RCTUIView setTransform3D:], which
++  // UIView+React's updateTransform now goes through; doing it here as well applied it twice. Arcadia]
  
    if (useIOSBorderRendering) {
      layer.cornerRadius = cornerRadii.topLeftHorizontal;
@@ -504,8 +504,8 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..b93796f 100644
  	return [self focusable] || [super acceptsFirstResponder];
  }
  
-+// [Netnyahoo: AppKit asks for tracking areas only when a view's geometry changes, so handlers set on a view already
-+// laid out (a peek panel getting onMouseLeave as it comes out) had none, and its pointer never left. Netnyahoo]
++// [Arcadia: AppKit asks for tracking areas only when a view's geometry changes, so handlers set on a view already
++// laid out (a peek panel getting onMouseLeave as it comes out) had none, and its pointer never left. Arcadia]
 +- (void)setOnMouseEnter:(RCTDirectEventBlock)onMouseEnter
 +{
 +  _onMouseEnter = [onMouseEnter copy];
@@ -525,12 +525,12 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..b93796f 100644
    if (!wouldRecreateIdenticalTrackingArea) {
      if (_trackingArea) {
        [self removeTrackingArea:_trackingArea];
-+      // [Netnyahoo: forget it too. Kept, a view that lost its hover handlers and got them back with the same bounds
++      // [Arcadia: forget it too. Kept, a view that lost its hover handlers and got them back with the same bounds
 +      // counted the removed area as "identical" and never added one again: no mouseEntered/mouseExited from then on
-+      // (the sidebar's peek panel stayed out after its first peek). Netnyahoo]
++      // (the sidebar's peek panel stayed out after its first peek). Arcadia]
 +      _trackingArea = nil;
-+      // [Netnyahoo: and what it knew: a view that is under the pointer when it loses its area never hears it leave, and
-+      // its next scroll (viewBoundsChanged:) would send a leave for it. Netnyahoo]
++      // [Arcadia: and what it knew: a view that is under the pointer when it loses its area never hears it leave, and
++      // its next scroll (viewBoundsChanged:) would send a leave for it. Arcadia]
 +      _hasMouseOver = NO;
      }
  
@@ -543,24 +543,24 @@ index eb79ff32614392cb16e6eb3dbec6cc5b037fe27a..18b2f96cf65892c3db53b751d2878ecb
    NSNotificationCenter *defaultCenter = [NSNotificationCenter defaultCenter];
    if ([self window] == nil) {
      // Unregister for bounds change notifications
-+    // [Netnyahoo: every clip view's, as RCTView's removal here used to do for it (it now removes only its own).
++    // [Arcadia: every clip view's, as RCTView's removal here used to do for it (it now removes only its own).
      [defaultCenter removeObserver:self
                               name:NSViewBoundsDidChangeNotification
 -                           object:_scrollView.contentView];
 +                           object:nil];
-+    // Netnyahoo]
++    // Arcadia]
      [defaultCenter removeObserver:self
                               name:NSPreferredScrollerStyleDidChangeNotification
                             object:nil];
    } else {
-+    // [Netnyahoo: AppKit calls this again each time the view is re-added in the same window: register once.
++    // [Arcadia: AppKit calls this again each time the view is re-added in the same window: register once.
 +    [defaultCenter removeObserver:self
 +                             name:NSViewBoundsDidChangeNotification
 +                           object:_scrollView.contentView];
 +    [defaultCenter removeObserver:self
 +                             name:NSPreferredScrollerStyleDidChangeNotification
 +                           object:nil];
-+    // Netnyahoo]
++    // Arcadia]
      // Register for bounds change notifications so we can track scrolling
      [defaultCenter addObserver:self
                        selector:@selector(scrollViewDocumentViewBoundsDidChange:)
@@ -572,7 +572,7 @@ index 30c4f1e53e7b94016c8ed1b425587753fc80c2ce..b1c734080b05e4924a2034aae15b3f03
      transform = view.reactTransform;
    }
  
-+#if TARGET_OS_OSX // [Netnyahoo: RCTUIView keeps the transform and puts it back after AppKit resets the layer's.
++#if TARGET_OS_OSX // [Arcadia: RCTUIView keeps the transform and puts it back after AppKit resets the layer's.
 +  if ([view isKindOfClass:[RCTUIView class]]) {
 +    ((RCTUIView *)view).transform3D = transform;
 +  } else {
@@ -580,7 +580,7 @@ index 30c4f1e53e7b94016c8ed1b425587753fc80c2ce..b1c734080b05e4924a2034aae15b3f03
 +  }
 +#else
    view.layer.transform = transform;
-+#endif // Netnyahoo]
++#endif // Arcadia]
    // Enable edge antialiasing in rotation, skew, or perspective transforms
    view.layer.allowsEdgeAntialiasing = transform.m12 != 0.0f || transform.m21 != 0.0f || transform.m34 != 0.0f;
  }

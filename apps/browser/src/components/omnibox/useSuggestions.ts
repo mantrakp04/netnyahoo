@@ -7,7 +7,7 @@ import {
   type SearchEngine,
   type SearchScope,
   type SuggestionResult,
-} from "@netnyahoo/core";
+} from "@arcadia/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { bookmarksByUrl } from "../../store/bookmarks";
 import { useBrowser, type BrowserState } from "../../store/browser";

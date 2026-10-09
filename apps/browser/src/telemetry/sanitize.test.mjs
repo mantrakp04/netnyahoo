@@ -6,7 +6,7 @@ const leaks = (text, ...secrets) => secrets.filter((s) => text.includes(s));
 
 test("web addresses, hosts and app URLs are stripped", () => {
   const out = scrubText(
-    "Failed to load https://mail.example.com/inbox?q=secret#frag, then netnyahoo://settings/passwords and chrome://version from bank.co.uk:8443",
+    "Failed to load https://mail.example.com/inbox?q=secret#frag, then arcadia://settings/passwords and chrome://version from bank.co.uk:8443",
   );
   assert.deepEqual(leaks(out, "example", "inbox", "secret", "passwords", "settings", "version", "bank"), []);
   assert.match(out, /^Failed to load <url> then <url> and <url> from <host>$/);
@@ -16,8 +16,8 @@ test("web addresses, hosts and app URLs are stripped", () => {
 });
 
 test("file paths and file names are stripped, with the user's name", () => {
-  const out = scrubText("Couldn't read /Users/alice/Library/Application Support/Netnyahoo/history.json");
-  assert.deepEqual(leaks(out, "alice", "Library", "Netnyahoo", "history"), []);
+  const out = scrubText("Couldn't read /Users/alice/Library/Application Support/Arcadia/history.json");
+  assert.deepEqual(leaks(out, "alice", "Library", "Arcadia", "history"), []);
   assert.ok(out.startsWith("Couldn't read <path>"));
   assert.equal(scrubText("Couldn't save live-folders-work.json"), "Couldn't save <file>");
   assert.equal(scrubText("open ~/Documents/Taxes 2025.pdf failed"), "open <path> <file> failed");
@@ -75,11 +75,11 @@ test("an uncaught NSException sends its name and throw site first, never its rea
     exceptionType: "EXC_BREAKPOINT",
     signal: "SIGTRAP",
     exceptionName: "NSRangeException",
-    frames: [{ image: "AppKit", symbol: "+[NSApplication _crashOnException:]" }, { image: "Netnyahoo", symbol: "main" }],
+    frames: [{ image: "AppKit", symbol: "+[NSApplication _crashOnException:]" }, { image: "Arcadia", symbol: "main" }],
     exceptionFrames: [
       { image: "CoreFoundation", symbol: "__exceptionPreprocess" },
       { image: "libobjc.A.dylib", symbol: "objc_exception_throw" },
-      { image: "NetnyahooShell", symbol: "TabStrip.select(_:)" },
+      { image: "ArcadiaShell", symbol: "TabStrip.select(_:)" },
     ],
   });
   assert.equal(name, "NSRangeException");

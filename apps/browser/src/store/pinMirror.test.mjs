@@ -174,7 +174,7 @@ test("a tile torn off into its own window keeps its place in the first window", 
   assert.equal(tileOf(n, "https://docs.com"), docs);
 });
 
-test("private windows and Small Yahu show no pinned tabs; paging a window to another profile shows that profile's", () => {
+test("private windows and Little Arcadia show no pinned tabs; paging a window to another profile shows that profile's", () => {
   reset();
   const { a } = twoWindows();
   const p = S().createWindow({ incognito: true, url: "https://secret.com" });

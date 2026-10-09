@@ -4,11 +4,11 @@
  
  using content::WebContents;
  
-+// Netnyahoo: NNCore (engine/nncore) shows its own Cast dialog for the tabs it
++// Arcadia: ArcadiaCore (engine/arcadiacore) shows its own Cast dialog for the tabs it
 +// hosts.
-+bool (*g_netnyahoo_wants_cast_dialog)(content::WebContents* initiator) =
++bool (*g_arcadia_wants_cast_dialog)(content::WebContents* initiator) =
 +    nullptr;
-+bool (*g_netnyahoo_cast_dialog)(content::WebContents* initiator,
++bool (*g_arcadia_cast_dialog)(content::WebContents* initiator,
 +                                media_router::MediaRouterUI* ui) = nullptr;
 +
  namespace media_router {
@@ -18,10 +18,10 @@
  
  bool MediaRouterDialogControllerViews::ShowMediaRouterDialogForPresentation(
      std::unique_ptr<StartPresentationContext> context) {
-+  // Netnyahoo: NNCore's own Cast dialog takes Presentation API requests too
++  // Arcadia: ArcadiaCore's own Cast dialog takes Presentation API requests too
 +  // (CreateMediaRouterDialog with the start presentation context).
-+  if (g_netnyahoo_wants_cast_dialog &&
-+      g_netnyahoo_wants_cast_dialog(initiator())) {
++  if (g_arcadia_wants_cast_dialog &&
++      g_arcadia_wants_cast_dialog(initiator())) {
 +    return MediaRouterDialogController::ShowMediaRouterDialogForPresentation(
 +        std::move(context));
 +  }
@@ -32,9 +32,9 @@
        Profile::FromBrowserContext(initiator()->GetBrowserContext());
  
    InitializeMediaRouterUI();
-+  // Netnyahoo: NNCore may show its own Cast dialog, driven by |ui_|.
-+  if (g_netnyahoo_cast_dialog &&
-+      g_netnyahoo_cast_dialog(initiator(), ui_.get())) {
++  // Arcadia: ArcadiaCore may show its own Cast dialog, driven by |ui_|.
++  if (g_arcadia_cast_dialog &&
++      g_arcadia_cast_dialog(initiator(), ui_.get())) {
 +    return;
 +  }
    BrowserWindowInterface* browser =

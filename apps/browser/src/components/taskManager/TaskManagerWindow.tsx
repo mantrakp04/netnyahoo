@@ -1,5 +1,5 @@
-import { killTask, listTasks, type EngineTask } from "@netnyahoo/nncore";
-import { Symbol, WindowDragRegion } from "@netnyahoo/shell";
+import { killTask, listTasks, type EngineTask } from "@arcadia/arcadiacore";
+import { Symbol, WindowDragRegion } from "@arcadia/shell";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { switchToTab } from "../../lib/actions";
@@ -69,7 +69,7 @@ export function TaskManagerWindow() {
       const label = first
         ? `Tab: ${name}${tabIds.length > 1 ? ` (and ${tabIds.length - 1} more)` : ""}`
         : task.type === "browser"
-          ? "Netnyahoo"
+          ? "Arcadia"
           : task.title;
       return { ...task, label, tabIds, favicon: first ? { url: first.url, favicon: first.favicon, profileId: first.profileId } : null };
     });

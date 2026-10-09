@@ -8,7 +8,7 @@ diff --git a/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.cc b/chr
 +  auto delegate = base::WrapUnique(new TabSharingInfoBarDelegate(
 +      web_contents, role, share_this_tab_instead_button_state,
 +      captured_surface_control_active, ui, capture_type));
-+  delegate->capturer_id_ = capturer_id;  // Netnyahoo
++  delegate->capturer_id_ = capturer_id;  // Arcadia
    std::unique_ptr<infobars::InfoBar> new_infobar = CreateTabSharingInfoBar(
 -      base::WrapUnique(new TabSharingInfoBarDelegate(
 -          web_contents, role, share_this_tab_instead_button_state,
@@ -27,7 +27,7 @@ diff --git a/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h b/chro
    std::u16string GetButtonTooltip(TabSharingInfoBarButton button) const;
    int GetButtons() const;
  
-+  // Netnyahoo: the capturing frame of the share this infobar is for. A tab shows
++  // Arcadia: the capturing frame of the share this infobar is for. A tab shows
 +  // one infobar per share; "Share this tab instead" must move the right one.
 +  content::GlobalRenderFrameHostId capturer_id() const { return capturer_id_; }
 +
@@ -38,7 +38,7 @@ diff --git a/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h b/chro
    // Creates and removes delegate's infobar; outlives delegate.
    const raw_ptr<TabSharingUI, AcrossTasksDanglingUntriaged> ui_;
  
-+  // Netnyahoo: see capturer_id().
++  // Arcadia: see capturer_id().
 +  content::GlobalRenderFrameHostId capturer_id_;
 +
    // Indicates whether this instance is used for casting or capturing.

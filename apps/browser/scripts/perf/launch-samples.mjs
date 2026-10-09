@@ -2,8 +2,8 @@
 // ChromeMain's entry and BrowserMain: the stretch Chrome's startup trace doesn't cover).
 //
 //   clang -O2 -dynamiclib -arch arm64 nnsample.c -o <tools>/nnsample.dylib && codesign -fs - <tools>/nnsample.dylib
-//   node native-bench.mjs … --only launch --env NN_SAMPLE_MS=300 --env DYLD_INSERT_LIBRARIES=<tools>/nnsample.dylib
-//   rm <out>/*/template/nnsample.txt        (the seeding launch's; NN_SAMPLE_MS must end before a launch quits)
+//   node native-bench.mjs … --only launch --env AC_SAMPLE_MS=300 --env DYLD_INSERT_LIBRARIES=<tools>/nnsample.dylib
+//   rm <out>/*/template/nnsample.txt        (the seeding launch's; AC_SAMPLE_MS must end before a launch quits)
 //   node launch-samples.mjs <out> <labelA>=<unstripped framework A> <labelB>=<unstripped framework B> [--from re] [--to re] [--top n] [--leaf]
 //
 // The unstripped framework is dist/<version>/symbols/Chromium Framework (release.sh keeps it; match `dwarfdump --uuid`).

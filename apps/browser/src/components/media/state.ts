@@ -1,4 +1,4 @@
-import type { DisplayMediaRequest, MediaCommand, NowPlaying, PictureInPictureState } from "@netnyahoo/nncore";
+import type { DisplayMediaRequest, MediaCommand, NowPlaying, PictureInPictureState } from "@arcadia/arcadiacore";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { webviews } from "../../lib/webviews";
@@ -189,5 +189,5 @@ useBrowser.subscribe((s, prev) => {
 });
 
 if (typeof __DEV__ !== "undefined" && __DEV__) {
-  (globalThis as { nnMedia?: unknown }).nnMedia = { useMedia, mediaCommand, setNowPlaying, togglePictureInPicture, inPictureInPicture };
+  (globalThis as { acMedia?: unknown }).acMedia = { useMedia, mediaCommand, setNowPlaying, togglePictureInPicture, inPictureInPicture };
 }

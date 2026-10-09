@@ -1,0 +1,36 @@
+// Copyright 2026 Arcadia. Apache-2.0.
+//
+// In-process DevTools protocol calls on a tab (as CEF's CefBrowserHost::ExecuteDevToolsMethod).
+
+#ifndef ARCADIA_CORE_AC_DEVTOOLS_CALL_H_
+#define ARCADIA_CORE_AC_DEVTOOLS_CALL_H_
+
+#include <optional>
+#include <string>
+
+#include "base/functional/callback.h"
+#include "base/time/time.h"
+#include "base/values.h"
+
+namespace content {
+class WebContents;
+}
+
+namespace arcadiacore {
+
+// Sends {id, method, params} to the tab's DevTools agent (its page target) through a client
+// of ArcadiaCore's own, attached on the first call and detached when the tab goes. `reply` gets
+// the matching reply's result, or its error message; always asynchronously. With a timeout,
+// a call not answered by then gets the error "timed out" and is forgotten (a late reply is
+// dropped), so a hung page doesn't keep the client attached.
+using DevToolsReply = base::OnceCallback<void(std::optional<base::DictValue> result,
+                                              std::optional<std::string> error)>;
+void CallDevTools(content::WebContents* contents,
+                  const std::string& method,
+                  base::DictValue params,
+                  std::optional<base::TimeDelta> timeout,
+                  DevToolsReply reply);
+
+}  // namespace arcadiacore
+
+#endif  // ARCADIA_CORE_AC_DEVTOOLS_CALL_H_

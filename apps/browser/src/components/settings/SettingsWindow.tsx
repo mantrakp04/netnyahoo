@@ -1,4 +1,4 @@
-import { Symbol, VisualEffect, WindowDragRegion } from "@netnyahoo/shell";
+import { Symbol, VisualEffect, WindowDragRegion } from "@arcadia/shell";
 import { useEffect, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";

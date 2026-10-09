@@ -1,4 +1,4 @@
-import { Symbol, type MenuItem } from "@netnyahoo/shell";
+import { Symbol, type MenuItem } from "@arcadia/shell";
 import { Text, View } from "react-native";
 import { PROFILE_COLORS } from "../../lib/theme";
 import type { Profile } from "../../store/types";

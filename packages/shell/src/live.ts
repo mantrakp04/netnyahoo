@@ -37,7 +37,7 @@ const Calendar = requireNativeModule<{
   requestAccess(): Promise<boolean>;
   calendars(): Promise<SystemCalendar[]>;
   events(start: number, end: number, calendarIds: string[]): Promise<SystemCalendarEvent[]>;
-}>("NetnyahooCalendar");
+}>("ArcadiaCalendar");
 
 export const calendarAuthorization = (): CalendarAuthorization => Calendar.authorizationStatus();
 export const requestCalendarAccess = () => Calendar.requestAccess();
@@ -50,7 +50,7 @@ const Keychain = requireNativeModule<{
   get(account: string): Promise<string | null>;
   set(account: string, secret: string): Promise<boolean>;
   delete(account: string): Promise<boolean>;
-}>("NetnyahooKeychain");
+}>("ArcadiaKeychain");
 
 export const keychainGet = (account: string) => Keychain.get(account);
 export const keychainSet = (account: string, secret: string) => Keychain.set(account, secret);

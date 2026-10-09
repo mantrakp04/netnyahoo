@@ -6,7 +6,7 @@
  
 +#if defined(TOOLKIT_VIEWS)
 +// Like ShowDialog(), for a dialog that only informs (no buttons). A window
-+// without the extensions toolbar (Netnyahoo's windows, which have no Chrome
++// without the extensions toolbar (Arcadia's windows, which have no Chrome
 +// toolbar) gets a bubble at the top-right corner of its client area instead of
 +// a browser-modal sheet: the bubble has a close button and closes on Escape or
 +// when the window is clicked, where the sheet had none of those.

@@ -15,7 +15,7 @@
 #   - The Pods directory is a readers-writer lock between them: any number of xcodebuild commands read it at once,
 #     a pod command rewrites it alone. A pod command waits for running builds to finish, and builds that start
 #     meanwhile wait for it, so it isn't starved.
-# The old pattern (`until mkdir /tmp/nn-<name>.lock; …; rmdir`)
+# The old pattern (`until mkdir /tmp/ac-<name>.lock; …; rmdir`)
 # left the lock behind whenever the shell was killed before its rmdir (a tool timeout, ⌃C), and every
 # other agent then waited forever. Here:
 #   - everything runs under a kernel lock (lockf) that dies with its holder, and a command's pid is
@@ -23,16 +23,16 @@
 #   - --take records WHO and an expiry (default 60 min); --as WHO runs the taker's own commands (one
 #     at a time) and pushes the expiry back. An expired take counts as abandoned. Taking again what
 #     WHO already holds just renews it;
-#   - the old /tmp/nn-<name>.lock directory is still created while held, so agents on the mkdir
+#   - the old /tmp/ac-<name>.lock directory is still created while held, so agents on the mkdir
 #     pattern keep waiting for us. One of theirs is never removed: we wait and say so.
 # Nested calls: a command run under `locked <name>` may call `locked <name>` again (the app build runs
-# packages/nncore/scripts/stage-framework.sh, which takes chromium). If an enclosing call already holds that
-# lock, the inner command runs straight through. --as WHO is passed down too (NN_LOCKED_AS), so under
-# `locked xcodebuild --as pip -- …` a nested `locked chromium` uses pip's take; export NN_LOCKED_AS=pip yourself
+# packages/arcadiacore/scripts/stage-framework.sh, which takes chromium). If an enclosing call already holds that
+# lock, the inner command runs straight through. --as WHO is passed down too (AC_LOCKED_AS), so under
+# `locked xcodebuild --as pip -- …` a nested `locked chromium` uses pip's take; export AC_LOCKED_AS=pip yourself
 # for the same effect from a plain shell.
 # Waiting gives up after --wait seconds (default 500, under the Bash tool's 600 s limit) with exit 75
 # and names the holder. Run long builds with the Bash tool's run_in_background instead of waiting on
-# them in the foreground. NN_LOCK_ROOT (default /tmp) moves the lock files, for testing this script only.
+# them in the foreground. AC_LOCK_ROOT (default /tmp) moves the lock files, for testing this script only.
 set -uo pipefail
 # Set below as plain variables; never inherit them (an enclosing call once leaked on_start into its command).
 unset on_start cmd
@@ -67,7 +67,7 @@ done
 [[ -n "$take$release" || $# -gt 0 ]] || usage
 [[ "$wait$ttl" =~ ^[0-9]+$ ]] || { echo "locked: --wait and --ttl take whole numbers" >&2; usage; }
 # A command's own --as wins; otherwise it acts as whoever an enclosing call ran as.
-[[ -z "$as$take$release" ]] && as="${NN_LOCKED_AS:-}"
+[[ -z "$as$take$release" ]] && as="${AC_LOCKED_AS:-}"
 
 # xcodebuild locks the derived data its command names (see above).
 lock=$name
@@ -90,10 +90,10 @@ if [[ $name == xcodebuild && $# -gt 0 && -z "$take$release" ]]; then
   fi
 fi
 
-root=${NN_LOCK_ROOT:-/tmp}
-kernel=$root/nn-$lock.lockf
-legacy=$root/nn-$lock.lock
-holder=$root/nn-$lock.holder
+root=${AC_LOCK_ROOT:-/tmp}
+kernel=$root/ac-$lock.lockf
+legacy=$root/ac-$lock.lock
+holder=$root/ac-$lock.holder
 now() { date +%s; }
 
 # Holder file: "pid <pid> <description>" or "take <expiry epoch> <who> <description>".
@@ -103,7 +103,7 @@ renew() { sed -i '' "1s/^take [0-9]*/take $(($(now) + ttl * 60))/" "$holder"; }
 
 describe() {
   if [[ "$(field 1)" == take ]]; then
-    echo "taken by $(cut -d' ' -f3- "$holder"), until $(date -r "$(field 2)" '+%H:%M:%S') (if that take is yours, pass --as $(field 3), or export NN_LOCKED_AS=$(field 3) so nested calls use it)"
+    echo "taken by $(cut -d' ' -f3- "$holder"), until $(date -r "$(field 2)" '+%H:%M:%S') (if that take is yours, pass --as $(field 3), or export AC_LOCKED_AS=$(field 3) so nested calls use it)"
   elif [[ -s "$holder" ]]; then
     echo "held by pid $(cut -d' ' -f2- "$holder")"
   elif [[ -d "$legacy" ]]; then
@@ -111,17 +111,17 @@ describe() {
   fi
 }
 
-# NN_LOCKED_HELD lists the locks enclosing calls hold for this process tree, one "<pid> <kernel lock path>" a line,
+# AC_LOCKED_HELD lists the locks enclosing calls hold for this process tree, one "<pid> <kernel lock path>" a line,
 # the pid being the call that holds it (alive exactly as long as it does).
 held_by_caller() {
   local pid path want=${1:-$kernel}
   while read -r pid path; do
     [[ -n "$pid" && "$path" == "$want" ]] && kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; }
-  done <<<"${NN_LOCKED_HELD:-}"
+  done <<<"${AC_LOCKED_HELD:-}"
   return 1
 }
 
-# The Pods readers-writer lock (see above): runs a command holding flock(2) on $root/nn-pods.rw, shared (SH) or
+# The Pods readers-writer lock (see above): runs a command holding flock(2) on $root/ac-pods.rw, shared (SH) or
 # exclusive (EX), giving up after a timeout with exit 76 (reported as 75). perl holds the lock itself, so nothing
 # the command starts (Xcode's build service) can keep it.
 rw_perl='
@@ -152,8 +152,8 @@ exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);
 # Runs the command as a child so its pid can be recorded, and passes signals on to it. The child learns which
 # locks it now holds and as whom, so its own nested calls go straight through.
 run() {
-  NN_LOCKED_HELD="${NN_LOCKED_HELD:+$NN_LOCKED_HELD
-}$$ $kernel" NN_LOCKED_AS="$as" "$@" &
+  AC_LOCKED_HELD="${AC_LOCKED_HELD:+$AC_LOCKED_HELD
+}$$ $kernel" AC_LOCKED_AS="$as" "$@" &
   child=$!
   trap 'kill -INT "$child" 2>/dev/null; wait "$child"; exit 130' INT
   trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 143' TERM
@@ -163,12 +163,12 @@ run() {
 }
 
 # The inner run is always lockf's own child. A command started by an older copy of this script inherited
-# NN_LOCKED_INNER; ignore it there, so its nested calls take the lock properly.
-if [[ -n "${NN_LOCKED_INNER:-}" && "$(ps -o comm= -p "$PPID" 2>/dev/null)" != *lockf ]]; then
-  unset NN_LOCKED_INNER NN_LOCKED_DEADLINE
+# AC_LOCKED_INNER; ignore it there, so its nested calls take the lock properly.
+if [[ -n "${AC_LOCKED_INNER:-}" && "$(ps -o comm= -p "$PPID" 2>/dev/null)" != *lockf ]]; then
+  unset AC_LOCKED_INNER AC_LOCKED_DEADLINE
 fi
 
-if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
+if [[ -z "${AC_LOCKED_INNER:-}" ]]; then
   if outer=$(held_by_caller); then
     if [[ -n "$take$release" ]]; then
       echo "locked: $name is held by an enclosing call (pid $outer) of this command; --take/--release it outside that call" >&2
@@ -182,8 +182,8 @@ if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
   # A build never starts while a pod install rewrites the Pods project (taking the pod lock and letting it go at
   # once). One already holding it (scripts/release.sh) runs straight through.
   if [[ $name == xcodebuild && -z "$take$release" ]]; then
-    NN_LOCKED_NO_RW=1 "$0" pod --wait "$wait" -- true 2>/dev/null || {
-      echo "locked: a pod install still holds the pod lock after ${wait}s; see $root/nn-pod.holder" >&2
+    AC_LOCKED_NO_RW=1 "$0" pod --wait "$wait" -- true 2>/dev/null || {
+      echo "locked: a pod install still holds the pod lock after ${wait}s; see $root/ac-pod.holder" >&2
       exit 75
     }
   fi
@@ -197,7 +197,7 @@ if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
   while :; do
     left=$((deadline - $(now)))
     ((left < 1)) && left=1
-    NN_LOCKED_INNER=1 NN_LOCKED_DEADLINE=$deadline lockf -s -k -t "$left" "$kernel" "$0" "$name" "${opts[@]}" -- "$@"
+    AC_LOCKED_INNER=1 AC_LOCKED_DEADLINE=$deadline lockf -s -k -t "$left" "$kernel" "$0" "$name" "${opts[@]}" -- "$@"
     status=$?
     # 77: busy (held by someone else); try again until the deadline.
     if [[ $status -eq 77 && $(now) -lt $deadline ]]; then
@@ -208,7 +208,7 @@ if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
   done
   # 76: the inner run gave up and already said why; 77: still busy at the deadline; 75 from lockf itself: its own
   # wait ran out.
-  # A build registers its Netnyahoo.app with LaunchServices under the real bundle id; take it back out so
+  # A build registers its Arcadia.app with LaunchServices under the real bundle id; take it back out so
   # macOS never opens a test build as the owner's browser (unregister-builds says why).
   if [[ $name == xcodebuild && -z "$take$release" ]]; then
     "$(dirname "$0")/unregister-builds" >/dev/null 2>&1 &
@@ -224,19 +224,19 @@ fi
 # Inside the kernel lock: no other caller of this script is in this part at the same time, so the
 # holder file can't change under us. The two variables only tell this inner run where it is; the command must
 # not inherit them, or its own nested calls would skip the kernel lock and exit 77 with nothing said.
-deadline=${NN_LOCKED_DEADLINE:-$(($(now) + wait))}
-unset NN_LOCKED_INNER NN_LOCKED_DEADLINE
+deadline=${AC_LOCKED_DEADLINE:-$(($(now) + wait))}
+unset AC_LOCKED_INNER AC_LOCKED_DEADLINE
 
-# The command, behind the Pods readers-writer lock when it's a build or a pod command (NN_LOCKED_NO_RW: the
+# The command, behind the Pods readers-writer lock when it's a build or a pod command (AC_LOCKED_NO_RW: the
 # pre-build check above, which only waits for the pod lock). A build under an enclosing pod call already has it.
 rw=()
-if [[ -z "${NN_LOCKED_NO_RW:-}" && $# -gt 0 ]]; then
+if [[ -z "${AC_LOCKED_NO_RW:-}" && $# -gt 0 ]]; then
   case $name in
-    pod) rw=(perl -e "$rw_perl" EX "$root/nn-pods.rw") ;;
-    xcodebuild) held_by_caller "$root/nn-pod.lockf" >/dev/null || rw=(perl -e "$rw_perl" SH "$root/nn-pods.rw") ;;
+    pod) rw=(perl -e "$rw_perl" EX "$root/ac-pods.rw") ;;
+    xcodebuild) held_by_caller "$root/ac-pod.lockf" >/dev/null || rw=(perl -e "$rw_perl" SH "$root/ac-pods.rw") ;;
   esac
 fi
-unset NN_LOCKED_NO_RW
+unset AC_LOCKED_NO_RW
 rw_timeout() { local left=$((deadline - $(now))); ((left < 1)) && left=1; echo "$left"; }
 
 if [[ -n "$release" ]]; then

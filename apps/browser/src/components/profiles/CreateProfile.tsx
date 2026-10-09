@@ -1,4 +1,4 @@
-import { Symbol } from "@netnyahoo/shell";
+import { Symbol } from "@arcadia/shell";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { create } from "zustand";

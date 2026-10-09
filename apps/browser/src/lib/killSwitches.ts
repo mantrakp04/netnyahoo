@@ -1,4 +1,4 @@
-import { launchEnvironment, readDocument, writeDocument } from "@netnyahoo/shell";
+import { launchEnvironment, readDocument, writeDocument } from "@arcadia/shell";
 
 // Kill switches for speed changes people can feel. A switch is ON by default and the old behaviour is what it falls back
 // to when it's turned off, so a release that turns out slow or broken on someone's Mac can be backed out without
@@ -64,7 +64,7 @@ export const SWITCHES = {
     live: true,
   },
   sidebarSlideLean: {
-    about: "The sidebar's slide draws the traffic lights' moves and lays them out once they stop (NNCoreChromeWindow.mm).",
+    about: "The sidebar's slide draws the traffic lights' moves and lays them out once they stop (ArcadiaCoreChromeWindow.mm).",
     owner: "sidebar",
     removeBy: "2026-12-15",
     live: false,
@@ -75,8 +75,8 @@ export type SwitchName = keyof typeof SWITCHES;
 
 const CACHE_DOC = "switches-cache.json";
 export const SWITCHES_URL = "https://netnyahoo.com/switches.json";
-/** NETNYAHOO_SWITCHES="name=off,other=on": a launch's own values, over everything else (benches, tests, support). */
-export const SWITCHES_ENV = "NETNYAHOO_SWITCHES";
+/** ARCADIA_SWITCHES="name=off,other=on": a launch's own values, over everything else (benches, tests, support). */
+export const SWITCHES_ENV = "ARCADIA_SWITCHES";
 const FETCH_TIMEOUT_MS = 5000;
 const MAX_BYTES = 4096;
 

@@ -8,9 +8,9 @@ import {
   type SiteSettingType,
   type SiteSettingValue,
   type SiteSettings,
-} from "@netnyahoo/nncore";
-import { cleanUrl, displayHost } from "@netnyahoo/core";
-import { confirm, copyText, showMenu, Symbol } from "@netnyahoo/shell";
+} from "@arcadia/arcadiacore";
+import { cleanUrl, displayHost } from "@arcadia/core";
+import { confirm, copyText, showMenu, Symbol } from "@arcadia/shell";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";

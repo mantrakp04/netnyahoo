@@ -1,4 +1,4 @@
-# GN args for the Netnyahoo engine build, all of them (02-gn-args.sh writes args.gn from this list).
+# GN args for the Arcadia engine build, all of them (02-gn-args.sh writes args.gn from this list).
 _gn_args=(
   # Fast release build: no official/LTO/PGO, no DCHECKs, no symbols.
   is_official_build=false
@@ -47,8 +47,8 @@ _gn_args=(
   optimize_webui=true
   # Was is_debug || enable_cef: Release logs to chrome_debug.log, which our diagnostics read.
   chrome_enable_logging_by_default=true
-  # Netnyahoo's bundle and team id (webauthn/payments keychain access groups);
+  # Arcadia's bundle and team id (webauthn/payments keychain access groups);
   # product names stay "Chromium" (chromium-branding.patch).
-  'branding_file_path="//chrome/app/theme/netnyahoo/BRANDING"'
+  'branding_file_path="//chrome/app/theme/arcadia/BRANDING"'
 )
 export GN_DEFINES="${_gn_args[*]}"

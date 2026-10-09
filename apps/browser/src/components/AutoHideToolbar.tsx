@@ -1,4 +1,4 @@
-import { breadcrumb } from "@netnyahoo/core";
+import { breadcrumb } from "@arcadia/core";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { layout, useTheme } from "../lib/theme";
@@ -16,7 +16,7 @@ import { Toolbar } from "./Toolbar";
 // placed under it by useToolbarMotion.
 //
 // Hiding and showing don't resize the page: a page that sizes things to the viewport (vh units, a canvas re-created
-// on resize) would redraw, and a WebGL canvas cleared by its resize shows blank for a frame (netnyahoo.com's Big Yahu
+// on resize) would redraw, and a WebGL canvas cleared by its resize shows blank for a frame (netnyahoo.com's the mascot
 // blinked on every hide and show in 0.2.23). So once a pane's bar has first hidden, its page keeps the strip's size
 // until the next document: the bar shown slides it down and its bottom goes under the card's edge (the link status
 // bubble stays above it). Each motion is one transform on the native driver, from where the layout moved the page (in the

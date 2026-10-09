@@ -1,4 +1,4 @@
-import { writeDocument } from "@netnyahoo/shell";
+import { writeDocument } from "@arcadia/shell";
 import { sidebarEntries } from "../components/sidebar/entries";
 import { rowIds, rowView } from "../components/sidebar/state";
 import { useBrowser } from "../store/browser";

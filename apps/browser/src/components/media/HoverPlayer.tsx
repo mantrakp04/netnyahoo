@@ -1,4 +1,4 @@
-import { Surface } from "@netnyahoo/shell";
+import { Surface } from "@arcadia/shell";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { clickTab } from "../sidebar/actions";
@@ -48,7 +48,7 @@ export function HoverPlayer({ tabId, windowId, anchor }: { tabId: string; window
 }
 
 if (__DEV__) {
-  (globalThis as { nnMediaHover?: unknown }).nnMediaHover = async (windowId: string, tabId: string | null) => {
+  (globalThis as { acMediaHover?: unknown }).acMediaHover = async (windowId: string, tabId: string | null) => {
     if (!tabId) return setSidebarUi({ hover: null });
     const anchor = await measureRow(windowId, tabId);
     if (anchor) setSidebarUi({ hover: { windowId, kind: "tab", id: tabId, anchor } });

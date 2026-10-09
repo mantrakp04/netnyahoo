@@ -1,4 +1,4 @@
-import type { SearchScope } from "@netnyahoo/core";
+import type { SearchScope } from "@arcadia/core";
 
 export type BarSnapshot = {
   typed: string;

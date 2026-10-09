@@ -5,7 +5,7 @@
 
 Writes <home>/Library/Application Support/Google/Chrome/{Local State, Default/{Preferences, Network/Cookies, Web Data}}
 (<home> is wiped first). Cookie values and the card number are encrypted the way Chrome does on macOS (v10,
-AES-128-CBC, key = PBKDF2(secret, "saltysalt", 1003)), with the secret the app gets as NETNYAHOO_IMPORT_TEST_SECRET,
+AES-128-CBC, key = PBKDF2(secret, "saltysalt", 1003)), with the secret the app gets as ARCADIA_IMPORT_TEST_SECRET,
 so no Keychain item is ever read. The localhost cookies carry the fixture server's port. The card is Visa's published test number.
 """
 
@@ -55,15 +55,15 @@ CREATE TABLE cookies(creation_utc INTEGER NOT NULL,host_key TEXT NOT NULL,top_fr
 # host, top_frame, name, plain value, encrypted value, path, expires (unix, 0 = session), secure, httponly,
 # priority, samesite, source scheme, source port (0 = the fixture server's)
 rows = [
-    ("localhost", "", "nn_sid", "", hashed("localhost", "s3ss10n-e2e"), "/", future, 1, 1, 2, 1, 2, 443),
-    ("localhost", "", "nn_legacy", "", v10(b"no-host-prefix"), "/", future, 0, 0, 1, 2, 1, 80),  # undecryptable
-    ("localhost", "", "nn_session", "until-quit", b"", "/", 0, 0, 0, 0, -1, 1, 0),
-    ("localhost", "", "nn_expired", "", hashed("localhost", "gone"), "/", now - 86400, 0, 0, 1, 0, 1, 80),
-    ("localhost", "", "nn_other_path", "", hashed("localhost", "elsewhere"), "/private", future, 0, 0, 1, 1, 1, 0),
-    (".example.com", "", "nn_domain", "", hashed(".example.com", "dom"), "/", future, 1, 0, 1, 0, 2, 443),
-    ("localhost", "", "nn_dotdot", "", hashed("localhost", "widened"), "/private/../", future, 0, 0, 1, 1, 1, 0),
-    (".com", "", "nn_supercookie", "", hashed(".com", "everywhere"), "/", future, 1, 0, 1, 0, 2, 443),
-    ("partitioned.example", "https://top.example", "nn_chips", "", hashed("partitioned.example", "chips"), "/", future, 1, 0, 1, 0, 2, 443),
+    ("localhost", "", "ac_sid", "", hashed("localhost", "s3ss10n-e2e"), "/", future, 1, 1, 2, 1, 2, 443),
+    ("localhost", "", "ac_legacy", "", v10(b"no-host-prefix"), "/", future, 0, 0, 1, 2, 1, 80),  # undecryptable
+    ("localhost", "", "ac_session", "until-quit", b"", "/", 0, 0, 0, 0, -1, 1, 0),
+    ("localhost", "", "ac_expired", "", hashed("localhost", "gone"), "/", now - 86400, 0, 0, 1, 0, 1, 80),
+    ("localhost", "", "ac_other_path", "", hashed("localhost", "elsewhere"), "/private", future, 0, 0, 1, 1, 1, 0),
+    (".example.com", "", "ac_domain", "", hashed(".example.com", "dom"), "/", future, 1, 0, 1, 0, 2, 443),
+    ("localhost", "", "ac_dotdot", "", hashed("localhost", "widened"), "/private/../", future, 0, 0, 1, 1, 1, 0),
+    (".com", "", "ac_supercookie", "", hashed(".com", "everywhere"), "/", future, 1, 0, 1, 0, 2, 443),
+    ("partitioned.example", "https://top.example", "ac_chips", "", hashed("partitioned.example", "chips"), "/", future, 1, 0, 1, 0, 2, 443),
 ]
 port = int(sys.argv[3]) if len(sys.argv) > 3 else 80  # the fixture server's port, for localhost cookies
 for (host, top, name, value, enc, path, exp, sec, http, prio, ss, scheme, src_port) in rows:
@@ -83,10 +83,10 @@ CREATE TABLE credit_cards (guid VARCHAR PRIMARY KEY, name_on_card VARCHAR, expir
 g = "00000000-0000-4000-8000-00000000e2e1"
 wd.execute("INSERT INTO addresses VALUES (?,1,0,0,'en','',0,0)", (g,))
 # Chrome's FieldType numbers: name, company, street, city, state, zip, country, phone, email.
-for t, v in [(7, "Big Yahu"), (60, "Netnyahoo Test Co"), (77, "1 Fixture Way"), (33, "Testville"), (34, "CA"),
-             (35, "94000"), (36, "US"), (14, "+14155550100"), (9, "bigyahu@example.com")]:
+for t, v in [(7, "The mascot"), (60, "Arcadia Test Co"), (77, "1 Fixture Way"), (33, "Testville"), (34, "CA"),
+             (35, "94000"), (36, "US"), (14, "+14155550100"), (9, "mascot@example.com")]:
     wd.execute("INSERT INTO address_type_tokens VALUES (?,?,?,0,NULL)", (g, t, v))
-wd.execute("INSERT INTO credit_cards VALUES ('00000000-0000-4000-8000-00000000e2c1','Big Yahu',12,2031,?,0,'',0,0,'',NULL)",
+wd.execute("INSERT INTO credit_cards VALUES ('00000000-0000-4000-8000-00000000e2c1','the mascot',12,2031,?,0,'',0,0,'',NULL)",
            (v10(b"4111111111111111"),))
 wd.commit()
 wd.close()

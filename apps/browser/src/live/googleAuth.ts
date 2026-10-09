@@ -2,7 +2,7 @@ import { useBrowser } from "../store/browser";
 import { endpoints, form } from "./net";
 import { connectGoogle } from "./sources";
 
-const REDIRECT = "http://127.0.0.1:53682/netnyahoo-oauth";
+const REDIRECT = "http://127.0.0.1:53682/arcadia-oauth";
 const SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly";
 const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
 const random = (n: number) => Array.from({ length: n }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join("");

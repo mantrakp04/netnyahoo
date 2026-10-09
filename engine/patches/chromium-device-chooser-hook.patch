@@ -5,8 +5,8 @@
  BEGIN_METADATA(ChooserBubbleUiViewDelegate)
  END_METADATA
 +
-+// Netnyahoo: NNCore (engine/nncore) shows its own chooser for the tabs it hosts.
-+bool (*g_netnyahoo_device_chooser)(
++// Arcadia: ArcadiaCore (engine/arcadiacore) shows its own chooser for the tabs it hosts.
++bool (*g_arcadia_device_chooser)(
 +    content::RenderFrameHost* owner,
 +    std::unique_ptr<permissions::ChooserController>* controller,
 +    base::OnceClosure* close_closure) = nullptr;
@@ -17,11 +17,11 @@
  base::OnceClosure ShowDeviceChooserDialog(
      content::RenderFrameHost* owner,
      std::unique_ptr<permissions::ChooserController> controller) {
-+  // Netnyahoo: NNCore may show its own chooser.
-+  base::OnceClosure netnyahoo_close_closure;
-+  if (g_netnyahoo_device_chooser &&
-+      g_netnyahoo_device_chooser(owner, &controller, &netnyahoo_close_closure)) {
-+    return netnyahoo_close_closure;
++  // Arcadia: ArcadiaCore may show its own chooser.
++  base::OnceClosure arcadia_close_closure;
++  if (g_arcadia_device_chooser &&
++      g_arcadia_device_chooser(owner, &controller, &arcadia_close_closure)) {
++    return arcadia_close_closure;
 +  }
    content::WeakDocumentPtr weak_document = owner->GetWeakDocumentPtr();
    auto* contents = content::WebContents::FromRenderFrameHost(owner);

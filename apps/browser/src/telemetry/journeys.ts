@@ -1,7 +1,7 @@
 // Real-user timing of the four journeys (docs/perf/field-journeys.md), only while the user shares diagnostics:
 // launch, a new tab's command bar, a tab switch and a navigation, each from the user's key or click (process start for
 // launch) to the result on screen, in steps that tell our JS, the native side and the engine (network) apart.
-// Native marks (packages/nncore/ios/NNCoreFieldTiming.mm) carry the times JS can't see: when the key or click reached the
+// Native marks (packages/arcadiacore/ios/ArcadiaCoreFieldTiming.mm) carry the times JS can't see: when the key or click reached the
 // app, when a commit reached the screen, and what the engine did. They're read only when a journey settles, a second or
 // more later, so nothing here runs between the user's action and its result but a few timestamps.
 // What leaves: perf_launch once per launch, and perf_journeys (p50, p75, p95, max and n per step) hourly and at quit.
@@ -19,8 +19,8 @@ type NativeTiming = {
   drain(): [key: string, kind: string, at: number][];
 };
 
-// Builds before NNCoreFieldTiming have none: the journeys then keep only what JS sees.
-const native = NativeModules.NNFieldTiming as NativeTiming | undefined;
+// Builds before ArcadiaCoreFieldTiming have none: the journeys then keep only what JS sees.
+const native = NativeModules.ACFieldTiming as NativeTiming | undefined;
 
 let on = false;
 

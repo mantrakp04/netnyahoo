@@ -2,7 +2,7 @@
 // (7184f7e8: a page first mounts what its window shows, the rest a chunk per frame, holding their room) and the profile
 // page beside it (a frame later) must not shift a row the first frames showed.
 //
-//   node apps/browser/scripts/layout-shift-test.mjs <Release or Debug Netnyahoo.app> [--bundle <main.jsbundle>] [--runs 3]
+//   node apps/browser/scripts/layout-shift-test.mjs <Release or Debug Arcadia.app> [--bundle <main.jsbundle>] [--runs 3]
 //
 // Each run seeds seed.mjs's big session (200 tabs in two profiles) with the perf probe's "layout" option
 // (src/lib/layoutWatch.ts: every sidebar row measured in its window after each commit of the launch's first 8 s),
@@ -21,14 +21,14 @@ import { writeSeed } from "./perf/seed.mjs";
 const { values: flags, positionals } = parseArgs({ allowPositionals: true, options: { bundle: { type: "string" }, runs: { type: "string" }, out: { type: "string" } } });
 const appArg = positionals[0];
 if (!appArg) {
-  console.error("usage: node layout-shift-test.mjs <Netnyahoo.app> [--bundle <main.jsbundle>] [--runs 3] [--out <dir>]");
+  console.error("usage: node layout-shift-test.mjs <Arcadia.app> [--bundle <main.jsbundle>] [--runs 3] [--out <dir>]");
   process.exit(2);
 }
-const out = resolve(flags.out ?? join(tmpdir(), "nn-layout-shift"));
+const out = resolve(flags.out ?? join(tmpdir(), "ac-layout-shift"));
 mkdirSync(out, { recursive: true });
 let app = resolve(appArg);
 if (flags.bundle) {
-  const clone = join(out, "app", "Netnyahoo.app");
+  const clone = join(out, "app", "Arcadia.app");
   rmSync(dirname(clone), { recursive: true, force: true });
   mkdirSync(dirname(clone), { recursive: true });
   execFileSync("cp", ["-cR", app, clone]);

@@ -1,14 +1,14 @@
-import type { Framing, Yahu } from "./yahu";
+import type { Framing, Mascot } from "./mascot";
 
 /** The model's file name, with its content hash in a build (astro.config.mjs): a new model is a new URL. */
-declare const __YAHU_MODEL__: string;
+declare const __MASCOT_MODEL__: string;
 
 const hero = document.querySelector<HTMLElement>('[data-stage="hero"]');
 const closing = document.querySelector<HTMLElement>('[data-stage="closing"]');
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
 
-let yahu: Yahu | null = null;
+let mascot: Mascot | null = null;
 let at: HTMLElement | null = null;
 
 function webgl() {
@@ -23,26 +23,26 @@ const phone = matchMedia("(max-width: 820px), (pointer: coarse)").matches;
 
 // The 3D chunk or the model can fail to load (a flaky connection, or a page cached from before a deploy
 // asking for a chunk that's gone). The poster already shows him, so keep it and stay quiet.
-async function startYahu(stage: HTMLElement, framing: Framing) {
+async function startMascot(stage: HTMLElement, framing: Framing) {
   try {
-    const { createYahu } = await import("./yahu");
-    const model = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/${__YAHU_MODEL__}`;
-    return await createYahu(model, stage, framing);
+    const { createMascot } = await import("./mascot");
+    const model = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/${__MASCOT_MODEL__}`;
+    return await createMascot(model, stage, framing);
   } catch {
     return null;
   }
 }
 
 async function bootClosing() {
-  if (!closing || yahu || saveData || !webgl()) return;
-  yahu = await startYahu(closing, "poster");
-  if (!yahu) return;
+  if (!closing || mascot || saveData || !webgl()) return;
+  mascot = await startMascot(closing, "poster");
+  if (!mascot) return;
   at = closing;
   closing.addEventListener(
-    "yahu:ready",
+    "mascot:ready",
     () => {
       closing.setAttribute("data-live", "");
-      if (!reduced.matches) yahu?.dance("default", true);
+      if (!reduced.matches) mascot?.dance("default", true);
     },
     { once: true },
   );
@@ -62,24 +62,24 @@ function watchClosing() {
 
 async function boot() {
   if (phone) return watchClosing();
-  if (!hero || yahu || saveData || !webgl()) return;
-  yahu = await startYahu(hero, "hero");
-  if (!yahu) return;
+  if (!hero || mascot || saveData || !webgl()) return;
+  mascot = await startMascot(hero, "hero");
+  if (!mascot) return;
   at = hero;
-  hero.addEventListener("yahu:ready", () => hero.setAttribute("data-live", ""), { once: true });
-  closing?.addEventListener("yahu:ready", () => closing.setAttribute("data-live", ""));
+  hero.addEventListener("mascot:ready", () => hero.setAttribute("data-live", ""), { once: true });
+  closing?.addEventListener("mascot:ready", () => closing.setAttribute("data-live", ""));
   watchStages();
 }
 
 function moveTo(stage: HTMLElement) {
-  if (!yahu || at === stage) return;
+  if (!mascot || at === stage) return;
   const from = at;
   at = stage;
   from?.removeAttribute("data-live");
-  yahu.attach(stage, stage === hero ? "hero" : "poster");
+  mascot.attach(stage, stage === hero ? "hero" : "poster");
   stage.setAttribute("data-live", "");
-  if (stage === closing && !reduced.matches) yahu.dance("default", true);
-  else yahu.stop();
+  if (stage === closing && !reduced.matches) mascot.dance("default", true);
+  else mascot.stop();
 }
 
 function watchStages() {
@@ -104,22 +104,22 @@ addEventListener(
     if (e.pointerType !== "mouse" || pending) return;
     pending = requestAnimationFrame(() => {
       pending = 0;
-      yahu?.lookAt(e.clientX, e.clientY);
+      mascot?.lookAt(e.clientX, e.clientY);
     });
   },
   { passive: true },
 );
-document.documentElement.addEventListener("pointerleave", () => yahu?.lookAt(null, null));
+document.documentElement.addEventListener("pointerleave", () => mascot?.lookAt(null, null));
 
 for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-download]")) {
   const glance = () => {
     const r = link.getBoundingClientRect();
-    yahu?.lookAt(r.left + r.width / 2, r.top + r.height / 2);
+    mascot?.lookAt(r.left + r.width / 2, r.top + r.height / 2);
   };
   link.addEventListener("focus", glance);
   link.addEventListener("click", () => {
-    if (!reduced.matches) yahu?.dance("griddy");
-    document.dispatchEvent(new CustomEvent("netnyahoo:download"));
+    if (!reduced.matches) mascot?.dance("griddy");
+    document.dispatchEvent(new CustomEvent("arcadia:download"));
   });
 }
 

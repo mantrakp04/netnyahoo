@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Native performance benchmark: launch, idle cost, memory, tab/window latency and background throttling of a
-// Release build, driven in hidden instances (NETNYAHOO_BACKGROUND=1, a throwaway NETNYAHOO_DATA_DIR each run).
+// Release build, driven in hidden instances (ARCADIA_BACKGROUND=1, a throwaway ARCADIA_DATA_DIR each run).
 //
 // Gate recipe, what each row means and which rows don't compare across engines: docs/perf/README.md.
 //
-//   node apps/browser/scripts/perf/native-bench.mjs --app <Netnyahoo.app> --out <dir> [options]
+//   node apps/browser/scripts/perf/native-bench.mjs --app <Arcadia.app> --out <dir> [options]
 //     --label <name>          name of this set of results (default: the folder two levels above the app, so
-//                             dist/0.2.22/export/Netnyahoo.app is "0.2.22")
+//                             dist/0.2.22/export/Arcadia.app is "0.2.22")
 //     --bundle <file>         Hermes bundle of scripts/perf/bench-entry.js to run (built from the working tree when
 //                             omitted). Pass the same file to a before and an after run so only native code differs.
 //                             It must match the app's NATIVE_API_VERSION, or every command fails with the skew.
@@ -15,7 +15,7 @@
 //                             candidate; each side's results land in <out>/<its label>/results.json.
 //     --control-bundle <file> the control's bundle (default: --app's bundle); --control-label <name> (default as --label)
 //     --prepared              --app (and --control) are copies this script already prepared (<out>/<label>/app/
-//                             Netnyahoo.app: bundle swapped in, signed for the marker): run them in place, without
+//                             Arcadia.app: bundle swapped in, signed for the marker): run them in place, without
 //                             building a bundle, copying or signing. `--only prepare` makes those copies and exits.
 //     --runs <n>              session and windows runs (default 3); --launch-runs <n> cold launches (default 5)
 //     --idle <secs>           each idle window (default 60)
@@ -43,7 +43,7 @@
 //                               sample     main-thread `sample`s, idle and while switching and scrolling
 //                               prepare    prepare the app copies and exit (see --prepared)
 //     --env K=V               repeatable: extra environment for every instance (DYLD_INSERT_LIBRARIES is appended to
-//                             the marker library). Instances stay muted; don't pass NETNYAHOO_ALLOW_AUDIO.
+//                             the marker library). Instances stay muted; don't pass ARCADIA_ALLOW_AUDIO.
 //     --frames-n <n>          repetitions of each interaction per run in frames (default 8; framecounts uses at most 3)
 //     --frames-only <regex>   frames, framecounts: only the interactions whose name matches (case-insensitive)
 //     --frames-sample         frames: `sample` the app over the first repetition of each interaction (<out>/frames-sample/*.txt)
@@ -86,9 +86,9 @@
 //   Main            options, the candidate and control sides, interleaved()
 //
 // Rows: the function that measures each, and what it waits on. Launch rows count from just before `open`; command rows
-// from Date.now() in the app's JS as the command starts (nn.now()).
+// from Date.now() in the app's JS as the command starts (ac.now()).
 //   launch → window shown                   launchRun   nnperf waitwindow: the pid's first on-screen window ≥ 300×200
-//                                                        with alpha > 0 (CEF builds show it empty, NNCore with content)
+//                                                        with alpha > 0 (CEF builds show it empty, ArcadiaCore with content)
 //   launch → window shown with its content  launchRun   the later of that and nnmark's commit of the Core Animation
 //                                                        transaction carrying the first React root's content
 //   launch → JS running                     launchRun   bench-boot.json, written as bench-channel.js loads (after the
@@ -106,15 +106,15 @@
 //                                                        moving over the instance's window. Nonzero means the idle rows
 //                                                        of that run measured the owner's input too
 //   samples left out: page couldn't paint   sessionRun  switch/newtab: throttled(), < 5 rAF frames in 250 ms just before
-//   tab switch → shown                      sessionRun  switch: nn.actions.switchToTab → the page's visibilitychange to
+//   tab switch → shown                      sessionRun  switch: ac.actions.switchToTab → the page's visibilitychange to
 //                                                        visible + 2 rAFs (16 per run, among 20 tabs)
 //   new tab → first paint / first frame     sessionRun  newtab: store newTab → the new page's FCP / first rAF (5 per run)
-//   new window → on screen                  newWindow   nn.actions.openWindow → nnperf newwindow (2 ms polls; ≥ 300×200,
+//   new window → on screen                  newWindow   ac.actions.openWindow → nnperf newwindow (2 ms polls; ≥ 300×200,
 //                                                        alpha > 0). 3 per session run (newwindow), 8 per windows run
 //   new window → on screen with its content newWindow   the later of that and nnmark's commit for that window
 //   new window → first paint / first frame  newWindow   the window's page's FCP / first rAF
 //   ⌘T → …, keystroke → suggestions         journeyRun  newtabkey: nnperf postkeys (CGEventPostToPid into this pid) → the app's field timing
-//                                                        (journeys.ts + NNCoreFieldTiming.mm; sharing on in the bench's data folder,
+//                                                        (journeys.ts + ArcadiaCoreFieldTiming.mm; sharing on in the bench's data folder,
 //                                                        every non-local fetch answered by bench-offline.js so nothing is uploaded)
 //   Enter → engine asked / started / committed / first contentful paint
 //                                           journeyRun  navigate: the same, from a real Enter; also the page's own FCP over CDP
@@ -136,7 +136,7 @@ const repoRoot = resolve(appRoot, "../..");
 const { values: opt } = parseArgs({
   options: {
     app: { type: "string" },
-    out: { type: "string", default: join(tmpdir(), "nn-native-bench") },
+    out: { type: "string", default: join(tmpdir(), "ac-native-bench") },
     label: { type: "string" },
     bundle: { type: "string" },
     runs: { type: "string", default: "3" },
@@ -275,7 +275,7 @@ const footprint = (snap) => {
 const PAGE_SCRIPT = `
 window.__nn = { vis: [[Date.now(), document.visibilityState]], shown: [], fcp: null, frame: null, ticks: 0, raf: 0, fast: 0 };
 // The page's first frame (its first animation frame starts): the same event in every build. First contentful paint
-// isn't: CEF (0.2.21) stamps it with that frame's start, Chrome (NNCore) with the frame on screen, ~a frame later.
+// isn't: CEF (0.2.21) stamps it with that frame's start, Chrome (ArcadiaCore) with the frame on screen, ~a frame later.
 requestAnimationFrame(() => (__nn.frame = Date.now()));
 new PerformanceObserver((list) => {
   for (const e of list.getEntries()) if (e.name === "first-contentful-paint") __nn.fcp = performance.timeOrigin + e.startTime;
@@ -385,7 +385,7 @@ class Cdp {
 // MARK: App instances
 
 function prepareApp(app, out, bundle) {
-  const copy = join(out, "Netnyahoo.app");
+  const copy = join(out, "Arcadia.app");
   rmSync(copy, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   execFileSync("cp", ["-Rc", app, copy]);
@@ -433,7 +433,7 @@ function buildBundle(out) {
 const live = new Set();
 
 class Instance {
-  // side: the app being measured (Main); dataDir: this instance's NETNYAHOO_DATA_DIR.
+  // side: the app being measured (Main); dataDir: this instance's ARCADIA_DATA_DIR.
   constructor(side, dataDir) {
     this.side = side;
     this.app = side.app;
@@ -442,7 +442,7 @@ class Instance {
     this.feed = `${base()}/appcast.xml`;
     this.cdp = new Cdp(this.port);
     this.seq = 0;
-    // Extra K=V environment for this instance alone (journeyRun: NN_BENCH_KEYLOG).
+    // Extra K=V environment for this instance alone (journeyRun: AC_BENCH_KEYLOG).
     this.env = [];
   }
   async launch() {
@@ -452,12 +452,12 @@ class Instance {
     if (spawnSync("pgrep", ["-f", main]).status === 0) throw new Error("a bench instance is still running");
     // --env K=V; an extra DYLD_INSERT_LIBRARIES loads after the marker.
     const extra = [...opt.env, ...this.env].filter((e) => !e.startsWith("DYLD_INSERT_LIBRARIES="));
-    // --env NETNYAHOO_SWITCHES=…: the app's JS reads switches from its data dir in a Release build (js-bench.mjs).
-    writeSwitches(this.dataDir, extra.find((e) => e.startsWith("NETNYAHOO_SWITCHES="))?.slice(19));
+    // --env ARCADIA_SWITCHES=…: the app's JS reads switches from its data dir in a Release build (js-bench.mjs).
+    writeSwitches(this.dataDir, extra.find((e) => e.startsWith("ARCADIA_SWITCHES="))?.slice(19));
     const dyld = [markerLibrary(), ...(this.frames ? [framesLibrary(toolDir, here)] : []), ...opt.env.filter((e) => e.startsWith("DYLD_INSERT_LIBRARIES=")).map((e) => e.slice(22))].join(":");
     this.t0 = Date.now();
-    execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${this.dataDir}`,
-      "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `NETNYAHOO_UPDATE_FEED_URL=${this.feed}`,
+    execFileSync("open", ["-g", "-n", "--env", "ARCADIA_BACKGROUND=1", "--env", `ARCADIA_DATA_DIR=${this.dataDir}`,
+      "--env", `ARCADIA_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `ARCADIA_UPDATE_FEED_URL=${this.feed}`,
       "--env", `DYLD_INSERT_LIBRARIES=${dyld}`, ...extra.flatMap((e) => ["--env", e]), this.app,
       // App Nap would stretch the hidden instance's timers (a tab switch after a quiet minute took seconds).
       // BENCH_ALLOW_APP_NAP=1 leaves it on: the control for the App Nap check in the table. --mute-audio: builds
@@ -511,7 +511,7 @@ class Instance {
     }
     return null;
   }
-  // Runs `body` (JS with `nn` in scope) in the app and returns its result.
+  // Runs `body` (JS with `ac` in scope) in the app and returns its result.
   async run(body, timeout = +(process.env.BENCH_CMD_TIMEOUT_MS ?? 30_000)) {
     const id = `b${process.pid}-${++this.seq}-${Date.now()}`;
     writeFileSync(join(this.dataDir, "bench-cmd.js"), `// ${id}\n${body}`);
@@ -557,7 +557,7 @@ class Instance {
 const base = () => `http://127.0.0.1:${server.address().port}`;
 let server;
 
-const WINDOW = `(() => { const s = nn.store.getState(); return s.ui.focusedWindowId && s.windows[s.ui.focusedWindowId] ? s.ui.focusedWindowId : s.windowOrder.find((id) => s.windows[id] && !s.windows[id].kind); })()`;
+const WINDOW = `(() => { const s = ac.store.getState(); return s.ui.focusedWindowId && s.windows[s.ui.focusedWindowId] ? s.ui.focusedWindowId : s.windowOrder.find((id) => s.windows[id] && !s.windows[id].kind); })()`;
 
 // --seed big: the template is seed.mjs's profile, written without launching anything. No perf-probe file (that
 // turns the JS probe on, which native-bench's launches don't run with). The seed's tabs point at /static?id=p-<tab>
@@ -588,14 +588,14 @@ async function makeTemplate(side) {
   writeFileSync(join(dir, "onboarding.json"), JSON.stringify({ version: 1, completedAt: 1 }));
   const app = await new Instance(side, dir).launch();
   try {
-    await app.run(`const w = ${WINDOW}; nn.store.getState().newTab(w, { url: "${base()}/static?id=seed" }); return w;`);
+    await app.run(`const w = ${WINDOW}; ac.store.getState().newTab(w, { url: "${base()}/static?id=seed" }); return w;`);
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
     // Leave just the seeded tab.
-    await app.run(`const s = nn.store.getState(); const w = ${WINDOW};
+    await app.run(`const s = ac.store.getState(); const w = ${WINDOW};
       const keep = s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"));
-      for (const id of s.windows[w].tabIds) if (id !== keep) nn.store.getState().closeTab(id);
-      for (const id of s.windowOrder) if (id !== w) nn.store.getState().closeWindow(id);
-      nn.store.getState().activate(keep); return keep;`);
+      for (const id of s.windows[w].tabIds) if (id !== keep) ac.store.getState().closeTab(id);
+      for (const id of s.windowOrder) if (id !== w) ac.store.getState().closeWindow(id);
+      ac.store.getState().activate(keep); return keep;`);
     await sleep(4000);
   } finally {
     await app.quit();
@@ -616,12 +616,12 @@ async function launchRun(side, i) {
   if (copy) {
     rmSync(copy, { recursive: true, force: true });
     mkdirSync(copy, { recursive: true });
-    execFileSync("cp", ["-Rc", side.app, join(copy, "Netnyahoo.app")]);
+    execFileSync("cp", ["-Rc", side.app, join(copy, "Arcadia.app")]);
   }
-  const app = new Instance(copy ? { ...side, app: join(copy, "Netnyahoo.app") } : side, freshDir(side, `launch-${i}`));
+  const app = new Instance(copy ? { ...side, app: join(copy, "Arcadia.app") } : side, freshDir(side, `launch-${i}`));
   const traceFile = join(app.dataDir, "startup-trace.json");
   if (opt["trace-startup"]) {
-    app.env.push(`NETNYAHOO_CHROMIUM_SWITCHES=--trace-startup=${opt["trace-startup"]} --trace-startup-file=${traceFile} --trace-startup-duration=4 --trace-startup-format=json`);
+    app.env.push(`ARCADIA_CHROMIUM_SWITCHES=--trace-startup=${opt["trace-startup"]} --trace-startup-file=${traceFile} --trace-startup-duration=4 --trace-startup-format=json`);
   }
   try {
     await app.launch();
@@ -659,7 +659,7 @@ async function launchRun(side, i) {
 }
 
 async function idleWindow(app, secs) {
-  await app.run(`nn.pause(${secs * 1000 + 1500}); return true;`);
+  await app.run(`ac.pause(${secs * 1000 + 1500}); return true;`);
   // Someone using the Mac meanwhile (the window is on screen, usually in front): its pointer over the window wakes the app.
   const probe = spawn(join(toolDir, "nnperf"), ["input", String(app.pid), String(secs)], { stdio: ["ignore", "pipe", "ignore"] });
   let said = "";
@@ -676,7 +676,7 @@ async function idleWindow(app, secs) {
   if (!Number.isFinite(input?.inputSecs)) input = null;
   await sleep(2000);
   // App Nap check: a napped app answers its first command late and stretches a 100 ms timer (the bench passes
-  // -NSAppSleepDisabled; NNCore keeps Cocoa's argument-domain switches off Chrome's command line, AppKit reads them).
+  // -NSAppSleepDisabled; ArcadiaCore keeps Cocoa's argument-domain switches off Chrome's command line, AppKit reads them).
   const asked = Date.now();
   const late = await app.run(`return new Promise((r) => { const t = Date.now(); setTimeout(() => r(Date.now() - t - 100), 100); });`);
   return { ...usageDelta(a, b), input, afterIdle: { commandMs: Date.now() - asked, timerLateMs: late } };
@@ -700,13 +700,13 @@ async function throttled(app) {
 
 async function openTabs(app, from, to, kind = "static") {
   for (let i = from; i < to; i++) {
-    await app.run(`nn.store.getState().newTab(${WINDOW}, { url: "${base()}/${kind}?id=t${i}" }); return true;`);
+    await app.run(`ac.store.getState().newTab(${WINDOW}, { url: "${base()}/${kind}?id=t${i}" }); return true;`);
     await app.pageState(`id=t${i}`, 30_000, (s) => s.fcp);
   }
 }
 
 async function tabIds(app) {
-  return app.run(`const s = nn.store.getState(); return s.windows[${WINDOW}].tabIds.map((id) => [id, s.tabs[id].url]);`);
+  return app.run(`const s = ac.store.getState(); return s.windows[${WINDOW}].tabIds.map((id) => [id, s.tabs[id].url]);`);
 }
 
 // A new window: command → on screen (CGWindowList: alpha > 0), → on screen with its content (on screen, and the
@@ -718,15 +718,15 @@ async function newWindow(app, id) {
   watcher.stdout.on("data", (d) => (said += d));
   const exited = new Promise((done) => watcher.on("exit", done));
   for (const end = Date.now() + 10_000; !said.includes("ready") && Date.now() < end; ) await Promise.race([exited, sleep(5)]);
-  const at = await app.run(`const t = nn.now(); nn.actions.openWindow({ url: "${base()}/static?id=${id}" }); return t;`);
+  const at = await app.run(`const t = ac.now(); ac.actions.openWindow({ url: "${base()}/static?id=${id}" }); return t;`);
   await exited;
   const shown = JSON.parse(said.split("\n").find((l) => l.startsWith("{")) ?? "null");
   const s = await app.pageState(`id=${id}`, 20_000, (st) => st.fcp);
   const marks = app.marks();
   const content = marks.find((m) => m.content >= at && (!shown || m.window === shown.id));
   const committed = content && marks.find((m) => m.committed >= content.content && m.window === content.window);
-  await app.run(`const s = nn.store.getState(); const t = Object.values(s.tabs).find((t) => t.url.includes("id=${id}"));
-    if (t) nn.store.getState().closeWindow(t.windowId); return true;`);
+  await app.run(`const s = ac.store.getState(); const t = Object.values(s.tabs).find((t) => t.url.includes("id=${id}"));
+    if (t) ac.store.getState().closeWindow(t.windowId); return true;`);
   await sleep(1500);
   return {
     window: shown ? shown.at - at : NaN,
@@ -762,9 +762,9 @@ const TELEMETRY_ON = { version: 1, sharing: true, decidedAt: 1, askDoneAt: 1, in
 
 // After a lost iteration: the bar's panel closed and any empty new tab closed, so the next one starts from the same place.
 async function recover(app) {
-  await app.run(`const s = nn.store.getState(); const w = ${WINDOW};
+  await app.run(`const s = ac.store.getState(); const w = ${WINDOW};
     if (s.windowUi[w]?.panel.open) s.closePanel(w);
-    for (const id of s.windows[w].tabIds) if (!s.tabs[id].url && s.windows[w].tabIds.length > 1) nn.store.getState().closeTab(id);
+    for (const id of s.windows[w].tabIds) if (!s.tabs[id].url && s.windows[w].tabIds.length > 1) ac.store.getState().closeTab(id);
     return true;`);
   await sleep(1500);
 }
@@ -790,7 +790,7 @@ async function postSeen(app, spec) {
   return null;
 }
 
-const journeyState = (app) => app.run(`const j = nn.journeys(); const s = nn.store.getState();
+const journeyState = (app) => app.run(`const j = ac.journeys(); const s = ac.store.getState();
   return { on: j.on, native: j.native, pending: j.pending, samples: j.samples, counts: j.counts, marks: j.marks,
     tabs: Object.keys(s.tabs).length, focused: s.ui.focusedWindowId };`);
 
@@ -888,7 +888,7 @@ async function navigateByEnter(app, side, id, from) {
     // A key the app didn't act on (it was still busy, or the window wasn't key yet) is pressed again, once.
     for (let attempt = 0; attempt < 2 && !open; attempt++) {
       if (!(await postSeen(app, "cmd+l"))) continue;
-      for (const end = Date.now() + 2500; !open && Date.now() < end; await sleep(60)) open = await app.run(`return !!nn.store.getState().windowUi[${w}]?.panel.open;`);
+      for (const end = Date.now() + 2500; !open && Date.now() < end; await sleep(60)) open = await app.run(`return !!ac.store.getState().windowUi[${w}]?.panel.open;`);
     }
     if (!open) return { lost: "no panel" };
   }
@@ -907,7 +907,7 @@ async function navigateByEnter(app, side, id, from) {
   const page = await app.pageState(`id=${id}`, 20_000, (s) => s.fcp);
   const done = await waitFor(app, (st) => sampled(st, "j4_fcp") > sampled(before, "j4_fcp") || (st.counts.j4_no_load ?? 0) > (before.counts.j4_no_load ?? 0), 8000, 120);
   if (!page || !done || sampled(done, "j4_fcp") <= sampled(before, "j4_fcp")) {
-    const urls = await app.run(`const s = nn.store.getState(); return Object.values(s.tabs).map((t) => t.url);`);
+    const urls = await app.run(`const s = ac.store.getState(); return Object.values(s.tabs).map((t) => t.url);`);
     return { lost: `${!page ? "no page" : "no sample"} (tabs: ${urls.map((u) => u.slice(-24)).join(" ")})`, tab };
   }
   const at = (kind) => markAfter(done, kind, enter.at) - enter.at;
@@ -928,7 +928,7 @@ async function journeyRun(side, i, parts) {
   writeFileSync(join(dir, "bench-offline"), "1");
   const n = +opt["journey-n"];
   const app = new Instance(side, dir);
-  app.env.push("NN_BENCH_KEYLOG=1");
+  app.env.push("AC_BENCH_KEYLOG=1");
   const r = { j2: [], j4new: [], j4page: [], lost: { j2: [], j4new: [], j4page: [] }, guard: null, load: [Math.round(loadavg()[0])] };
   const note = async (kind, x, k) => {
     if (!x.lost) return void r[kind].push(x);
@@ -942,12 +942,12 @@ async function journeyRun(side, i, parts) {
     await sleep(6000);
     // Nothing may leave: the guard answers a collector URL itself, and the field timing is on with native marks.
     r.guard = await app.run(`return fetch("https://netnyahoo.com/otel/v1/logs", { method: "POST", body: "{}" }).then((res) => {
-      const j = nn.journeys();
-      return { blocked: res.headers.get("x-bench-blocked"), on: j.on, native: j.native, sharing: nn.telemetry().saved.sharing };
+      const j = ac.journeys();
+      return { blocked: res.headers.get("x-bench-blocked"), on: j.on, native: j.native, sharing: ac.telemetry().saved.sharing };
     });`);
     if (r.guard.blocked !== "1") throw new Error("bench-offline.js isn't guarding fetch: refusing to run with sharing on");
     if (!r.guard.on || !r.guard.native) throw new Error(`field timing isn't on in the app: ${JSON.stringify(r.guard)}`);
-    const closeTab = (tab) => tab && app.run(`nn.store.getState().closeTab(${JSON.stringify(tab)}); return true;`);
+    const closeTab = (tab) => tab && app.run(`ac.store.getState().closeTab(${JSON.stringify(tab)}); return true;`);
     if (parts.has("newtabkey")) {
       for (let k = 0; k < n; k++) {
         const x = await newTabKey(app, i, k);
@@ -973,7 +973,7 @@ async function journeyRun(side, i, parts) {
       }
       log(`${side.tag}journeys ${i} j4:`, JSON.stringify([r.j4new.map((x) => Math.round(x.fcp)), r.j4page.map((x) => Math.round(x.fcp))]));
     }
-    r.blocked = (await app.run(`return nn.blockedFetches();`)).length;
+    r.blocked = (await app.run(`return ac.blockedFetches();`)).length;
     r.load.push(Math.round(loadavg()[0]));
     side.results.journeys.push(r);
   } finally {
@@ -1014,7 +1014,7 @@ async function sessionRun(side, i, parts) {
       const target = await app.cdp.find(`id=${marker}`);
       const before = (await app.cdp.state(target))?.shown.length ?? 0;
       const hidden = await throttled(app);
-      const at = await app.run(`const t = nn.now(); nn.actions.switchToTab(${JSON.stringify(id)}); return t;`);
+      const at = await app.run(`const t = ac.now(); ac.actions.switchToTab(${JSON.stringify(id)}); return t;`);
       const s = await app.pageState(`id=${marker}`, 5000, (st) => st.shown.length > before);
       const shown = s?.shown.at(-1);
       if (hidden) r.throttled.tabSwitch++;
@@ -1026,7 +1026,7 @@ async function sessionRun(side, i, parts) {
     // New tabs with a page: command → first contentful paint.
     for (let k = 0; k < (has("newtab") ? 5 : 0); k++) {
       const hidden = await throttled(app);
-      const at = await app.run(`const t = nn.now(); nn.store.getState().newTab(${WINDOW}, { url: "${base()}/static?id=n${k}" }); return t;`);
+      const at = await app.run(`const t = ac.now(); ac.store.getState().newTab(${WINDOW}, { url: "${base()}/static?id=n${k}" }); return t;`);
       const s = await app.pageState(`id=n${k}`, 20_000, (st) => st.fcp);
       if (hidden) r.throttled.newTab++;
       r.newTab.push(s && !hidden ? s.fcp - at : NaN);
@@ -1034,15 +1034,15 @@ async function sessionRun(side, i, parts) {
       await sleep(800);
     }
     if (has("newtab"))
-      await app.run(`const s = nn.store.getState(); for (const id of Object.keys(s.tabs)) if (s.tabs[id].url.includes("id=n")) nn.store.getState().closeTab(id); return true;`);
+      await app.run(`const s = ac.store.getState(); for (const id of Object.keys(s.tabs)) if (s.tabs[id].url.includes("id=n")) ac.store.getState().closeTab(id); return true;`);
 
     for (let k = 0; k < (has("newwindow") ? 3 : 0); k++) r.newWindow.push(await newWindow(app, `w${k}`));
 
     // Close all but the first tab; memory once the renderers are gone.
     if (has("memory")) {
       r.processes.tabs20 = usage(app.pid).length;
-      await app.run(`const s = nn.store.getState(); const w = ${WINDOW}; const keep = s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"));
-        nn.store.getState().activate(keep); for (const id of s.windows[w].tabIds) if (id !== keep) nn.store.getState().closeTab(id); return true;`);
+      await app.run(`const s = ac.store.getState(); const w = ${WINDOW}; const keep = s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"));
+        ac.store.getState().activate(keep); for (const id of s.windows[w].tabIds) if (id !== keep) ac.store.getState().closeTab(id); return true;`);
       await sleep(30_000);
       r.memory.closed = footprint(usage(app.pid));
       r.processes.closed = r.memory.closed.processes;
@@ -1061,7 +1061,7 @@ async function throttleRun(side) {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
     await openTabs(app, 0, 4, "anim");
-    await app.run(`const s = nn.store.getState(); const w = ${WINDOW}; nn.store.getState().activate(s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"))); return true;`);
+    await app.run(`const s = ac.store.getState(); const w = ${WINDOW}; ac.store.getState().activate(s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"))); return true;`);
     await sleep(12_000);
     const read = async () => {
       const out = {};
@@ -1102,8 +1102,8 @@ async function churnRun(side) {
     rounds.push(measure());
     for (let round = 0; round < 5; round++) {
       await openTabs(app, round * 10, round * 10 + 10);
-      await app.run(`const s = nn.store.getState(); const w = ${WINDOW}; const keep = s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"));
-        nn.store.getState().activate(keep); for (const id of s.windows[w].tabIds) if (id !== keep) nn.store.getState().closeTab(id); return true;`);
+      await app.run(`const s = ac.store.getState(); const w = ${WINDOW}; const keep = s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"));
+        ac.store.getState().activate(keep); for (const id of s.windows[w].tabIds) if (id !== keep) ac.store.getState().closeTab(id); return true;`);
       await sleep(15_000);
       rounds.push(measure());
     }
@@ -1124,14 +1124,14 @@ async function sampleRun(side) {
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
     await openTabs(app, 1, 20);
     await sleep(15_000);
-    await app.run(`nn.pause(40000); return true;`);
+    await app.run(`ac.pause(40000); return true;`);
     execFileSync("sample", [String(app.pid), "10", "-mayDie", "-file", join(dir, "idle.txt")], { stdio: "ignore" });
     const tabs = await tabIds(app);
     const sampler = spawn("sample", [String(app.pid), "12", "-mayDie", "-file", join(dir, "switch-scroll.txt")], { stdio: "ignore" });
     const end = Date.now() + 11_000;
     for (let k = 0; Date.now() < end; k++) {
       const [id, url] = tabs[(k * 7 + 3) % tabs.length];
-      await app.run(`nn.actions.switchToTab(${JSON.stringify(id)}); return true;`);
+      await app.run(`ac.actions.switchToTab(${JSON.stringify(id)}); return true;`);
       const target = await app.cdp.find(url.match(/id=\w+/)[0]);
       if (target) for (let n = 0; n < 6; n++) await app.cdp.send(target, "Input.dispatchMouseEvent", { type: "mouseWheel", x: 400, y: 300, deltaX: 0, deltaY: 120 });
       await sleep(150);
@@ -1155,7 +1155,7 @@ function summarizeSample(file) {
     samples: total,
     waiting: idleWait,
     busy: total - idleWait,
-    // Chromium's own work on the main thread: CEF's pump (0.2.21 and older) or NNCore's run loop source.
+    // Chromium's own work on the main thread: CEF's pump (0.2.21 and older) or ArcadiaCore's run loop source.
     engineWork: count("CefDoMessageLoopWork|MessagePumpCFRunLoopBase::RunWorkSource"),
     metalDraw: count("MTKView draw|\\bdraw\\(in:"),
     caCommit: count("CA::Transaction::commit"),
@@ -1271,7 +1271,7 @@ const fail = (message) => {
   console.error(message);
   process.exit(64);
 };
-if (!opt.app) fail("usage: native-bench.mjs --app <Netnyahoo.app> [--control <app>] [--out dir] [--only phases] … (--help)");
+if (!opt.app) fail("usage: native-bench.mjs --app <Arcadia.app> [--control <app>] [--out dir] [--only phases] … (--help)");
 const JOURNEY_PHASES = ["newtabkey", "navigate"];
 const FRAME_PHASES = ["frames", "framecounts"];
 const PHASES = ["launch", "session", ...SESSION_PARTS, ...JOURNEY_PHASES, ...FRAME_PHASES, "windows", "throttle", "churn", "sample", "prepare"];

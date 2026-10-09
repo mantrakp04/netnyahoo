@@ -1,4 +1,4 @@
-import * as cef from "@netnyahoo/nncore";
+import * as cef from "@arcadia/arcadiacore";
 import {
   confirm,
   copyText,
@@ -15,7 +15,7 @@ import {
   type CommandEvent,
   type ScriptCommand,
   type ScriptState,
-} from "@netnyahoo/shell";
+} from "@arcadia/shell";
 import { maybeStartOnboarding, openVideoTour, startOnboarding, startToolTour } from "../components/onboarding";
 import { trackAppVersion } from "../components/ntp/releaseNotes";
 import { openTaskManager } from "../components/taskManager/window";
@@ -83,7 +83,7 @@ export async function diagnostics(): Promise<string> {
   const regular = s.windowOrder.filter((id) => !s.windows[id]?.incognito);
   return [
     `${app.appName} ${app.appVersion} (${app.appBuild}) — ${app.configuration}`,
-    engine ? `Engine: NNCore, Chromium ${engine.chromiumVersion}` : "Engine: unavailable",
+    engine ? `Engine: ArcadiaCore, Chromium ${engine.chromiumVersion}` : "Engine: unavailable",
     `macOS ${app.osVersion} (${app.osBuild}), ${app.arch}, ${app.model}, ${Math.round(app.memoryGB)} GB`,
     `Bundle: ${app.bundleId}, locale ${app.locale}`,
     `Windows: ${regular.length} (+${s.windowOrder.length - regular.length} incognito), tabs: ${Object.keys(s.tabs).length}, profiles: ${s.profileOrder.length}`,
@@ -99,7 +99,7 @@ async function recordPerformanceIssue() {
   if (await cef.isTracing()) return;
   const start = await confirm({
     title: "Record a performance issue?",
-    message: "Netnyahoo records what the engine does while you reproduce the problem. The recording is saved to your Downloads folder.",
+    message: "Arcadia records what the engine does while you reproduce the problem. The recording is saved to your Downloads folder.",
     confirmTitle: "Start Recording",
   });
   if (!start.confirmed || !(await cef.beginTracing())) return;

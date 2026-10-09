@@ -11,7 +11,7 @@ export const INTERNAL_PAGES: Record<InternalPageId, { title: string }> = {
   downloads: { title: "Downloads" },
 };
 
-const SCHEME = "netnyahoo://";
+const SCHEME = "arcadia://";
 
 export const internalUrl = (page: InternalPageId, query?: string) => `${SCHEME}${page}${query ? `?q=${encodeURIComponent(query)}` : ""}`;
 

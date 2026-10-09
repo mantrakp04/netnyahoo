@@ -1,4 +1,4 @@
-import { onAppEvent, onWindowEvent, postNotification, removeNotifications } from "@netnyahoo/shell";
+import { onAppEvent, onWindowEvent, postNotification, removeNotifications } from "@arcadia/shell";
 import { create } from "zustand";
 import { useBrowser } from "../store/browser";
 import { useCalendar } from "./calendar";

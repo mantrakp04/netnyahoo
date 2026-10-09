@@ -1,4 +1,4 @@
-import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
+import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@arcadia/shell";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";

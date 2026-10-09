@@ -1,6 +1,6 @@
-export const APP_SCHEME = "netnyahoo";
+export const APP_SCHEME = "arcadia";
 
-const APP_PREFIX = /^(view-source:)?netnyahoo:(?:\/\/)?/i;
+const APP_PREFIX = /^(view-source:)?arcadia:(?:\/\/)?/i;
 const ENGINE_PREFIX = /^(view-source:)?chrome:(?:\/\/)?/i;
 const ABOUT_PAGE = /^about:(blank|srcdoc)([?#]|$)/i;
 const ABOUT_ALIAS = /^about:([a-z][a-z0-9-]*)/i;
@@ -29,7 +29,7 @@ export function toEngineUrl(url: string): string {
   return parts?.host ? `${parts.viewSource}chrome://${parts.host}${parts.rest}` : url;
 }
 
-export const isAppUrl = (url: string | null | undefined) => !!url && /^netnyahoo:\/\/[^/?#]/i.test(url);
+export const isAppUrl = (url: string | null | undefined) => !!url && /^arcadia:\/\/[^/?#]/i.test(url);
 
 export function appUrlParts(url: string): { host: string; path: string; query: string; hash: string } | null {
   if (!isAppUrl(url)) return null;

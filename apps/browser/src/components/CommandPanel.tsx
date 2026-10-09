@@ -1,4 +1,4 @@
-import { OutsidePressArea, Surface } from "@netnyahoo/shell";
+import { OutsidePressArea, Surface } from "@arcadia/shell";
 import { hex, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { useWindowId, useWindowUi } from "../store/hooks";

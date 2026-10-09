@@ -6,7 +6,7 @@ import {
   watchCastRoutes,
   type CastDialog,
   type CastRoute,
-} from "@netnyahoo/nncore";
+} from "@arcadia/arcadiacore";
 import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId, engineProfile } from "../../store/model";
@@ -19,7 +19,7 @@ type CastStore = {
 };
 
 export const useCast = create<CastStore>()(() => ({ dialogs: {}, routes: {} }));
-if (__DEV__) (globalThis as { nnCast?: unknown }).nnCast = { useCast };
+if (__DEV__) (globalThis as { acCast?: unknown }).acCast = { useCast };
 
 export function castProfile(s: BrowserState, windowId: string): string {
   const w = s.windows[windowId];

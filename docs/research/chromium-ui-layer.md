@@ -1,17 +1,17 @@
 # Chromium under the React Native UI: decision and plan
 
 Status: research spike, 2026-09-25. Prototypes and captures live outside the repo in
-`~/netnyahoo-research/owlproto/` (sources, `build.sh`, `run/*.png|log`).
+`~/arcadia-research/owlproto/` (sources, `build.sh`, `run/*.png|log`).
 
 ## Decision
 
 Go with **(a) patched CEF, Chrome style**:
 
-- Every Netnyahoo window owns one real Chrome `Browser`, with a `TabStripModel`, profile, extensions and
+- Every Arcadia window owns one real Chrome `Browser`, with a `TabStripModel`, profile, extensions and
   permissions.
 - That `Browser` lives in an **invisible "ghost" Views window**: alpha 0, ignores mouse events, and is
   kept exactly behind our RN window.
-- Each tab's `WebContentsViewCocoa` NSView is parented into our RN views, the same way `NNBrowserView`
+- Each tab's `WebContentsViewCocoa` NSView is parented into our RN views, the same way `ACBrowserView`
   hosts Alloy views today.
 
 Tabs keep the Cocoa display path we ship now: a `CALayerHost` inside our layer tree. Blur, overlap,
@@ -148,7 +148,7 @@ other rather than reading them as absolute photon latency.
    - This is the single choke point for the active tab and for split view (`browser_view.cc:2071`,
      `multi_contents_view.cc:264`).
    - The RWHV then keeps `BrowserCompositorMac::HasOwnCompositor`, which is the path Alloy style (and
-     Netnyahoo) uses today.
+     Arcadia) uses today.
 3. **CEF patch/API (~150 lines, in `libcef/browser/chrome/**` and `include/`):**
    - A `CefBrowserSettings`/`CefBrowserViewDelegate` flag, `native_contents_hosting`, that sets the
      marker on every tab WebContents of that Browser. Hook `ChromeBrowserDelegate::OnWebContentsCreated`.
@@ -192,11 +192,11 @@ that package may edit.
    - Acceptance: `chromestyle.mm` with the flag shows the page in our NSView at 120 fps, with a live
      `CALayerHost` under `RenderWidgetHostViewCocoa`.
 2. **WP2 — Engine cutover in `packages/cef/ios`** (~2 eng-weeks; depends on WP1)
-   - Owns `NNCef.mm`, `NNBrowserView.mm`, `NNClient.*`, `NNPopupWindow.*`, `CefModule.swift` and a new
-     `NNWindowHost.{h,mm}`.
+   - Owns `ACCef.mm`, `ACBrowserView.mm`, `ACClient.*`, `ACPopupWindow.*`, `CefModule.swift` and a new
+     `ACWindowHost.{h,mm}`.
    - Maintain one ghost `CefWindow` + Chrome-style Browser per RN window: aligned, alpha 0, parented as
      a child window that follows move, resize, Space and fullscreen changes.
-   - `NNBrowserView` creates its tab with `CreateTabInBrowser` and hosts `GetContentsView()`.
+   - `ACBrowserView` creates its tab with `CreateTabInBrowser` and hosts `GetContentsView()`.
    - Tabs Chrome creates itself (`window.open`, `target=_blank`, extensions `chrome.tabs.create`,
      reopen) raise a `tabCreated {windowId, browserId}` event that the store adopts.
    - Keep the `WebView` JS API unchanged.
@@ -204,27 +204,27 @@ that package may edit.
 3. **WP3 — Delete what Chrome now does** (~1.5 eng-weeks; depends on WP2)
    - Owns `packages/cef/src/*.ts` and the matching `ios/*`, plus `helper/*`.
    - Delete. That's about 7,500 lines across these files:
-     - `NNContentBlocker.*` + `NNFilterEngine.*` + `contentBlocker.ts` (and the `vendor/filters` fetch).
+     - `ACContentBlocker.*` + `ACFilterEngine.*` + `contentBlocker.ts` (and the `vendor/filters` fetch).
        Replace with **uBlock Origin Lite** (MV3/DNR) installed as a component extension through Chrome's
        real extension system. Chrome's own `subresource_filter` isn't EasyList-grade.
-     - `NNPasswords.*` / `passwords.ts` → Chrome's password manager and generation.
-     - `NNAutofill.*` / `autofill.ts` → Chrome autofill.
-     - `NNZoom.*` / `zoom.ts` → Chrome's per-host `HostZoomMap`.
-     - `NNExtensions.*`, `NNExtensionPackage.*`, `ExtensionsModule.swift`, `helper/extension_shim.js` →
+     - `ACPasswords.*` / `passwords.ts` → Chrome's password manager and generation.
+     - `ACAutofill.*` / `autofill.ts` → Chrome autofill.
+     - `ACZoom.*` / `zoom.ts` → Chrome's per-host `HostZoomMap`.
+     - `ACExtensions.*`, `ACExtensionPackage.*`, `ExtensionsModule.swift`, `helper/extension_shim.js` →
        Chrome extensions and the Web Store install flow.
-     - Most of `NNSiteSettings.*` → content settings through `CefRequestContext`. Keep a thin JS API
+     - Most of `ACSiteSettings.*` → content settings through `CefRequestContext`. Keep a thin JS API
        for our site-controls UI.
-     - `NNPictureInPicture.*` → Chrome PiP and auto-PiP.
+     - `ACPictureInPicture.*` → Chrome PiP and auto-PiP.
      - The passwords, autofill and favicon parts of `helper/page_script.js`.
-   - Keep `NNSwipe`, `NNDevTools`, `NNBrowsingData`, downloads, `NNDiagnostics` and `NNComponents`.
-   - **As built:** the engines went, the files stayed. `NNPasswords`, `NNAutofill`, `NNZoom`,
-     `NNSiteSettings` and `NNExtensions` (with their `.ts` files) are now thin wrappers that drive
+   - Keep `ACSwipe`, `ACDevTools`, `ACBrowsingData`, downloads, `ACDiagnostics` and `ACComponents`.
+   - **As built:** the engines went, the files stayed. `ACPasswords`, `ACAutofill`, `ACZoom`,
+     `ACSiteSettings` and `ACExtensions` (with their `.ts` files) are now thin wrappers that drive
      Chrome's own settings and extensions pages (passwordsPrivate, autofillPrivate, HostZoomMap
      through the tabs, content settings, developerPrivate) for our settings panes.
-     `NNFilterEngine`, the filter-list fetch, `NNPictureInPicture` and `extension_shim.js` are gone;
-     `NNContentBlocker` now manages uBlock Origin Lite.
+     `ACFilterEngine`, the filter-list fetch, `ACPictureInPicture` and `extension_shim.js` are gone;
+     `ACContentBlocker` now manages uBlock Origin Lite.
 4. **WP4 — Chrome UI surfaces** (~2–3 eng-weeks, long tail; depends on WP2)
-   - Owns the new `packages/cef/ios/NNChromeUI.*` and `apps/browser/src/components/site/*`.
+   - Owns the new `packages/cef/ios/ACChromeUI.*` and `apps/browser/src/components/site/*`.
    - Implement the table above: verify each surface's position, route the anchored bubbles (passwords,
      permissions, page info, blocked popups, downloads) to RN, and settle on an approach for extension
      popups.
@@ -241,7 +241,7 @@ critical path is WP1's build turnaround.
 ## Risks
 
 - **Views state vs. our NSView.** With the attach skipped, views-side focus and accessibility parenting
-  of the tab no longer run. We already handle both in `NNBrowserView` (Alloy today). Chrome code that
+  of the tab no longer run. We already handle both in `ACBrowserView` (Alloy today). Chrome code that
   asks the `ContentsWebView` for bounds (fullscreen, find-bar placement) gets the ghost's geometry,
   which stays correct as long as the ghost stays aligned.
 - **Keyboard shortcuts and `chrome.commands`.** Chrome's accelerators live on the Browser window, which
@@ -252,7 +252,7 @@ critical path is WP1's build turnaround.
 - **Private API.** Only what Chromium itself uses (`CALayerHost`, inside Chromium). Our own code adds
   `CABackdropLayer` as an option; `NSVisualEffectView` is enough.
 
-## Prototype index (`~/netnyahoo-research/owlproto`)
+## Prototype index (`~/arcadia-research/owlproto`)
 
 - `cefproto.mm`: `--mode=windowed|osr|host`. Options: `PROBE=1` injects input, `EBF=1`/`CONTENTS=1`
   select OSR present paths, `TYPETEST=1` runs the input API matrix.

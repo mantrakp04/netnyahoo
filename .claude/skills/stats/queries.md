@@ -1,24 +1,24 @@
 # Stats queries (ClickHouse)
 
-Run with `node scripts/telemetry-sql.mjs "<query>"` (read-only user from `~/.config/netnyahoo/telemetry.env`),
+Run with `node scripts/telemetry-sql.mjs "<query>"` (read-only user from `~/.config/arcadia/telemetry.env`),
 one at a time: the server has 2 cores, a query over the PostHog history takes 5–30 s, and parallel ones
 only queue up behind each other (four at once once ran it out of open files). Put a `timestamp >` filter
 first when a query only needs recent events. For a query that runs often, read the two tables under the view
 directly and filter on the event first (both sort by event, date); unique counts don't need the view's FINAL.
 `scripts/stats-snapshot.mjs` does this: all the headline numbers in one request, about 1 s.
 Everything is in `telemetry.events`: PostHog's event and property names, one row per event, `properties`
-a `Map(String, String)` (booleans are `'true'`/`'false'`). `source` says who sent it: `netnyahoo-site`,
-`netnyahoo-app`, `netnyahoo-feed` (update checks) or `posthog-cloud` (history before the switch, and old app
+a `Map(String, String)` (booleans are `'true'`/`'false'`). `source` says who sent it: `arcadia-site`,
+`arcadia-app`, `arcadia-feed` (update checks) or `posthog-cloud` (history before the switch, and old app
 versions that still report to PostHog Cloud until the next delta import). Times are UTC.
 
 Common filters. They are not SQL macros: paste the expression in place of the name.
 
 ```sql
 -- the site, production only (the history has localhost too)
-SITE  = (source IN ('netnyahoo-site', 'posthog-cloud') AND properties['$lib'] IN ('web', 'netnyahoo-web')
+SITE  = (source IN ('arcadia-site', 'posthog-cloud') AND properties['$lib'] IN ('web', 'arcadia-web')
          AND properties['$host'] IN ('netnyahoo.com', 'www.netnyahoo.com'))
 -- the Mac app's opted-in telemetry
-APP   = (source IN ('netnyahoo-app', 'posthog-cloud') AND properties['$lib'] = 'netnyahoo-telemetry')
+APP   = (source IN ('arcadia-app', 'posthog-cloud') AND properties['$lib'] = 'arcadia-telemetry')
 MAC   = (properties['$os'] = 'Mac OS X' AND properties['$device_type'] = 'Desktop')
 PHONE = (properties['$device_type'] IN ('Mobile', 'Tablet'))
 ```
@@ -61,7 +61,7 @@ SELECT event, count(), uniqExact(distinct_id) FROM telemetry.events
 WHERE SITE AND event IN ('github_clicked', 'screenshot_opened', 'notify_clicked', 'support_opened', '$rageclick', '$dead_click')
   AND timestamp > now() - INTERVAL 24 HOUR GROUP BY event;
 
--- Dead clicks by element text (the Big Yahu canvas has none)
+-- Dead clicks by element text (the mascot canvas has none)
 SELECT properties['$el_text'] AS text, count() FROM telemetry.events
 WHERE SITE AND event = '$dead_click' AND timestamp > now() - INTERVAL 24 HOUR GROUP BY text ORDER BY 2 DESC LIMIT 10;
 ```

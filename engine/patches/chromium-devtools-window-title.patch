@@ -5,7 +5,7 @@
  const char kFrontendHostMethod[] = "method";
  const char kFrontendHostParams[] = "params";
 -const char kTitleFormat[] = "DevTools - %s";
-+// Netnyahoo: Dia's title for the DevTools window (and its frontend page).
++// Arcadia: Dia's title for the DevTools window (and its frontend page).
 +const char kTitleFormat[] = "Developer Tools - %s";
  
  const char kConfigDiscoverUsbDevices[] = "discoverUsbDevices";

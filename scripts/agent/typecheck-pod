@@ -1,14 +1,14 @@
 #!/bin/bash
 # Compiles one CocoaPods pod's sources (and the pods it depends on) without building the app: the quick way to
-# check a native change to packages/{nncore,shell,shaders,import,sync} compiles.
+# check a native change to packages/{arcadiacore,shell,shaders,import,sync} compiles.
 #
 #   scripts/agent/typecheck-pod <PodName> [--derived-data DIR] [--wait SECS]
 #   scripts/agent/typecheck-pod -h | --help
 #
-# <PodName> is a target of apps/browser/macos/Pods/Pods.xcodeproj: NetnyahooImport, NetnyahooNNCore,
-# NetnyahooShaders, NetnyahooShell, NetnyahooSync (or any other pod there). Runs, under
+# <PodName> is a target of apps/browser/macos/Pods/Pods.xcodeproj: ArcadiaImport, ArcadiaCore,
+# ArcadiaShaders, ArcadiaShell, ArcadiaSync (or any other pod there). Runs, under
 # `scripts/agent/locked xcodebuild` (--wait passed on):
-#   xcodebuild -workspace apps/browser/macos/Netnyahoo.xcworkspace -scheme <PodName> -configuration Debug
+#   xcodebuild -workspace apps/browser/macos/Arcadia.xcworkspace -scheme <PodName> -configuration Debug
 #     -destination platform=macOS,arch=arm64 -derivedDataPath DIR -quiet build
 # -quiet leaves only warnings, errors and the result; the exit status is xcodebuild's.
 # DIR defaults to apps/browser/build-typecheck, shared by every caller: the first run compiles the pod's
@@ -59,8 +59,8 @@ target=$(awk -v name="$pod" '
   id != "" { if ($0 ~ /isa = PBXNativeTarget;/) { print id; exit } id = "" }
 ' "$pods/project.pbxproj")
 if [[ -z "$target" ]]; then
-  echo "typecheck-pod: no pod target named $pod in $pods; the Netnyahoo ones:" >&2
-  grep -oE '/\* Netnyahoo[A-Za-z]+ \*/ = \{' "$pods/project.pbxproj" | awk '{print "  " $2}' | sort -u >&2
+  echo "typecheck-pod: no pod target named $pod in $pods; the Arcadia ones:" >&2
+  grep -oE '/\* Arcadia[A-Za-z]+ \*/ = \{' "$pods/project.pbxproj" | awk '{print "  " $2}' | sort -u >&2
   exit 1
 fi
 
@@ -91,7 +91,7 @@ fi
 lock=(xcodebuild)
 [[ -n "$wait" ]] && lock+=(--wait "$wait")
 echo "typecheck-pod: building $pod into $derived" >&2
-"$here/locked" "${lock[@]}" -- xcodebuild -workspace "$macos/Netnyahoo.xcworkspace" -scheme "$pod" \
+"$here/locked" "${lock[@]}" -- xcodebuild -workspace "$macos/Arcadia.xcworkspace" -scheme "$pod" \
   -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath "$derived" -quiet build
 status=$?
 if [[ $status -eq 0 ]]; then

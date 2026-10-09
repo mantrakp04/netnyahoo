@@ -4,12 +4,12 @@
  @property(assign, nonatomic) BOOL drawMenuBackgroundForBlur;
  @property(strong, nonatomic) NSEvent* keyDownEventForTesting;
  
-+// Netnyahoo: a view the embedder added as a subview of this one to show its
-+// own UI over the widget's views (NNCore's windows, engine/nncore). Hit
++// Arcadia: a view the embedder added as a subview of this one to show its
++// own UI over the widget's views (ArcadiaCore's windows, engine/arcadiacore). Hit
 +// testing and accessibility ask it first, so
 +// the points it covers reach its views and assistive technologies see its
 +// tree rather than the widget's views underneath.
-+@property(weak, nonatomic) NSView* netnyahooEmbeddedView;
++@property(weak, nonatomic) NSView* arcadiaEmbeddedView;
 +
  // Initialize the NSView -> views::View bridge. |viewToHost| must be non-NULL.
  - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
@@ -20,7 +20,7 @@
  @synthesize bridge = _bridge;
  @synthesize drawMenuBackgroundForBlur = _drawMenuBackgroundForBlur;
  @synthesize keyDownEventForTesting = _keyDownEvent;
-+@synthesize netnyahooEmbeddedView = _netnyahooEmbeddedView;
++@synthesize arcadiaEmbeddedView = _arcadiaEmbeddedView;
  
  - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
                          bounds:(gfx::Rect)bounds {
@@ -29,8 +29,8 @@
    // superview is taller than the contentView.
    NSPoint pointInView = [self convertPoint:point fromView:self.superview];
 +
-+  // Netnyahoo: the embedder's views come first.
-+  if (NSView* embedded = [self netnyahooEmbeddedSubview]) {
++  // Arcadia: the embedder's views come first.
++  if (NSView* embedded = [self arcadiaEmbeddedSubview]) {
 +    if (NSView* hit = [embedded hitTest:pointInView]) {
 +      return hit;
 +    }
@@ -42,8 +42,8 @@
  // NSAccessibility formal protocol implementation:
  
  - (NSArray*)accessibilityChildren {
-+  // Netnyahoo: the embedder's views cover the widget's.
-+  if (NSView* embedded = [self netnyahooEmbeddedSubview]) {
++  // Arcadia: the embedder's views cover the widget's.
++  if (NSView* embedded = [self arcadiaEmbeddedSubview]) {
 +    return NSAccessibilityUnignoredChildren(@[ embedded ]);
 +  }
    if (id accessible = _bridge->host_helper()->GetNativeViewAccessible())
@@ -53,7 +53,7 @@
  // NSAccessibility informal protocol implementation:
  
  - (id)accessibilityHitTest:(NSPoint)point {
-+  if (NSView* embedded = [self netnyahooEmbeddedSubview]) {
++  if (NSView* embedded = [self arcadiaEmbeddedSubview]) {
 +    if (id hit = [embedded accessibilityHitTest:point]) {
 +      return hit;
 +    }
@@ -62,9 +62,9 @@
        accessibilityHitTest:point];
  }
  
-+// Netnyahoo: netnyahooEmbeddedView while it is a visible subview of this view.
-+- (NSView*)netnyahooEmbeddedSubview {
-+  NSView* embedded = self.netnyahooEmbeddedView;
++// Arcadia: arcadiaEmbeddedView while it is a visible subview of this view.
++- (NSView*)arcadiaEmbeddedSubview {
++  NSView* embedded = self.arcadiaEmbeddedView;
 +  return embedded && embedded.superview == self && !embedded.hidden ? embedded
 +                                                                     : nil;
 +}
@@ -78,15 +78,15 @@
  }
  
  
-+// Netnyahoo: NNCore (engine/nncore) keeps its windows open without tabs.
-+bool (*g_netnyahoo_keeps_window_without_tabs)(
++// Arcadia: ArcadiaCore (engine/arcadiacore) keeps its windows open without tabs.
++bool (*g_arcadia_keeps_window_without_tabs)(
 +    const BrowserWindowInterface* browser) = nullptr;
 +
  void Browser::TabStripEmpty() {
-+  // Netnyahoo: a window NNCore shows its own UI in stays open without tabs,
++  // Arcadia: a window ArcadiaCore shows its own UI in stays open without tabs,
 +  // unless it is closing.
-+  if (g_netnyahoo_keeps_window_without_tabs &&
-+      g_netnyahoo_keeps_window_without_tabs(this) &&
++  if (g_arcadia_keeps_window_without_tabs &&
++      g_arcadia_keeps_window_without_tabs(this) &&
 +      !UnloadController::From(this)->is_attempting_to_close_browser()) {
 +    return;
 +  }
@@ -99,15 +99,15 @@
    }
  }
  
-+// Netnyahoo: NNCore (engine/nncore); defined in browser.cc.
-+extern bool (*g_netnyahoo_keeps_window_without_tabs)(
++// Arcadia: ArcadiaCore (engine/arcadiacore); defined in browser.cc.
++extern bool (*g_arcadia_keeps_window_without_tabs)(
 +    const BrowserWindowInterface* browser);
 +
  void UnloadController::TabStripEmpty() {
-+  // Netnyahoo: see Browser::TabStripEmpty. The window stays open for new tabs.
++  // Arcadia: see Browser::TabStripEmpty. The window stays open for new tabs.
 +  if (!is_attempting_to_close_browser_ &&
-+      g_netnyahoo_keeps_window_without_tabs &&
-+      g_netnyahoo_keeps_window_without_tabs(browser_.get())) {
++      g_arcadia_keeps_window_without_tabs &&
++      g_arcadia_keeps_window_without_tabs(browser_.get())) {
 +    return;
 +  }
    // Set is_attempting_to_close_browser_ here, so that extensions, etc, do not

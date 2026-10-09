@@ -1,5 +1,5 @@
-import { displayUrl, resolveInput, searchUrl, scopedSearchUrl, type SearchScope, type Suggestion } from "@netnyahoo/core";
-import { ContextMenuArea, Symbol, copyText, pickFiles, showMenu, startDictation } from "@netnyahoo/shell";
+import { displayUrl, resolveInput, searchUrl, scopedSearchUrl, type SearchScope, type Suggestion } from "@arcadia/core";
+import { ContextMenuArea, Symbol, copyText, pickFiles, showMenu, startDictation } from "@arcadia/shell";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useTheme } from "../lib/theme";

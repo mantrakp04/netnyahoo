@@ -1,5 +1,5 @@
-import { addHistoryVisits, onHistoryChanged, queryHistory, watchHistory, type EngineHistoryEntry, type HistoryChange } from "@netnyahoo/nncore";
-import { readDocument, removeDocument } from "@netnyahoo/shell";
+import { addHistoryVisits, onHistoryChanged, queryHistory, watchHistory, type EngineHistoryEntry, type HistoryChange } from "@arcadia/arcadiacore";
+import { readDocument, removeDocument } from "@arcadia/shell";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { afterFirstWindow } from "./afterFirstWindow";
 import { MAX_HISTORY, MAX_VISIT_TIMES } from "../store/history";

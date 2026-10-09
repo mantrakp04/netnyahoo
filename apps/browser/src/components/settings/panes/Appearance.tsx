@@ -1,4 +1,4 @@
-import { appIcons, currentAppIcon, setAppearance, setAppIcon, Symbol, type AppIcon } from "@netnyahoo/shell";
+import { appIcons, currentAppIcon, setAppearance, setAppIcon, Symbol, type AppIcon } from "@arcadia/shell";
 import { useEffect, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";

@@ -3,7 +3,7 @@
 // were wasted (same props, no state or context change), on a production bundle with React's profiling renderer.
 //
 //   node js-bench.mjs bundle <dir> --profiling 1           the bundle (main.jsbundle) to run
-//   node render-bench.mjs run --app <Release Netnyahoo.app> --bundle <dir>/main.jsbundle --label <name>
+//   node render-bench.mjs run --app <Release Arcadia.app> --bundle <dir>/main.jsbundle --label <name>
 //                             [--runs 3] [--port 47827] [--out <dir>] [--only idle1,ticker,…] [--idle 60]
 //       Clones the app with the bundle swapped in and, per run, launches two hidden instances on fresh data folders:
 //       one tab (idle), then 20 tabs (3 pinned, a group of 4) for every interaction. Writes <label>.json.
@@ -21,7 +21,7 @@ import { evaluate, launch, quit, startServer } from "./js-bench.mjs";
 import { buildSeed } from "./seed.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const defaultOut = process.env.NN_PERF_OUT ?? "/tmp/nn-perf-renders";
+const defaultOut = process.env.AC_PERF_OUT ?? "/tmp/ac-perf-renders";
 
 const [command, ...rest] = process.argv.slice(2);
 const flags = {};
@@ -121,7 +121,7 @@ async function session(clone, dataDir, port, lib, body) {
     for (let i = 0; i < 40 && !ready; i++) ready = await evaluate(dataDir, pid, "return 1;", 2000).then(() => true, (e) => (String(e).includes("exited") ? Promise.reject(e) : false));
     if (!ready) throw new Error("dev harness never answered");
     await evaluate(dataDir, pid, lib, 60_000);
-    const call = (name, options = {}, timeoutMs = 180_000) => evaluate(dataDir, pid, `return nnBench.run(${JSON.stringify(name)}, ${JSON.stringify(options)});`, timeoutMs);
+    const call = (name, options = {}, timeoutMs = 180_000) => evaluate(dataDir, pid, `return acBench.run(${JSON.stringify(name)}, ${JSON.stringify(options)});`, timeoutMs);
     return await body(call);
   } finally {
     await quit(pid);
@@ -133,7 +133,7 @@ async function run() {
   if (!app || !jsbundle || !label) throw new Error("run needs --app, --bundle and --label");
   const only = flags.only ? new Set(flags.only.split(",")) : null;
   const want = (name) => !only || only.has(name);
-  const clone = join(out, "apps", label, "Netnyahoo.app");
+  const clone = join(out, "apps", label, "Arcadia.app");
   rmSync(dirname(clone), { recursive: true, force: true });
   mkdirSync(dirname(clone), { recursive: true });
   execFileSync("cp", ["-cR", app, clone]);
@@ -264,7 +264,7 @@ async function run() {
 // MARK: Summary
 
 // Host wrappers render whenever their parent does; offenders lists the app's own components.
-const HOST = /^(View|Text|Pressable|Image|ScrollView|TextInput|InternalTextInput|Animated\(.*\)|Netnyahoo.*|Surface|Symbol|MouseArea|ContextMenuArea|FadeLabel|VirtualizedList.*|CellRenderer.*|ScrollViewBase|TouchableOpacity|AnimatedComponent.*)$/;
+const HOST = /^(View|Text|Pressable|Image|ScrollView|TextInput|InternalTextInput|Animated\(.*\)|Arcadia.*|Surface|Symbol|MouseArea|ContextMenuArea|FadeLabel|VirtualizedList.*|CellRenderer.*|ScrollViewBase|TouchableOpacity|AnimatedComponent.*)$/;
 
 function line(stats) {
   if (!stats) return null;

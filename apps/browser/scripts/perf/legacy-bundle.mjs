@@ -6,7 +6,7 @@
 //   node legacy-bundle.mjs <tag, e.g. v0.2.17> <out dir>     writes <out dir>/main.jsbundle (and keeps <out dir>/tree)
 //
 // `git archive <tag>` into <out dir>/tree, the repo's hoisted node_modules cloned in (pnpm: the lockfile's versions are the
-// ones that were current for that release), the tree's own packages linked as @netnyahoo/*, scripts/perf/legacy/ copied
+// ones that were current for that release), the tree's own packages linked as @arcadia/*, scripts/perf/legacy/ copied
 // over as the tree's scripts/perf/bench-entry.js, then metro --dev false and hermesc, as native-bench's buildBundle does.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
@@ -29,7 +29,7 @@ execFileSync("sh", ["-c", `git -C '${repo}' archive '${tag}' | tar -x -C '${tree
 // A copy, not a symlink: metro only resolves from directories it crawled, and it doesn't crawl through a symlink. `cp -c` clones
 // on APFS (instant, no disk), and pnpm's own links inside it are relative.
 execFileSync("cp", ["-Rc", join(repo, "node_modules"), join(tree, "node_modules")]);
-const scopeDir = join(tree, "apps/browser/node_modules/@netnyahoo");
+const scopeDir = join(tree, "apps/browser/node_modules/@arcadia");
 mkdirSync(scopeDir, { recursive: true });
 for (const pkg of readdirSync(join(tree, "packages"))) symlinkSync(join(tree, "packages", pkg), join(scopeDir, pkg));
 

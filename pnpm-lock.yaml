@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  expo-modules-core@3.0.30: 14f38f047989f5c300e3d7dcd43b906b370469ebcb3ceba585ff00f45cd7ddb3
-  react-native-macos@0.81.9: b926667efa65f53335dedf32f57fa57a6541002ea1552fac403d9ba6d37cb767
+  expo-modules-core@3.0.30: 3f22efcadb633a5c25c95e8e359da521e72e419ea19d2b3d43a84c1c2a51daf3
+  react-native-macos@0.81.9: 5312ced4980447dbea913075f0adf5fd4e1ad2f819424f6f0f93d0e7d3379f68
 
 importers:
 
@@ -21,22 +21,22 @@ importers:
 
   apps/browser:
     dependencies:
-      '@netnyahoo/core':
+      '@arcadia/arcadiacore':
+        specifier: workspace:*
+        version: link:../../packages/arcadiacore
+      '@arcadia/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@netnyahoo/import':
+      '@arcadia/import':
         specifier: workspace:*
         version: link:../../packages/import
-      '@netnyahoo/nncore':
-        specifier: workspace:*
-        version: link:../../packages/nncore
-      '@netnyahoo/shaders':
+      '@arcadia/shaders':
         specifier: workspace:*
         version: link:../../packages/shaders
-      '@netnyahoo/shell':
+      '@arcadia/shell':
         specifier: workspace:*
         version: link:../../packages/shell
-      '@netnyahoo/sync':
+      '@arcadia/sync':
         specifier: workspace:*
         version: link:../../packages/sync
       expo:
@@ -44,7 +44,7 @@ importers:
         version: 54.0.37(@babel/core@7.29.7)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3)
       expo-modules-core:
         specifier: ~3.0.29
-        version: 3.0.30(patch_hash=14f38f047989f5c300e3d7dcd43b906b370469ebcb3ceba585ff00f45cd7ddb3)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
+        version: 3.0.30(patch_hash=3f22efcadb633a5c25c95e8e359da521e72e419ea19d2b3d43a84c1c2a51daf3)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
       react:
         specifier: 19.1.4
         version: 19.1.4
@@ -53,7 +53,7 @@ importers:
         version: 0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4)
       react-native-macos:
         specifier: 0.81.9
-        version: 0.81.9(patch_hash=b926667efa65f53335dedf32f57fa57a6541002ea1552fac403d9ba6d37cb767)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
+        version: 0.81.9(patch_hash=5312ced4980447dbea913075f0adf5fd4e1ad2f819424f6f0f93d0e7d3379f68)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
       zustand:
         specifier: ^5.0.8
         version: 5.0.15(@types/react@19.1.17)(react@19.1.4)
@@ -86,6 +86,12 @@ importers:
         specifier: ~5.9.2
         version: 5.9.3
 
+  packages/arcadiacore:
+    dependencies:
+      '@arcadia/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/core:
     devDependencies:
       '@types/node':
@@ -93,12 +99,6 @@ importers:
         version: 24.13.6
 
   packages/import: {}
-
-  packages/nncore:
-    dependencies:
-      '@netnyahoo/core':
-        specifier: workspace:*
-        version: link:../core
 
   packages/shaders: {}
 
@@ -5314,7 +5314,7 @@ snapshots:
       require-from-string: 2.0.2
       resolve-from: 5.0.0
 
-  expo-modules-core@3.0.30(patch_hash=14f38f047989f5c300e3d7dcd43b906b370469ebcb3ceba585ff00f45cd7ddb3)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
+  expo-modules-core@3.0.30(patch_hash=3f22efcadb633a5c25c95e8e359da521e72e419ea19d2b3d43a84c1c2a51daf3)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
     dependencies:
       invariant: 2.2.4
       react: 19.1.4
@@ -5341,7 +5341,7 @@ snapshots:
       expo-font: 14.0.12(expo@54.0.37(@babel/core@7.29.7)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3))(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
       expo-keep-awake: 15.0.8(expo@54.0.37(@babel/core@7.29.7)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3))(react@19.1.4)
       expo-modules-autolinking: 3.0.27
-      expo-modules-core: 3.0.30(patch_hash=14f38f047989f5c300e3d7dcd43b906b370469ebcb3ceba585ff00f45cd7ddb3)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
+      expo-modules-core: 3.0.30(patch_hash=3f22efcadb633a5c25c95e8e359da521e72e419ea19d2b3d43a84c1c2a51daf3)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
       pretty-format: 29.7.0
       react: 19.1.4
       react-native: 0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4)
@@ -6496,7 +6496,7 @@ snapshots:
 
   react-is@18.3.1: {}
 
-  react-native-macos@0.81.9(patch_hash=b926667efa65f53335dedf32f57fa57a6541002ea1552fac403d9ba6d37cb767)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
+  react-native-macos@0.81.9(patch_hash=5312ced4980447dbea913075f0adf5fd4e1ad2f819424f6f0f93d0e7d3379f68)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
     dependencies:
       '@jest/create-cache-key-function': 29.7.0
       '@react-native-macos/virtualized-lists': 0.81.9(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)

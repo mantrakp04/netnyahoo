@@ -14,8 +14,8 @@ import {
   type ExtensionInstallPrompt,
   type ExtensionPackage,
   type InstalledExtension,
-} from "@netnyahoo/nncore";
-import { confirm, showMenu } from "@netnyahoo/shell";
+} from "@arcadia/arcadiacore";
+import { confirm, showMenu } from "@arcadia/shell";
 import { openWindow } from "../../lib/actions";
 import { webviews } from "../../lib/webviews";
 import { useBrowser, type BrowserState } from "../../store/browser";
@@ -263,4 +263,4 @@ export function extensionMenu(s: BrowserState, windowId: string | undefined) {
   return windowExtensions(s, windowId).map((x) => ({ id: x.id, title: x.name, icon: x.actionIcon || x.icon, enabled: true }));
 }
 
-if (__DEV__) (globalThis as { nnExtensionsUi?: unknown }).nnExtensionsUi = { useExtensions, confirmInstall, cancelInstall, activateExtension };
+if (__DEV__) (globalThis as { acExtensionsUi?: unknown }).acExtensionsUi = { useExtensions, confirmInstall, cancelInstall, activateExtension };

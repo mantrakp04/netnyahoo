@@ -1,11 +1,11 @@
 // The signature: two-finger swipes between profiles in the sidebar, fed step by step through the real gesture
-// tracker (nnSwipe.sidebar(W).devSimulate), one snapshot per step, so every film frame is a real frame of the pager.
+// tracker (acSwipe.sidebar(W).devSimulate), one snapshot per step, so every film frame is a real frame of the pager.
 // Personal → Work → Campaign → Side Project → Weekend, slowly; then back to Personal, one page at a time.
-const sw = globalThis.nnSwipe.sidebar(W);
+const sw = globalThis.acSwipe.sidebar(W);
 const step = (steps) => Promise.resolve(sw.devSimulate(steps, { ignorePreference: true }));
 const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
 // The pager's own position (in pages) at each frame, so the film can slide the page exactly with the sidebar.
-const pos = () => { const st8 = globalThis.expo.modules.NetnyahooSwipe.pagerState(W); return st8 ? st8.position : null; };
+const pos = () => { const st8 = globalThis.expo.modules.ArcadiaSwipe.pagerState(W); return st8 ? st8.position : null; };
 const swipe = (name, dir, n) => {
   let from;
   then(() => { from = pos(); return step([{ phase: "began", dx: 0 }]); });
@@ -30,7 +30,7 @@ then(() => { st().activate("t21"); return sleep(3000); });
 // Every profile's page once before the take (a page first shown by a swipe in a hidden instance can stay unpainted
 // for a while): a "pre" frame each, whose picture the compositor reuses for that tab.
 // The Grand Canyon page's newsletter popup is dismissed first ("No Thanks"), as a reader would.
-const dismiss = (id) => { const h = nn.webviews.get(id); return Promise.resolve(h && h.executeJavaScript("[...document.querySelectorAll('button,a')].filter(e=>/no thanks/i.test(e.textContent)).forEach(e=>e.click())")); };
+const dismiss = (id) => { const h = ac.webviews.get(id); return Promise.resolve(h && h.executeJavaScript("[...document.querySelectorAll('button,a')].filter(e=>/no thanks/i.test(e.textContent)).forEach(e=>e.click())")); };
 ["work", "campaign", "side", "weekend"].forEach((pid) => then(() => goProfile(pid).then(() => sleep(2500)).then(() => dismiss(activeTab())).then(() => sleep(800)).then(() => picShown("pre-" + pid)).then(() => snap("pre:" + pid, { pageKey: Object.fromEntries(shownTabs().map((id) => [id, "pre-" + pid + ":" + id])) }))));
 then(() => goProfile("default"));
 then(() => { st().activate("t1"); return sleep(2500).then(() => picShown("start")).then(() => snap("start", { pageKey: { t1: "start:t1" } })); });

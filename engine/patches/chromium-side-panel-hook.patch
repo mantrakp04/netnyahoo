@@ -4,9 +4,9 @@
  #include "content/public/browser/web_contents.h"
  #include "extensions/common/extension_id.h"
  
-+// Netnyahoo: NNCore (engine/nncore) shows extension side panels in its own
++// Arcadia: ArcadiaCore (engine/arcadiacore) shows extension side panels in its own
 +// panel for the tabs it hosts.
-+bool (*g_netnyahoo_extension_side_panel)(
++bool (*g_arcadia_extension_side_panel)(
 +    BrowserWindowInterface* browser_window,
 +    content::WebContents* web_contents,
 +    const extensions::ExtensionId& extension_id,
@@ -19,9 +19,9 @@
  // Defined in extension_side_panel_utils.h
  void ToggleExtensionSidePanel(BrowserWindowInterface* browser_window,
                                const ExtensionId& extension_id) {
-+  // Netnyahoo: NNCore may draw extension side panels itself.
-+  if (g_netnyahoo_extension_side_panel &&
-+      g_netnyahoo_extension_side_panel(browser_window, nullptr, extension_id,
++  // Arcadia: ArcadiaCore may draw extension side panels itself.
++  if (g_arcadia_extension_side_panel &&
++      g_arcadia_extension_side_panel(browser_window, nullptr, extension_id,
 +                                       /*open=*/true)) {
 +    return;
 +  }
@@ -32,9 +32,9 @@
  void OpenGlobalExtensionSidePanel(BrowserWindowInterface& browser_window,
                                    content::WebContents* web_contents,
                                    const ExtensionId& extension_id) {
-+  // Netnyahoo: NNCore may draw extension side panels itself.
-+  if (g_netnyahoo_extension_side_panel &&
-+      g_netnyahoo_extension_side_panel(&browser_window, web_contents, extension_id,
++  // Arcadia: ArcadiaCore may draw extension side panels itself.
++  if (g_arcadia_extension_side_panel &&
++      g_arcadia_extension_side_panel(&browser_window, web_contents, extension_id,
 +                                       /*open=*/true)) {
 +    return;
 +  }
@@ -45,9 +45,9 @@
  void OpenContextualExtensionSidePanel(BrowserWindowInterface& browser_window,
                                        content::WebContents& web_contents,
                                        const ExtensionId& extension_id) {
-+  // Netnyahoo: NNCore may draw extension side panels itself.
-+  if (g_netnyahoo_extension_side_panel &&
-+      g_netnyahoo_extension_side_panel(&browser_window, &web_contents, extension_id,
++  // Arcadia: ArcadiaCore may draw extension side panels itself.
++  if (g_arcadia_extension_side_panel &&
++      g_arcadia_extension_side_panel(&browser_window, &web_contents, extension_id,
 +                                       /*open=*/true)) {
 +    return;
 +  }
@@ -58,9 +58,9 @@
  // Declared in extension_side_panel_utils.h
  void CloseGlobalExtensionSidePanel(BrowserWindowInterface* browser_window,
                                     const ExtensionId& extension_id) {
-+  // Netnyahoo: NNCore may draw extension side panels itself.
-+  if (g_netnyahoo_extension_side_panel &&
-+      g_netnyahoo_extension_side_panel(browser_window, nullptr, extension_id,
++  // Arcadia: ArcadiaCore may draw extension side panels itself.
++  if (g_arcadia_extension_side_panel &&
++      g_arcadia_extension_side_panel(browser_window, nullptr, extension_id,
 +                                       /*open=*/false)) {
 +    return;
 +  }
@@ -71,9 +71,9 @@
  void CloseContextualExtensionSidePanel(BrowserWindowInterface* browser_window,
                                         content::WebContents* web_contents,
                                         const ExtensionId& extension_id) {
-+  // Netnyahoo: NNCore may draw extension side panels itself.
-+  if (g_netnyahoo_extension_side_panel &&
-+      g_netnyahoo_extension_side_panel(browser_window, web_contents, extension_id,
++  // Arcadia: ArcadiaCore may draw extension side panels itself.
++  if (g_arcadia_extension_side_panel &&
++      g_arcadia_extension_side_panel(browser_window, web_contents, extension_id,
 +                                       /*open=*/false)) {
 +    return;
 +  }

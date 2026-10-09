@@ -24,19 +24,19 @@ prepare_react_native_project!
 #     configuration changed, under any other build linking or embedding it.
 publish_changed = '"${PODS_ROOT}/../publish-changed.sh"'
 
-nn_patch_file = lambda do |path, &edit|
+ac_patch_file = lambda do |path, &edit|
   next unless File.exist?(path)
   old = File.read(path)
   new = edit.call(old.dup)
   File.write(path, new) if new != old
 end
 
-nn_parallel_post_install = lambda do |installer|
+ac_parallel_post_install = lambda do |installer|
   support = File.join(installer.sandbox.root, 'Target Support Files')
 
   # The resources list goes in the build's own derived files.
   Dir.glob(File.join(support, 'Pods-*', 'Pods-*-resources.sh')).each do |script|
-    nn_patch_file.call(script) do |s|
+    ac_patch_file.call(script) do |s|
       s.sub('RESOURCES_TO_COPY=${PODS_ROOT}/resources-to-copy-${TARGETNAME}.txt',
             "mkdir -p \"${DERIVED_FILE_DIR}\"\nRESOURCES_TO_COPY=${DERIVED_FILE_DIR}/resources-to-copy-${TARGETNAME}.txt")
     end
@@ -47,10 +47,10 @@ nn_parallel_post_install = lambda do |installer|
   installer.pods_project.targets.select { |t| t.name == 'ReactCodegen' }.each do |t|
     t.shell_script_build_phases.select { |p| p.name.to_s.include?('Generate Specs') }.each do |phase|
       script = phase.shell_script
-      next if script.include?('[Netnyahoo]')
+      next if script.include?('[Arcadia]')
       script = script.sub('export RCT_SCRIPT_OUTPUT_DIR="$RCT_SCRIPT_POD_INSTALLATION_ROOT"', <<~'SH'.chomp)
-        # [Netnyahoo] Generated into this build's own folder, then published by changed file (Podfile).
-        export RCT_SCRIPT_OUTPUT_DIR="$DERIVED_FILE_DIR/nn-codegen"
+        # [Arcadia] Generated into this build's own folder, then published by changed file (Podfile).
+        export RCT_SCRIPT_OUTPUT_DIR="$DERIVED_FILE_DIR/ac-codegen"
         rm -rf "$RCT_SCRIPT_OUTPUT_DIR"
         mkdir -p "$RCT_SCRIPT_OUTPUT_DIR/build/generated/autolinking"
         cp "$RCT_SCRIPT_POD_INSTALLATION_ROOT/build/generated/autolinking/autolinking.json" "$RCT_SCRIPT_OUTPUT_DIR/build/generated/autolinking/" 2>/dev/null || true
@@ -71,7 +71,7 @@ nn_parallel_post_install = lambda do |installer|
   if hermes && File.exist?(debug_tgz) && File.exist?(release_tgz)
     root = installer.sandbox.root.to_s
     unpack = lambda do |tgz, dir|
-      stamp = File.join(dir, '.netnyahoo-from')
+      stamp = File.join(dir, '.arcadia-from')
       next if File.exist?(stamp) && File.read(stamp) == "#{File.basename(tgz)} #{File.mtime(tgz).to_i}"
       FileUtils.rm_rf(dir)
       FileUtils.mkdir_p(dir)
@@ -81,7 +81,7 @@ nn_parallel_post_install = lambda do |installer|
     last = File.join(root, '.last_build_configuration')
     if File.exist?(last) && File.read(last).strip != 'Debug'
       # An earlier build swapped Release in; put Debug back.
-      FileUtils.rm_rf(File.join(root, 'hermes-engine', '.netnyahoo-from'))
+      FileUtils.rm_rf(File.join(root, 'hermes-engine', '.arcadia-from'))
       unpack.call(debug_tgz, File.join(root, 'hermes-engine'))
     end
     File.write(last, 'Debug')
@@ -89,40 +89,40 @@ nn_parallel_post_install = lambda do |installer|
 
     installer.pods_project.targets.select { |t| t.name == 'hermes-engine' }.each do |t|
       t.shell_script_build_phases.select { |p| p.name.to_s.include?('Replace Hermes') }.each do |phase|
-        phase.shell_script = "# [Netnyahoo] Nothing to replace: Release builds embed Pods/hermes-engine-Release (Podfile).\n"
+        phase.shell_script = "# [Arcadia] Nothing to replace: Release builds embed Pods/hermes-engine-Release (Podfile).\n"
       end
     end
     Dir.glob(File.join(support, 'Pods-*', 'Pods-*-frameworks.sh')).each do |script|
-      nn_patch_file.call(script) do |s|
+      ac_patch_file.call(script) do |s|
         s.sub(/(if \[\[ "\$CONFIGURATION" == "Release" \]\]; then\n(?:(?!^fi$).*\n)*?\s*install_framework "\$\{PODS_ROOT\}\/)hermes-engine\//) { "#{$1}hermes-engine-Release/" }
       end
     end
   else
-    Pod::UI.warn("[Netnyahoo] no Hermes #{hermes} archives in #{artifacts}: Hermes still swaps per configuration, so Debug and Release builds must not overlap")
+    Pod::UI.warn("[Arcadia] no Hermes #{hermes} archives in #{artifacts}: Hermes still swaps per configuration, so Debug and Release builds must not overlap")
   end
 end
 
 # Expo writes its configure script while integrating the app project, after post_install.
-nn_parallel_post_integrate = lambda do |installer|
+ac_parallel_post_integrate = lambda do |installer|
   installer.aggregate_targets.each do |target|
     script = File.join(target.support_files_dir, 'expo-configure-project.sh')
-    nn_patch_file.call(script) do |s|
-      next s if s.include?('[Netnyahoo]')
+    ac_patch_file.call(script) do |s|
+      next s if s.include?('[Arcadia]')
       provider = s[/--target "([^"]*ExpoModulesProvider\.swift)"/, 1]
       next s unless provider
-      s = s.sub(%(--target "#{provider}"), '--target "$NN_PROVIDER_DIR/ExpoModulesProvider.swift"')
+      s = s.sub(%(--target "#{provider}"), '--target "$AC_PROVIDER_DIR/ExpoModulesProvider.swift"')
       s = s.sub("with_node \\\n", <<~SH + "with_node \\\n")
-        # [Netnyahoo] Generated into this build's own folder, then published only if it changed (Podfile).
+        # [Arcadia] Generated into this build's own folder, then published only if it changed (Podfile).
         mkdir -p "${DERIVED_FILE_DIR:-${TMPDIR:-/tmp}}"
-        NN_PROVIDER_DIR=$(mktemp -d "${DERIVED_FILE_DIR:-${TMPDIR:-/tmp}}/expo-provider.XXXXXX")
-        trap 'rm -rf "$NN_PROVIDER_DIR"' EXIT
+        AC_PROVIDER_DIR=$(mktemp -d "${DERIVED_FILE_DIR:-${TMPDIR:-/tmp}}/expo-provider.XXXXXX")
+        trap 'rm -rf "$AC_PROVIDER_DIR"' EXIT
       SH
-      s + %(\n"$PODS_ROOT/../publish-changed.sh" "$NN_PROVIDER_DIR" "#{File.dirname(provider)}"\n)
+      s + %(\n"$PODS_ROOT/../publish-changed.sh" "$AC_PROVIDER_DIR" "#{File.dirname(provider)}"\n)
     end
   end
 end
 
-target 'Netnyahoo-macOS' do
+target 'Arcadia-macOS' do
   platform :macos, '14.0'
 
   use_expo_modules!
@@ -146,10 +146,10 @@ target 'Netnyahoo-macOS' do
       t.build_configurations.each { |c| c.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '14.0' }
     end
 
-    nn_parallel_post_install.call(installer)
+    ac_parallel_post_install.call(installer)
   end
 end
 
 post_integrate do |installer|
-  nn_parallel_post_integrate.call(installer)
+  ac_parallel_post_integrate.call(installer)
 end

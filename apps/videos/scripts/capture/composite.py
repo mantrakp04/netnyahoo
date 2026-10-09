@@ -11,7 +11,7 @@ the scene marks with `p` (the swipe's progress) get that blend, from tints sampl
 corners are the film's (CSS), so frames are opaque JPEGs.
 
 usage: python3 composite.py <scene> → public/footage/<scene>/0000.jpg … and frames.json; updates
-src/lib/nn-launch/footage.json (frame counts, size and labels per scene)
+src/lib/ac-launch/footage.json (frame counts, size and labels per scene)
 """
 import json
 import os
@@ -23,7 +23,7 @@ from PIL import Image, ImageDraw
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 RADIUS = 42  # px at 2x: the window's corner, measured from apps/site's ScreenCaptureKit window captures
-LIGHTS_AT = (16, 18)  # pt: AppKit's 18,20 close-button origin (NETNYAHOO_TRAFFIC_LIGHTS_LOG) less the image's 2 pt pad
+LIGHTS_AT = (16, 18)  # pt: AppKit's 18,20 close-button origin (ARCADIA_TRAFFIC_LIGHTS_LOG) less the image's 2 pt pad
 
 # Opaque window tint (top, bottom) per profile colour, from apps/browser/src/lib/windowTint.ts (docs/brand/inventory.md
 # 2.3), used where a snapshot has no opaque sidebar to sample.
@@ -252,7 +252,7 @@ def main():
         out.append({"file": name, "label": fr.get("label"), "t": fr.get("t"), "profile": fr.get("profile"), "progress": progress})
     size = [img.width, img.height]
     json.dump({"frames": out, "size": size}, open(os.path.join(dst, "frames.json"), "w"), indent=1)
-    index_path = os.path.join(ROOT, "src", "lib", "nn-launch", "footage.json")
+    index_path = os.path.join(ROOT, "src", "lib", "ac-launch", "footage.json")
     index = json.load(open(index_path)) if os.path.exists(index_path) else {}
     marks = {fr["label"]: fr["mark"] for fr in frames if fr.get("mark")}
     progress = [f["progress"] for f in out]

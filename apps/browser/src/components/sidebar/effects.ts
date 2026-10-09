@@ -1,4 +1,4 @@
-import { onAppEvent } from "@netnyahoo/shell";
+import { onAppEvent } from "@arcadia/shell";
 import { webviews } from "../../lib/webviews";
 import { startLive } from "../../live";
 import { useBrowser } from "../../store/browser";

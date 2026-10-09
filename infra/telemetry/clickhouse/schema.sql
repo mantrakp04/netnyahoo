@@ -1,4 +1,4 @@
--- Netnyahoo telemetry schema. start.sh applies it on every boot, so every statement is idempotent;
+-- Arcadia telemetry schema. start.sh applies it on every boot, so every statement is idempotent;
 -- a change to an existing table is a new ALTER ... IF NOT EXISTS line, never an edited CREATE.
 --
 --   otel_logs        what the collector writes: one row per OTLP log record. Analytics events are the
@@ -69,8 +69,8 @@ ORDER BY (event, toDate(timestamp), uuid);
 ALTER TABLE telemetry.otel_logs MODIFY SETTING min_bytes_for_wide_part = 1073741824;
 ALTER TABLE telemetry.posthog_events MODIFY SETTING min_bytes_for_wide_part = 1073741824;
 
--- Everything, in PostHog's shape. `source` is the service that sent it (netnyahoo-site, netnyahoo-app,
--- netnyahoo-feed) or posthog-cloud for the migrated history. Deduplicated on uuid.
+-- Everything, in PostHog's shape. `source` is the service that sent it (arcadia-site, arcadia-app,
+-- arcadia-feed) or posthog-cloud for the migrated history. Deduplicated on uuid.
 CREATE OR REPLACE VIEW telemetry.events AS
 SELECT
     Uuid AS uuid,
@@ -84,9 +84,9 @@ SELECT
     ResourceAttributes['service.version'] AS source_version
 FROM telemetry.otel_logs FINAL
 WHERE Event != ''
-  -- Checks of the pipeline itself (docs/growth.md, Telemetry): service netnyahoo-selftest, or a
+  -- Checks of the pipeline itself (docs/growth.md, Telemetry): service arcadia-selftest, or a
   -- sender whose version is 0.0.0-selftest.
-  AND ServiceName != 'netnyahoo-selftest'
+  AND ServiceName != 'arcadia-selftest'
   AND ResourceAttributes['service.version'] != '0.0.0-selftest'
 UNION ALL
 SELECT
@@ -111,7 +111,7 @@ SELECT
     Body AS message,
     LogAttributes AS attributes
 FROM telemetry.otel_logs
-WHERE Event = '' AND ServiceName != 'netnyahoo-selftest' AND ResourceAttributes['service.version'] != '0.0.0-selftest';
+WHERE Event = '' AND ServiceName != 'arcadia-selftest' AND ResourceAttributes['service.version'] != '0.0.0-selftest';
 
 -- One row per recorded session. The site sends a `$replay_chunk` event with every chunk it uploads
 -- (replays/<day>/<session>/<seq>.json[.gz] in SeaweedFS); pages, clicks and device come from the

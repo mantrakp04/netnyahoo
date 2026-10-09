@@ -7,7 +7,7 @@ diff --git a/chrome/browser/ui/views/overlay/video_overlay_window_views.cc b/chr
    views::Widget::OnNativeWidgetDestroyed();
 -  controller_->OnWindowDestroyed(
 -      /*should_pause_video=*/show_play_pause_button_);
-+  // Netnyahoo: a closed mini player leaves its video playing in the tab.
++  // Arcadia: a closed mini player leaves its video playing in the tab.
 +  controller_->OnWindowDestroyed(/*should_pause_video=*/false);
  }
  
@@ -18,7 +18,7 @@ diff --git a/chrome/browser/ui/views/overlay/video_overlay_window_views.cc b/chr
  void VideoOverlayWindowViews::CloseAndPauseIfAvailable() {
 -  // Only pause the video if play/pause is available.
 -  const bool should_pause_video = !!show_play_pause_button_;
-+  // Netnyahoo: closing the mini player never pauses its video, which keeps
++  // Arcadia: closing the mini player never pauses its video, which keeps
 +  // playing in its tab (as in Arc and Dia). Chrome paused it whenever the
 +  // window had a play/pause button.
    PictureInPictureWindowManager::GetInstance()->ExitPictureInPictureViaWindowUi(

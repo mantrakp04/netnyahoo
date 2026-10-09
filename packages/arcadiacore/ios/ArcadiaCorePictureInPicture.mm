@@ -1,0 +1,997 @@
+// packages/cef/ios/ACPictureInPicture.mm on ArcadiaCore: the same window, styling, stash and menu; the video's frame is
+// a frame id (ArcadiaCoreTab's -executeJavaScript:frame:).
+#import "ArcadiaCorePictureInPicture.h"
+
+#import "ACChromeWindow.h"
+#import "ArcadiaCorePiPZoom.h"
+#import "ArcadiaCoreWebViewInternal.h"
+
+#import <objc/runtime.h>
+#import <QuartzCore/QuartzCore.h>
+
+// AppKit's own setter for WindowServer's prevents-activation tag, which a non-activating NSPanel gets at creation.
+@interface NSWindow (ACPreventsActivation)
+- (void)_setPreventsActivation:(BOOL)prevents;
+- (BOOL)_preventsActivation;
+@end
+
+namespace {
+
+constexpr CGFloat kPeek = 28;
+constexpr CGFloat kReturnMargin = 16;
+// Chrome's corner buttons, restyled as Dia's (chrome/browser/arcadia/pip in engine/chromium): 28 pt squares 12 pt in.
+constexpr CGFloat kButtonMargin = 12, kButtonSize = 28;
+// Dia's window corners: circular, 6 pt (fitted at 2x to 0.1 px), with the shadow following them, and a 1 pt rim of
+// white at 17 % just inside the edge.
+constexpr CGFloat kCornerRadius = 6;
+constexpr CGFloat kRimAlpha = 0.17;
+
+NSString *const kKeepOnTopDefault = @"ACPictureInPictureKeepOnTop";
+// Kill switch for ⌘-scroll / pinch zoom: `defaults write <bundle id> ACPictureInPictureZoom -bool NO`.
+NSString *const kZoomDefault = @"ACPictureInPictureZoom";
+const void *const kControllerKey = &kControllerKey;
+const void *const kZoomKey = &kZoomKey;
+
+BOOL KeepOnTop() {
+  id value = [NSUserDefaults.standardUserDefaults objectForKey:kKeepOnTopDefault];
+  return value ? [value boolValue] : YES;
+}
+
+// A window showing a page: a document Picture in Picture window is a Browser window of Chrome's, frameless and kept
+// on top like a video's, but with the page's own view in it.
+BOOL ShowsPage(NSView *view) {
+  static Class page = NSClassFromString(@"RenderWidgetHostViewCocoa");
+  if (page && [view isKindOfClass:page]) return YES;
+  for (NSView *child in view.subviews)
+    if (ShowsPage(child)) return YES;
+  return NO;
+}
+
+BOOL IsChromeFloatingWindow(NSWindow *window) {
+  static Class frameless = NSClassFromString(@"NativeWidgetMacFramelessNSWindow");
+  return frameless && [window isKindOfClass:frameless] && window.visible && window.level >= NSFloatingWindowLevel &&
+         (window.collectionBehavior & NSWindowCollectionBehaviorCanJoinAllSpaces);
+}
+
+BOOL IsChromeVideoPictureInPicture(NSWindow *window) {
+  return IsChromeFloatingWindow(window) && !ShowsPage(window.contentView);
+}
+
+// Chrome's document Picture in Picture window, shown or not yet.
+BOOL IsChromeDocumentPictureInPicture(NSWindow *window) {
+  static Class frameless = NSClassFromString(@"NativeWidgetMacFramelessNSWindow");
+  return frameless && [window isKindOfClass:frameless] && ShowsPage(window.contentView);
+}
+
+NSScreen *ScreenFor(NSRect frame) {
+  NSScreen *best = nil;
+  CGFloat bestArea = 0;
+  for (NSScreen *screen in NSScreen.screens) {
+    NSRect overlap = NSIntersectionRect(frame, screen.frame);
+    CGFloat area = overlap.size.width * overlap.size.height;
+    if (area > bestArea) best = screen, bestArea = area;
+  }
+  return best ?: NSScreen.mainScreen;
+}
+
+BOOL ScreenAt(CGFloat x, CGFloat y) {
+  for (NSScreen *screen in NSScreen.screens)
+    if (NSPointInRect(NSMakePoint(x, y), screen.frame)) return YES;
+  return NO;
+}
+
+// A click on the mini player doesn't activate the app. WindowServer activates the owner of a clicked window unless the
+// window carries its prevents-activation tag; activated, the app made its next window key as the mini player closed,
+// and the browser window came up over the app the user was in. In an app that isn't active the window doesn't become
+// key either, so the keyboard stays where it was; Chrome's views take the click all the same (acceptsFirstMouse:).
+// Back to Tab activates the app itself (ActivateApp).
+void PreventActivation(NSWindow *window) {
+  if ([window respondsToSelector:@selector(_setPreventsActivation:)]) [window _setPreventsActivation:YES];
+}
+
+BOOL PreventsActivation(NSWindow *window) {
+  return [window respondsToSelector:@selector(_preventsActivation)] && [window _preventsActivation];
+}
+
+// Times Back to Tab activated the app (the button self-test reads it).
+NSInteger gActivations = 0;
+
+void ActivateApp(NSString *why) {
+  gActivations++;
+  if (arcadiacore_host::Background()) return arcadiacore_host::LogActivation([@"activate (skipped in a test instance): " stringByAppendingString:why]);
+  [NSApp activate];
+}
+
+}
+
+typedef NS_ENUM(NSInteger, ACPiPEdge) { ACPiPEdgeNone = 0, ACPiPEdgeLeft = -1, ACPiPEdgeRight = 1 };
+
+@class ACPiPController;
+
+// MARK: - Views
+
+@interface ACPiPControl : NSView
+@property (nonatomic, copy) void (^onClick)(void);
+@property (nonatomic) BOOL hovered;
+@end
+
+@implementation ACPiPControl {
+  NSEvent *_down;
+  NSTrackingArea *_tracking;
+}
+
+- (BOOL)isFlipped { return YES; }
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+- (BOOL)mouseDownCanMoveWindow { return NO; }
+
+- (void)updateTrackingAreas {
+  [super updateTrackingAreas];
+  if (_tracking) [self removeTrackingArea:_tracking];
+  _tracking = [[NSTrackingArea alloc]
+      initWithRect:NSZeroRect
+           options:NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect | NSTrackingCursorUpdate
+             owner:self
+          userInfo:nil];
+  [self addTrackingArea:_tracking];
+}
+
+- (void)mouseEntered:(NSEvent *)event { self.hovered = YES; }
+- (void)mouseExited:(NSEvent *)event { self.hovered = NO; }
+- (void)cursorUpdate:(NSEvent *)event { [NSCursor.pointingHandCursor set]; }
+
+- (void)mouseDown:(NSEvent *)event { _down = event; }
+
+- (void)mouseDragged:(NSEvent *)event {
+  if (!_down) return;
+  NSPoint a = _down.locationInWindow, b = event.locationInWindow;
+  if (hypot(b.x - a.x, b.y - a.y) < 3) return;
+  NSEvent *down = _down;
+  _down = nil;
+  [self.window performWindowDragWithEvent:down];
+}
+
+- (void)mouseUp:(NSEvent *)event {
+  if (!_down) return;
+  _down = nil;
+  if (self.onClick) self.onClick();
+}
+
+@end
+
+@interface ACPiPHandle : ACPiPControl
+@property (nonatomic) ACPiPEdge edge;
+@end
+
+@implementation ACPiPHandle {
+  NSImageView *_chevron;
+}
+
+- (instancetype)initWithFrame:(NSRect)frame {
+  if ((self = [super initWithFrame:frame])) {
+    self.wantsLayer = YES;
+    _chevron = [[NSImageView alloc] init];
+    _chevron.contentTintColor = [NSColor colorWithWhite:1 alpha:0.95];
+    _chevron.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:15 weight:NSFontWeightSemibold];
+    [self addSubview:_chevron];
+    self.toolTip = @"Show Picture in Picture";
+    [self setHovered:NO];
+  }
+  return self;
+}
+
+- (void)setEdge:(ACPiPEdge)edge {
+  _edge = edge;
+  NSString *name = edge == ACPiPEdgeLeft ? @"chevron.compact.right" : @"chevron.compact.left";
+  _chevron.image = [NSImage imageWithSystemSymbolName:name accessibilityDescription:@"Show Picture in Picture"];
+  self.needsLayout = YES;
+}
+
+- (void)setHovered:(BOOL)hovered {
+  [super setHovered:hovered];
+  self.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:hovered ? 0.7 : 0.5].CGColor;
+}
+
+- (void)layout {
+  [super layout];
+  NSSize size = NSMakeSize(16, 28);
+  _chevron.frame = NSMakeRect(floor((NSWidth(self.bounds) - size.width) / 2), floor((NSHeight(self.bounds) - size.height) / 2),
+                              size.width, size.height);
+}
+
+@end
+
+// Holds the stash handle over Chrome's views; the resting window shows nothing of ours.
+@interface ACPiPOverlay : NSView
+@property (nonatomic, readonly) ACPiPHandle *handle;
+@end
+
+@interface ACPiPController : NSObject
+@property (nonatomic, readonly) NSWindow *window;
+@property (nonatomic, weak) ArcadiaCoreWebView *view;
+@property (nonatomic, copy) NSString *host;
+@property (nonatomic, readonly) ACPiPOverlay *overlay;
+@property (nonatomic, readonly) ACPiPEdge stashedEdge;
+@property (nonatomic) BOOL keepOnTop;
+- (void)setVideoFrame:(NSString *)frameId;
+- (void)roundCorners;
+- (void)backToTab;
+- (void)unstash;
+- (NSMenu *)menu;
+@end
+
+@implementation ACPiPOverlay
+
+- (instancetype)initWithFrame:(NSRect)frame {
+  if ((self = [super initWithFrame:frame])) {
+    self.wantsLayer = YES;
+    self.layer.zPosition = 100;  // Keep above Chrome’s compositor layers.
+    self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    _handle = [[ACPiPHandle alloc] initWithFrame:NSZeroRect];
+    _handle.hidden = YES;
+    _handle.alphaValue = 0;
+    [self addSubview:_handle];
+  }
+  return self;
+}
+
+- (BOOL)isFlipped { return YES; }
+
+- (NSView *)hitTest:(NSPoint)point {
+  NSPoint local = [self convertPoint:point fromView:self.superview];
+  if (!_handle.hidden && NSPointInRect(local, _handle.frame)) return _handle;
+  return nil;  // Everything else is Chrome's.
+}
+
+- (void)layout {
+  [super layout];
+  NSSize size = self.bounds.size;
+  _handle.frame = _handle.edge == ACPiPEdgeLeft ? NSMakeRect(size.width - kPeek, 0, kPeek, size.height)
+                                                 : NSMakeRect(0, 0, kPeek, size.height);
+}
+
+@end
+
+// MARK: - Controller
+
+@implementation ACPiPController {
+  NSMutableArray *_observers;
+  NSString *_frameId;
+  NSTimer *_slide;
+  BOOL _animating;
+  BOOL _sawDrag;
+}
+
++ (instancetype)forWindow:(NSWindow *)window {
+  return objc_getAssociatedObject(window, kControllerKey);
+}
+
+- (instancetype)initWithWindow:(NSWindow *)window {
+  if ((self = [super init])) {
+    _window = window;
+    NSView *root = ACWindowRootView(window);
+    _overlay = [[ACPiPOverlay alloc] initWithFrame:root.bounds];
+    __weak ACPiPController *weakSelf = self;
+    _overlay.handle.onClick = ^{ [weakSelf unstash]; };
+    [root addSubview:_overlay];
+    objc_setAssociatedObject(window, kControllerKey, self, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    _observers = [NSMutableArray array];
+    for (NSNotificationName name in @[ NSWindowDidMoveNotification, NSWindowDidResizeNotification ]) {
+      [_observers addObject:[center addObserverForName:name object:window queue:nil usingBlock:^(NSNotification *) {
+                    [weakSelf windowMoved];
+                  }]];
+    }
+    [_observers addObject:[center addObserverForName:NSWindowDidResizeNotification
+                                              object:window
+                                               queue:nil
+                                          usingBlock:^(NSNotification *) { [weakSelf roundCorners]; }]];
+    [_observers addObject:[center addObserverForName:NSWindowWillCloseNotification
+                                              object:window
+                                               queue:nil
+                                          usingBlock:^(NSNotification *) { [weakSelf detach]; }]];
+    self.keepOnTop = KeepOnTop();
+  }
+  return self;
+}
+
+- (void)detach {
+  for (id observer in _observers) [NSNotificationCenter.defaultCenter removeObserver:observer];
+  [_observers removeAllObjects];
+  [NSObject cancelPreviousPerformRequestsWithTarget:self];
+  [_slide invalidate];
+  [_overlay removeFromSuperview];
+  _frameId = nil;
+  objc_setAssociatedObject(_window, kControllerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (void)setVideoFrame:(NSString *)frameId { _frameId = [frameId copy]; }
+
+// Chrome's window is square and transparent: clipping its content view rounds everything it shows (video, controls,
+// the fades), and the shadow, which macOS takes from the window's alpha, follows once invalidated.
+- (void)roundCorners {
+  NSView *content = _window.contentView;
+  content.wantsLayer = YES;
+  CALayer *layer = content.layer;
+  if (layer.cornerRadius != kCornerRadius || !layer.masksToBounds) {
+    layer.cornerRadius = kCornerRadius;
+    layer.cornerCurve = kCACornerCurveCircular;
+    layer.masksToBounds = YES;
+  }
+  CALayer *rim = _overlay.layer;
+  rim.cornerRadius = kCornerRadius;
+  rim.cornerCurve = kCACornerCurveCircular;
+  rim.borderWidth = 1;
+  rim.borderColor = [NSColor colorWithWhite:1 alpha:kRimAlpha].CGColor;
+  _window.opaque = NO;
+  _window.backgroundColor = NSColor.clearColor;
+  // After Chrome has drawn the new size.
+  dispatch_async(dispatch_get_main_queue(), ^{ [self->_window invalidateShadow]; });
+}
+
+- (void)setKeepOnTop:(BOOL)keepOnTop {
+  _keepOnTop = keepOnTop;
+  _window.level = keepOnTop ? NSFloatingWindowLevel : NSNormalWindowLevel;
+}
+
+- (void)toggleKeepOnTop:(id)sender {
+  self.keepOnTop = !_keepOnTop;
+  [NSUserDefaults.standardUserDefaults setBool:_keepOnTop forKey:kKeepOnTopDefault];
+}
+
+- (NSMenu *)menu {
+  NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
+  NSMenuItem *back = [menu addItemWithTitle:@"Back to Tab" action:@selector(backToTabFromMenu:) keyEquivalent:@""];
+  back.target = self;
+  back.enabled = self.view != nil;
+  [menu addItem:NSMenuItem.separatorItem];
+  NSMenuItem *top = [menu addItemWithTitle:@"Keep Window on Top" action:@selector(toggleKeepOnTop:) keyEquivalent:@""];
+  top.target = self;
+  top.state = _keepOnTop ? NSControlStateValueOn : NSControlStateValueOff;
+  return menu;
+}
+
+- (void)backToTabFromMenu:(id)sender { [self backToTab]; }
+
+- (void)backToTab {
+  ArcadiaCoreWebView *view = self.view;
+  if (!view) return;
+  ActivateApp(@"Back to Tab (menu)");
+  [view emit:@"activateRequest" payload:@{@"reason" : @"pictureInPicture"}];
+  [view exitPictureInPictureInFrame:_frameId];
+}
+
+// MARK: Stash
+
+- (void)windowMoved {
+  if (_animating) return;
+  if (NSEvent.pressedMouseButtons & 1) _sawDrag = YES;
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(settle) object:nil];
+  [self performSelector:@selector(settle) withObject:nil afterDelay:0.12];
+}
+
+- (ACPiPEdge)edgeBeyond {
+  NSRect frame = _window.frame;
+  NSRect visible = ScreenFor(frame).visibleFrame;
+  CGFloat half = NSWidth(frame) / 2;
+  if (NSMaxX(frame) - NSMaxX(visible) > half && !ScreenAt(NSMaxX(visible) + 1, NSMidY(frame))) return ACPiPEdgeRight;
+  if (NSMinX(visible) - NSMinX(frame) > half && !ScreenAt(NSMinX(visible) - 1, NSMidY(frame))) return ACPiPEdgeLeft;
+  return ACPiPEdgeNone;
+}
+
+- (void)settle {
+  if (NSEvent.pressedMouseButtons & 1) {
+    [self performSelector:@selector(settle) withObject:nil afterDelay:0.12];
+    return;
+  }
+  BOOL dragged = _sawDrag;
+  _sawDrag = NO;
+  ACPiPEdge edge = [self edgeBeyond];
+  if (edge != ACPiPEdgeNone) return [self stashAt:edge];
+  if (_stashedEdge != ACPiPEdgeNone && !dragged) return [self stashAt:_stashedEdge];
+  if (_stashedEdge != ACPiPEdgeNone) [self setStashedEdge:ACPiPEdgeNone];
+}
+
+- (NSRect)frameStashedAt:(ACPiPEdge)edge {
+  NSRect frame = _window.frame;
+  NSRect visible = ScreenFor(frame).visibleFrame;
+  frame.origin.x = edge == ACPiPEdgeRight ? NSMaxX(visible) - kPeek : NSMinX(visible) - NSWidth(frame) + kPeek;
+  frame.origin.y = MIN(MAX(NSMinY(frame), NSMinY(visible)), NSMaxY(visible) - NSHeight(frame));
+  return frame;
+}
+
+- (void)stashAt:(ACPiPEdge)edge {
+  [self setStashedEdge:edge];
+  [self animateTo:[self frameStashedAt:edge]];
+}
+
+- (void)unstash {
+  ACPiPEdge edge = _stashedEdge;
+  if (edge == ACPiPEdgeNone) return;
+  NSRect frame = _window.frame;
+  NSRect visible = ScreenFor(frame).visibleFrame;
+  frame.origin.x = edge == ACPiPEdgeRight ? NSMaxX(visible) - NSWidth(frame) - kReturnMargin : NSMinX(visible) + kReturnMargin;
+  [self setStashedEdge:ACPiPEdgeNone];
+  [self animateTo:frame];
+}
+
+- (void)setStashedEdge:(ACPiPEdge)edge {
+  _stashedEdge = edge;
+  ACPiPHandle *handle = _overlay.handle;
+  if (edge != ACPiPEdgeNone) {
+    handle.edge = edge;
+    handle.hidden = NO;
+    _overlay.needsLayout = YES;
+  }
+  [NSAnimationContext
+      runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.25;
+        handle.animator.alphaValue = edge != ACPiPEdgeNone ? 1 : 0;
+      }
+      completionHandler:^{
+        if (self->_stashedEdge == ACPiPEdgeNone) handle.hidden = YES;
+      }];
+}
+
+// Dia: 0.25s ease-out.
+- (void)animateTo:(NSRect)target {
+  [_slide invalidate];
+  NSRect from = _window.frame;
+  if (NSEqualRects(from, target)) return;
+  _animating = YES;
+  CFTimeInterval start = CACurrentMediaTime();
+  __weak ACPiPController *weakSelf = self;
+  _slide = [NSTimer scheduledTimerWithTimeInterval:1.0 / 120 repeats:YES block:^(NSTimer *timer) {
+    ACPiPController *strongSelf = weakSelf;
+    double t = MIN((CACurrentMediaTime() - start) / 0.25, 1);
+    double eased = 1 - pow(1 - t, 3);
+    NSRect frame = NSMakeRect(round(NSMinX(from) + (NSMinX(target) - NSMinX(from)) * eased),
+                              round(NSMinY(from) + (NSMinY(target) - NSMinY(from)) * eased), NSWidth(target), NSHeight(target));
+    [strongSelf.window setFrame:t < 1 ? frame : target display:YES];
+    if (t < 1 && strongSelf) return;
+    [timer invalidate];
+    if (strongSelf) strongSelf->_animating = NO, strongSelf->_sawDrag = NO;
+  }];
+  [NSRunLoop.currentRunLoop addTimer:_slide forMode:NSRunLoopCommonModes];
+}
+
+// MARK: Self-test
+
+// The window as Core Animation draws it, at 2x over a slate backdrop, to $ARCADIA_DATA_DIR/pip-<name>.png.
+- (NSString *)snapshot:(NSString *)name {
+  NSWindow *window = _window;
+  NSString *dir = [NSString stringWithUTF8String:getenv("ARCADIA_DATA_DIR") ?: "/tmp"];
+  NSView *content = ACWindowRootView(window);
+  NSSize size = content.bounds.size;
+  NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil pixelsWide:size.width * 2 pixelsHigh:size.height * 2
+                                                                bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+                                                               colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+  CGContextRef cg = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep].CGContext;
+  CGContextSetRGBFillColor(cg, 0.36, 0.42, 0.5, 1);
+  CGContextFillRect(cg, CGRectMake(0, 0, size.width * 2, size.height * 2));
+  CGContextScaleCTM(cg, 2, 2);
+  if (content.isFlipped) CGContextTranslateCTM(cg, 0, size.height), CGContextScaleCTM(cg, 1, -1);
+  [content.layer renderInContext:cg];
+  NSString *path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"pip-%@.png", name]];
+  [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:path atomically:YES];
+  return path;
+}
+
+- (void)runSelfTest {
+  NSMutableArray *steps = [NSMutableArray array];
+  NSWindow *window = _window;
+  NSRect start = window.frame;
+  // The window stashes only past an outer edge, one with no screen beyond it (edgeBeyond): with a display to the right
+  // (or left) of the window's, the right (left) steps run at the edge of the outermost screen at the window's height.
+  auto outermost = [=](BOOL right) {
+    NSScreen *pick = ScreenFor(start);
+    for (NSScreen *screen in NSScreen.screens) {
+      const NSRect f = screen.frame;
+      if (NSMidY(start) < NSMinY(f) || NSMidY(start) >= NSMaxY(f)) continue;
+      if (right ? NSMaxX(f) > NSMaxX(pick.frame) : NSMinX(f) < NSMinX(pick.frame)) pick = screen;
+    }
+    return pick.visibleFrame;
+  };
+  const NSRect visibleRight = outermost(YES), visibleLeft = outermost(NO);
+  auto record = [=](NSString *name, BOOL pass, NSDictionary *extra) {
+    NSMutableDictionary *step = [@{@"step" : name, @"pass" : @(pass), @"frame" : NSStringFromRect(window.frame)} mutableCopy];
+    [step addEntriesFromDictionary:extra ?: @{}];
+    [steps addObject:step];
+    NSLog(@"[pip-selftest] %@ %@ %@", name, pass ? @"PASS" : @"FAIL", step);
+  };
+  NSString *dir = [NSString stringWithUTF8String:getenv("ARCADIA_DATA_DIR") ?: "/tmp"];
+  auto snapshot = [=](NSString *name) { [self snapshot:name]; };
+  auto write = [=] {
+    NSString *path = [dir stringByAppendingPathComponent:@"pip-selftest.json"];
+    NSDictionary *result = @{@"windowNumber" : @(window.windowNumber), @"host" : self.host ?: @"", @"steps" : steps};
+    [[NSJSONSerialization dataWithJSONObject:result options:NSJSONWritingPrettyPrinted error:nil] writeToFile:path atomically:YES];
+  };
+  auto after = [](double seconds, dispatch_block_t block) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), block);
+  };
+  auto rounded = [=] {
+    CALayer *layer = window.contentView.layer;
+    return layer.cornerRadius == kCornerRadius && layer.masksToBounds && !window.opaque && window.hasShadow &&
+           self.overlay.layer.borderWidth == 1;
+  };
+  auto dragTo = [=](CGFloat x) {
+    self->_sawDrag = YES;
+    [window setFrameOrigin:NSMakePoint(x, NSMinY(window.frame))];
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(settle) object:nil];
+    [self settle];
+  };
+
+  record(@"attached", self.overlay.superview == ACWindowRootView(window) && [ACWindowRootView(window).subviews.lastObject isEqual:self.overlay],
+         @{@"level" : @(window.level), @"keepOnTop" : @(self.keepOnTop), @"shadow" : @(window.hasShadow)});
+  after(0.6, ^{
+    record(@"nothing of ours at rest", self.overlay.handle.hidden && [self.overlay hitTest:NSMakePoint(20, 20)] == nil, nil);
+    record(@"rounded corners", rounded(), @{
+      @"cornerRadius" : @(window.contentView.layer.cornerRadius),
+      @"masksToBounds" : @(window.contentView.layer.masksToBounds),
+      @"opaque" : @(window.opaque),
+      @"shadow" : @(window.hasShadow),
+      @"rim" : @(self.overlay.layer.borderWidth),
+    });
+    snapshot(@"rest");
+    dragTo(NSMaxX(visibleRight) - NSWidth(window.frame) * 0.3);
+  });
+  after(2.2, ^{
+    record(@"drag past right edge stashes", self.stashedEdge == ACPiPEdgeRight &&
+                                                 fabs(NSMinX(window.frame) - (NSMaxX(visibleRight) - kPeek)) < 0.5 &&
+                                                 !self.overlay.handle.hidden && self.overlay.handle.alphaValue > 0.99,
+           @{@"handle" : NSStringFromRect(self.overlay.handle.frame)});
+    snapshot(@"stashed-right");
+    [window setFrameOrigin:NSMakePoint(NSMaxX(visibleRight) - NSWidth(window.frame) - 40, NSMinY(window.frame))];
+  });
+  after(3.4, ^{
+    record(@"Chrome's move re-stashes", self.stashedEdge == ACPiPEdgeRight && fabs(NSMinX(window.frame) - (NSMaxX(visibleRight) - kPeek)) < 0.5, nil);
+    self.overlay.handle.onClick();
+  });
+  after(4.6, ^{
+    record(@"handle click brings it back", self.stashedEdge == ACPiPEdgeNone && self.overlay.handle.hidden &&
+                                                fabs(NSMaxX(window.frame) - (NSMaxX(visibleRight) - kReturnMargin)) < 0.5,
+           nil);
+    dragTo(NSMinX(visibleLeft) - NSWidth(window.frame) * 0.7);
+  });
+  after(5.8, ^{
+    record(@"drag past left edge stashes", self.stashedEdge == ACPiPEdgeLeft &&
+                                                fabs(NSMaxX(window.frame) - (NSMinX(visibleLeft) + kPeek)) < 0.5 &&
+                                                NSMinX(self.overlay.handle.frame) == NSWidth(self.overlay.bounds) - kPeek,
+           @{@"handle" : NSStringFromRect(self.overlay.handle.frame)});
+    snapshot(@"stashed-left");
+    dragTo(NSMinX(visibleLeft) + 100);
+  });
+  after(7.0, ^{
+    record(@"drag out of the stash", self.stashedEdge == ACPiPEdgeNone && fabs(NSMinX(window.frame) - (NSMinX(visibleLeft) + 100)) < 0.5, nil);
+    // Chrome saves where the window was left in its user data dir, in screen DIPs from the top left of the primary
+    // display (chrome/browser/arcadia/pip in engine/chromium).
+    NSArray *saved = [NSArray arrayWithContentsOfFile:[dir stringByAppendingPathComponent:@"Chromium/ArcadiaPictureInPicture.plist"]];
+    NSRect frame = window.frame;
+    CGFloat top = NSMaxY(NSScreen.screens.firstObject.frame) - NSMaxY(frame);
+    record(@"Chrome remembers where it was left",
+           saved.count == 4 && [saved[0] intValue] == (int)NSMinX(frame) && [saved[1] intValue] == (int)top &&
+               [saved[2] intValue] == (int)NSWidth(frame) && [saved[3] intValue] == (int)NSHeight(frame),
+           @{@"saved" : saved ?: @[]});
+    NSMenu *menu = [self menu];
+    BOOL onBefore = [menu itemWithTitle:@"Keep Window on Top"].state == NSControlStateValueOn;
+    [self toggleKeepOnTop:nil];
+    BOOL off = window.level == NSNormalWindowLevel && [[self menu] itemWithTitle:@"Keep Window on Top"].state == NSControlStateValueOff;
+    [self toggleKeepOnTop:nil];
+    record(@"Keep Window on Top toggles", onBefore && off && window.level == NSFloatingWindowLevel,
+           @{@"menu" : [[self menu].itemArray valueForKey:@"title"]});
+    [window setFrame:NSInsetRect(start, 40, 22.5) display:YES];
+  });
+  after(7.6, ^{
+    record(@"still rounded after a resize", rounded(), nil);
+    [window setFrame:start display:YES];
+  });
+  after(8.2, ^{
+    record(@"menu: Back to Tab", self.view != nil, nil);
+    [self backToTab];
+  });
+  after(9.7, ^{
+    record(@"PiP closed after Back to Tab", !window.visible, nil);
+    write();
+  });
+}
+
+// ARCADIA_PIP_SELFTEST=close / backToTab: clicks Chrome's own close button (its X, top right) or its back-to-tab
+// button (top left) as AppKit delivers a click (through the event queue, so it's NSApp's current event), then records
+// whether the window closed, whether it carries WindowServer's prevents-activation tag, and how many times the click
+// activated the app (close: never; Back to Tab: once). What happens to the video and the tab is for the caller to
+// check (CDP, the store): closing leaves the video playing where it is.
+- (void)runButtonSelfTest:(NSString *)button {
+  NSWindow *window = _window;
+  NSString *dir = [NSString stringWithUTF8String:getenv("ARCADIA_DATA_DIR") ?: "/tmp"];
+  CGFloat center = kButtonMargin + kButtonSize / 2;
+  NSPoint point = NSMakePoint([button isEqual:@"close"] ? NSWidth(window.frame) - center : center, NSHeight(window.frame) - center);
+  auto event = [=](NSEventType type) {
+    return [NSEvent mouseEventWithType:type location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                          windowNumber:window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:type == NSEventTypeLeftMouseDown];
+  };
+  auto after = [](double seconds, dispatch_block_t block) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), block);
+  };
+  // The pointer's arrival shows Chrome's controls (its tracking area calls the content view); a click where they're
+  // hidden would drag the window instead.
+  after(1.5, ^{ [window.contentView mouseMoved:event(NSEventTypeMouseMoved)]; });
+  after(2.1, ^{
+    const BOOL prevents = PreventsActivation(window);
+    const NSInteger activations = gActivations;
+    [NSApp postEvent:event(NSEventTypeLeftMouseDown) atStart:NO];
+    [NSApp postEvent:event(NSEventTypeLeftMouseUp) atStart:NO];
+    after(1, ^{
+      NSDictionary *result = @{
+        @"button" : button,
+        @"closed" : @(!window.visible),
+        @"point" : NSStringFromPoint(point),
+        @"preventsActivation" : @(prevents),
+        @"activations" : @(gActivations - activations),
+        @"appActive" : @(NSApp.isActive),
+      };
+      NSLog(@"[pip-selftest] %@", result);
+      [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil]
+          writeToFile:[dir stringByAppendingPathComponent:@"pip-button-selftest.json"]
+           atomically:YES];
+    });
+  });
+}
+
+// ARCADIA_PIP_SELFTEST=hover: keeps Chrome's controls showing for screen captures, with the pointer over the close
+// button (ARCADIA_PIP_HOVER=close), back to tab (back) or the middle of the video (default), and writes the window
+// number and frame to pip-hover.json.
+- (void)runHoverSelfTest {
+  NSWindow *window = _window;
+  NSString *dir = [NSString stringWithUTF8String:getenv("ARCADIA_DATA_DIR") ?: "/tmp"];
+  NSString *where = NSProcessInfo.processInfo.environment[@"ARCADIA_PIP_HOVER"];
+  CGFloat center = kButtonMargin + kButtonSize / 2;
+  NSSize size = window.frame.size;
+  NSPoint point = [where isEqual:@"close"]  ? NSMakePoint(size.width - center, size.height - center)
+                  : [where isEqual:@"back"] ? NSMakePoint(center, size.height - center)
+                                            : NSMakePoint(size.width / 2, size.height * 0.7);
+  __weak NSWindow *weakWindow = window;
+  NSTimer *timer = [NSTimer timerWithTimeInterval:1 repeats:YES block:^(NSTimer *t) {
+    NSWindow *strongWindow = weakWindow;
+    if (!strongWindow.visible) return [t invalidate];
+    NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved location:point modifierFlags:0
+                                      timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:strongWindow.windowNumber
+                                        context:nil eventNumber:0 clickCount:0 pressure:0];
+    [strongWindow.contentView mouseMoved:move];
+  }];
+  [NSRunLoop.currentRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+  NSDictionary *result = @{
+    @"windowNumber" : @(window.windowNumber),
+    @"frame" : NSStringFromRect(window.frame),
+    @"hover" : where ?: @"video",
+    @"cornerRadius" : @(window.contentView.layer.cornerRadius),
+    @"masksToBounds" : @(window.contentView.layer.masksToBounds),
+    @"opaque" : @(window.opaque),
+  };
+  [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil] writeToFile:[dir stringByAppendingPathComponent:@"pip-hover.json"]
+                                                                       atomically:YES];
+}
+
+@end
+
+
+// MARK: - Zoom
+
+// ⌘-scroll (wheel or trackpad) and pinch over a Picture in Picture window resize it, keeping its aspect ratio, docked
+// to the screen edges it sits against (else around the pointer), within Chrome's own limits (its minimum, 80 % of the
+// work area) and on screen; the math is ArcadiaCorePiPZoom.h. Chrome saves the new size with its place
+// (ArcadiaPictureInPicture.plist, engine/chromium pip/) and the next window opens at it.
+@interface ACPiPZoom : NSObject
++ (BOOL)handle:(NSEvent *)event;
+@end
+
+@implementation ACPiPZoom {
+  __weak NSWindow *_window;
+  NSRect _last;    // the frame this set last; any other frame starts over from the window's
+  double _width;   // the exact width (rounding never eats a slow scroll)
+  double _aspect;  // width / height, kept while zooming
+  double _target;  // a wheel's notches ease to this width (0: none)
+  NSPoint _pointer;
+  NSTimer *_ease;
+}
+
+// A window this zooms: Chrome's video PiP (styled by ACPiPController, not tucked at an edge) or its document PiP.
++ (BOOL)zooms:(NSWindow *)window {
+  if (!window.visible || !(window.styleMask & NSWindowStyleMaskResizable)) return NO;
+  ACPiPController *controller = [ACPiPController forWindow:window];
+  if (controller) return controller.stashedEdge == ACPiPEdgeNone;
+  return IsChromeDocumentPictureInPicture(window) && IsChromeFloatingWindow(window);
+}
+
++ (instancetype)forWindow:(NSWindow *)window {
+  ACPiPZoom *zoom = objc_getAssociatedObject(window, kZoomKey);
+  if (!zoom) {
+    zoom = [[ACPiPZoom alloc] init];
+    zoom->_window = window;
+    objc_setAssociatedObject(window, kZoomKey, zoom, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+  return zoom;
+}
+
+// The scroll gesture (trackpad phases and its momentum) that started or turned into a zoom over this window: the
+// rest of it zooms too, even once ⌘ is let go, and never scrolls the page under it.
+static __weak NSWindow *gZoomGesture;
+
++ (BOOL)handle:(NSEvent *)event {
+  BOOL handled = [self route:event];
+  // ARCADIA_PIP_ZOOM_TRACE=1: every scroll and pinch the app sees, and what became of it.
+  static BOOL trace = getenv("ARCADIA_PIP_ZOOM_TRACE") != nullptr;
+  if (trace)
+    NSLog(@"[pip-zoom] type %lu window %ld (%@) cmd %d phase %lu/%lu dy %.2f precise %d mag %.3f -> %@ %@", (unsigned long)event.type,
+          (long)event.windowNumber, event.window.className, (event.modifierFlags & NSEventModifierFlagCommand) != 0,
+          (unsigned long)(event.type == NSEventTypeScrollWheel ? event.phase : 0),
+          (unsigned long)(event.type == NSEventTypeScrollWheel ? event.momentumPhase : 0),
+          event.type == NSEventTypeScrollWheel ? event.scrollingDeltaY : 0,
+          event.type == NSEventTypeScrollWheel ? event.hasPreciseScrollingDeltas : 0,
+          event.type == NSEventTypeMagnify ? event.magnification : 0, handled ? @"zoomed" : @"passed",
+          NSStringFromRect(event.window.frame));
+  return handled;
+}
+
+// The window an event is for: its own, or with none (an event the window server sent to no window, as for a test
+// instance's PiP, which ignores the pointer), the frontmost Picture in Picture window under its location.
++ (NSWindow *)windowFor:(NSEvent *)event {
+  if (event.window) return event.window;
+  NSPoint point = event.locationInWindow;  // in screen coordinates without a window
+  for (NSWindow *window in NSApp.orderedWindows)
+    if (NSPointInRect(point, window.frame) && [self zooms:window]) return window;
+  return nil;
+}
+
++ (BOOL)route:(NSEvent *)event {
+  NSWindow *window = [self windowFor:event];
+  BOOL command = (event.modifierFlags & NSEventModifierFlagCommand) != 0;
+  BOOL scroll = event.type == NSEventTypeScrollWheel;
+  if (scroll) {
+    NSEventPhase phase = event.phase, momentum = event.momentumPhase;
+    BOOL wheel = phase == NSEventPhaseNone && momentum == NSEventPhaseNone;
+    // A new gesture (or a wheel's line) decides afresh; the rest of a zoom gesture stays with its window, even once
+    // the window has shrunk out from under the pointer.
+    if (wheel || (phase & (NSEventPhaseBegan | NSEventPhaseMayBegin))) gZoomGesture = nil;
+    if (gZoomGesture) window = gZoomGesture;
+    if (!window || (!command && gZoomGesture != window)) return NO;
+    if (![self zooms:window] || ![self enabled]) return NO;
+    if (!wheel) gZoomGesture = window;
+    if (momentum & (NSEventPhaseEnded | NSEventPhaseCancelled)) gZoomGesture = nil;
+    double dy = event.scrollingDeltaY;
+    if (dy == 0) return YES;
+    [[self forWindow:window] zoomBy:arcadiacore_pip_zoom::ScrollFactor(dy, event.hasPreciseScrollingDeltas)
+                                 at:[self screenPoint:event]
+                               ease:!event.hasPreciseScrollingDeltas];
+    return YES;
+  }
+  // Pinch.
+  if (!window || ![self zooms:window] || ![self enabled]) return NO;
+  [[self forWindow:window] zoomBy:arcadiacore_pip_zoom::MagnifyFactor(event.magnification)
+                               at:[self screenPoint:event]
+                             ease:NO];
+  return YES;
+}
+
++ (NSPoint)screenPoint:(NSEvent *)event {
+  return event.window ? [event.window convertPointToScreen:event.locationInWindow] : event.locationInWindow;
+}
+
++ (BOOL)enabled {
+  id value = [NSUserDefaults.standardUserDefaults objectForKey:kZoomDefault];
+  return value ? [value boolValue] : YES;
+}
+
+- (void)zoomBy:(double)factor at:(NSPoint)pointer ease:(BOOL)ease {
+  NSWindow *window = _window;
+  NSRect frame = window.frame;
+  if (!NSEqualRects(frame, _last) || _width <= 0) {
+    // Keep the ratio from before when the frame still has it (to its rounding): whole points would drift it.
+    double aspect = NSWidth(frame) / MAX(NSHeight(frame), 1);
+    if (!(_aspect > 0 && fabs(NSWidth(frame) / _aspect - NSHeight(frame)) <= 1)) _aspect = aspect;
+    _width = NSWidth(frame), _target = 0;
+    [_ease invalidate], _ease = nil;
+  }
+  _pointer = pointer;
+  if (!ease) {
+    [_ease invalidate], _ease = nil, _target = 0;
+    return [self step:factor];
+  }
+  // A wheel's notch is a jump of several points: ease to it over ~0.1 s, retargeting with each new notch.
+  double low, high;
+  arcadiacore_pip_zoom::WidthLimits(_aspect, [self minSize], [self maxSize], [self visible], &low, &high);
+  _target = MIN(MAX((_target > 0 ? _target : _width) * factor, low), high);
+  if (_ease) return;
+  __weak ACPiPZoom *weakSelf = self;
+  _ease = [NSTimer timerWithTimeInterval:1.0 / 120 repeats:YES block:^(NSTimer *timer) {
+    ACPiPZoom *strongSelf = weakSelf;
+    if (!strongSelf || !strongSelf->_window.visible || !NSEqualRects(strongSelf->_window.frame, strongSelf->_last)) {
+      if (strongSelf) strongSelf->_ease = nil, strongSelf->_target = 0;
+      return [timer invalidate];
+    }
+    double width = strongSelf->_width, target = strongSelf->_target;
+    BOOL done = fabs(target - width) < 0.25;
+    [strongSelf step:(done ? target : width + (target - width) * 0.25) / width];
+    if (!done) return;
+    strongSelf->_ease = nil, strongSelf->_target = 0;
+    [timer invalidate];
+  }];
+  [NSRunLoop.currentRunLoop addTimer:_ease forMode:NSRunLoopCommonModes];
+  // Set _last now: the timer checks it before its first step.
+  _last = frame;
+}
+
+- (arcadiacore_pip_zoom::Size)minSize {
+  NSSize size = _window.contentMinSize;
+  return {size.width, size.height};
+}
+
+- (arcadiacore_pip_zoom::Size)maxSize {
+  NSSize size = _window.contentMaxSize;
+  return {size.width > 0 ? size.width : CGFLOAT_MAX, size.height > 0 ? size.height : CGFLOAT_MAX};
+}
+
+- (arcadiacore_pip_zoom::Rect)visible {
+  NSRect visible = ScreenFor(_window.frame).visibleFrame;
+  return {NSMinX(visible), NSMinY(visible), NSWidth(visible), NSHeight(visible)};
+}
+
+- (void)step:(double)factor {
+  NSWindow *window = _window;
+  NSRect frame = window.frame;
+  arcadiacore_pip_zoom::Result result = arcadiacore_pip_zoom::Zoom(
+      {NSMinX(frame), NSMinY(frame), NSWidth(frame), NSHeight(frame)}, _width, _aspect, factor, {_pointer.x, _pointer.y},
+      [self visible], [self minSize], [self maxSize]);
+  _width = result.width;
+  NSRect next = NSMakeRect(result.frame.x, result.frame.y, result.frame.w, result.frame.h);
+  if (!NSEqualRects(next, frame)) [window setFrame:next display:YES];
+  _last = window.frame;
+}
+
+@end
+
+// MARK: - Glue
+
+namespace arcadiacore_pip {
+
+namespace {
+
+void InstallMenuMonitor() {
+  static id monitor;
+  if (monitor) return;
+  monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskRightMouseDown
+                                                  handler:^NSEvent *(NSEvent *event) {
+                                                    ACPiPController *controller =
+                                                        event.window ? [ACPiPController forWindow:event.window] : nil;
+                                                    if (!controller) return event;
+                                                    [NSMenu popUpContextMenu:[controller menu] withEvent:event forView:controller.overlay];
+                                                    return nil;
+                                                  }];
+}
+
+void InstallZoomMonitor() {
+  static id monitor;
+  if (monitor) return;
+  monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel | NSEventMaskMagnify
+                                                  handler:^NSEvent *(NSEvent *event) {
+                                                    return [ACPiPZoom handle:event] ? nil : event;
+                                                  }];
+}
+
+bool Attach(ArcadiaCoreWebView *view, NSString *host, NSString *frameId) {
+  for (NSWindow *window in NSApp.windows) {
+    ACPiPController *controller = [ACPiPController forWindow:window];
+    // Chrome reuses its window for successive PiP videos, at the level it was left at (normal, without Keep on Top).
+    if (!IsChromeVideoPictureInPicture(window) && !(controller && window.visible)) continue;
+    // Another tab's window fading out as this one opens (no shadow while it fades; TabRequestedActivation).
+    if (!window.hasShadow) continue;
+    BOOL fresh = !controller;
+    if (fresh) controller = [[ACPiPController alloc] initWithWindow:window];
+    controller.view = view;
+    controller.host = host;
+    [controller setVideoFrame:frameId];
+    [controller roundCorners];
+    PreventActivation(window);
+    // A hidden test instance shows nothing on the owner's screen (the engine hides it as Chrome opens it).
+    if (arcadiacore_host::Background()) {
+      window.alphaValue = 0;
+      window.ignoresMouseEvents = YES;
+    }
+    InstallMenuMonitor();
+    InstallZoomMonitor();
+    NSString *selfTest = NSProcessInfo.processInfo.environment[@"ARCADIA_PIP_SELFTEST"];
+    if (fresh && [@[ @"close", @"backToTab" ] containsObject:selfTest]) [controller runButtonSelfTest:selfTest];
+    else if (fresh && [selfTest isEqual:@"hover"]) [controller runHoverSelfTest];
+    else if (fresh && selfTest) [controller runSelfTest];
+    return true;
+  }
+  return false;
+}
+
+}
+
+void WatchZoom() { InstallZoomMonitor(); }
+
+// Chrome's Back to Tab, however it was pressed (a click, the keyboard, VoiceOver), hides the window, which starts its
+// fade out (FadeOutArcadiaPictureInPicture in engine/chromium's pip/: no shadow while it fades), then asks for the
+// tab. A page asking for itself while its video plays there finds the window shown, and activates nothing.
+void TabRequestedActivation(ArcadiaCoreWebView *view) {
+  for (NSWindow *window in NSApp.windows)
+    if ([ACPiPController forWindow:window].view == view && window.visible && !window.hasShadow)
+      return ActivateApp(@"Back to Tab (Chrome's button)");
+}
+
+void VideoChanged(ArcadiaCoreWebView *view, NSString *host, NSString *frameId, bool active) {
+  if (!active) return;
+  __block int tries = 0;
+  __block void (^look)(void);
+  __weak ArcadiaCoreWebView *weakView = view;
+  look = ^{
+    ArcadiaCoreWebView *strongView = weakView;
+    if (!strongView || Attach(strongView, host, frameId) || ++tries >= 20) {
+      look = nil;
+      return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), look);
+  };
+  look();
+}
+
+}
+
+// MARK: - Dev
+
+@implementation ArcadiaCoreWebView (PictureInPictureDev)
+
++ (NSArray<NSDictionary<NSString *, id> *> *)devPictureInPicture {
+  NSMutableArray *list = [NSMutableArray array];
+  for (NSWindow *window in NSApp.windows) {
+    ACPiPController *controller = [ACPiPController forWindow:window];
+    if (!controller && !(window.visible && window.level >= NSFloatingWindowLevel) && !IsChromeDocumentPictureInPicture(window))
+      continue;
+    CALayer *content = window.contentView.layer;
+    [list addObject:@{
+      @"window" : @(window.windowNumber),
+      @"class" : NSStringFromClass(window.class),
+      @"title" : window.title ?: @"",
+      @"video" : @(IsChromeVideoPictureInPicture(window)),
+      @"document" : @(IsChromeDocumentPictureInPicture(window)),
+      @"frame" : NSStringFromRect(window.frame),
+      @"visible" : @(window.visible),
+      @"alpha" : @(window.alphaValue),
+      @"ignoresMouseEvents" : @(window.ignoresMouseEvents),
+      @"level" : @(window.level),
+      @"styled" : @(controller != nil),
+      @"rounded" : @(content.cornerRadius == kCornerRadius && content.masksToBounds && !window.opaque),
+      @"rim" : @(controller.overlay.layer.borderWidth),
+      @"keepOnTop" : @(controller.keepOnTop),
+      @"stashed" : @(controller.stashedEdge),
+      @"host" : controller.host ?: @"",
+      @"backToTab" : @(controller.view != nil),
+      @"minSize" : NSStringFromSize(window.contentMinSize),
+      @"maxSize" : NSStringFromSize(window.contentMaxSize),
+      @"resizable" : @((window.styleMask & NSWindowStyleMaskResizable) != 0),
+      @"visibleFrame" : NSStringFromRect(ScreenFor(window.frame).visibleFrame),
+    }];
+  }
+  return list;
+}
+
+// "snapshot:<name>" (the window → pip-<name>.png, its path returned), "frame:<NSRect>" (moves it), "selftest" (packages/cef's
+// ARCADIA_PIP_SELFTEST: rounding, stash at both edges, the handle, the saved place,
+// Keep on Top, Back to Tab → $ARCADIA_DATA_DIR/pip-selftest.json), "close" or "backToTab" (Chrome's own buttons
+// clicked → pip-button-selftest.json), "menu" (our menu's titles), on the newest styled window.
++ (NSString *)devPictureInPictureAction:(NSString *)action {
+  ACPiPController *controller = nil;
+  for (NSWindow *window in NSApp.windows)
+    if ([ACPiPController forWindow:window] && window.visible) controller = [ACPiPController forWindow:window];
+  if (!controller) return @"";
+  if ([action isEqual:@"selftest"]) [controller runSelfTest];
+  else if ([@[ @"close", @"backToTab" ] containsObject:action]) [controller runButtonSelfTest:action];
+  else if ([action isEqual:@"menu"]) return [[controller.menu.itemArray valueForKey:@"title"] componentsJoinedByString:@"|"];
+  else if ([action hasPrefix:@"snapshot:"]) return [controller snapshot:[action substringFromIndex:9]];
+  else if ([action hasPrefix:@"frame:"]) [controller.window setFrame:NSRectFromString([action substringFromIndex:6]) display:YES];
+  else return @"";
+  return @"started";
+}
+
+@end

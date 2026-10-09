@@ -1,4 +1,4 @@
-import { systemInfo } from "@netnyahoo/shell";
+import { systemInfo } from "@arcadia/shell";
 import { create } from "zustand";
 import { openUrls } from "../../../lib/actions";
 import { useBrowser } from "../../../store/browser";
@@ -101,4 +101,4 @@ export function openVideoTour(windowId?: string | null) {
   if (url) openUrls([url], windowId);
 }
 
-if (__DEV__) (globalThis as { nnTour?: unknown }).nnTour = { store: useTour, start: startToolTour, step: stepToolTour, end: endToolTour };
+if (__DEV__) (globalThis as { acTour?: unknown }).acTour = { store: useTour, start: startToolTour, step: stepToolTour, end: endToolTour };

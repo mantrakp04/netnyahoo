@@ -1,6 +1,6 @@
-# @netnyahoo/import
+# @arcadia/import
 
-Imports another browser's data into Netnyahoo. The native code lives in `ios/`; `ios/Core/` is plain Swift with no
+Imports another browser's data into Arcadia. The native code lives in `ios/`; `ios/Core/` is plain Swift with no
 Expo dependency, so `Package.swift` builds and tests it on its own. `src/index.ts` is the typed JS wrapper and the UI
 is `apps/browser/src/components/import/`. Every test reads fixtures. Never point anything at a real profile.
 
@@ -39,15 +39,15 @@ Shared code: `Model.swift` (`ImportKind`, `ImportResult` and the other result ty
    above. A failed kind becomes a warning plus an entry in `failed`, and the other kinds still run. Safari, Dia tabs,
    HTML and CSV have their own module functions (`importSafariDirect`, `importSafariExport`, `readDiaTabs`,
    `importBookmarksHTML`, `importPasswordsCSV`).
-3. `ios/ImportModule.swift` (Expo module `NetnyahooImport`) encodes the result as a JSON string for JS. It keeps
+3. `ios/ImportModule.swift` (Expo module `ArcadiaImport`) encodes the result as a JSON string for JS. It keeps
    cookies, addresses and cards back in `ImportVault` (`ios/ImportWriter.swift`) and returns only their counts and
    a one-time `vaultToken`. History can stream in chunks (`onImportEvent`).
 4. `ios/ImportWriter.swift`: `writeImported(token, engineProfile, kinds)` takes the vault entry and sends it to the
-   engine with `NNCoreEngineBridge.callWithSecret` as `nn_cookies_import` and `nn_autofill_import`, in batches of 500
-   (`engine/chromium/src/chrome/browser/netnyahoo/nn_cookies.cc`, `nn_autofill.cc`).
+   engine with `ArcadiaCoreEngineBridge.callWithSecret` as `ac_cookies_import` and `ac_autofill_import`, in batches of 500
+   (`engine/chromium/src/chrome/browser/arcadia/ac_cookies.cc`, `ac_autofill.cc`).
 5. `apps/browser/src/components/import/ImportWindow.tsx` is the wizard: choose, then profiles, then unlock, then
    progress, then done. `apply.ts` writes the JS-side kinds into the store (bookmarks, history, tabs, Arc spaces,
-   Dia profiles) and saves passwords with `savePassword` (`@netnyahoo/nncore`). For cookies and autofill it calls
+   Dia profiles) and saves passwords with `savePassword` (`@arcadia/arcadiacore`). For cookies and autofill it calls
    `importNative`, which calls `writeImported`. `module.ts` loads the package lazily.
 
 ## Secrets and the Keychain
@@ -56,7 +56,7 @@ Shared code: `Model.swift` (`ImportKind`, `ImportResult` and the other result ty
   Keychain item. `SafeStorageKeychain.secret` reads it, and macOS shows a system prompt when it does. It runs only from
   `unlockBrowser`, after the user goes through the unlock step (`ENCRYPTED` kinds in `ImportWindow.tsx`).
 - **Agents never trigger it.** The Swift tests pass the fixture key (`Fixtures.chromiumKey`, `importer.setKey`),
-  and app runs set `NETNYAHOO_IMPORT_TEST_SECRET`. Firefox has no Keychain item; its primary password goes through
+  and app runs set `ARCADIA_IMPORT_TEST_SECRET`. Firefox has no Keychain item; its primary password goes through
   `unlockBrowser(id, { primaryPassword })`.
 - Cookie values, addresses and card numbers never reach JS. `ImportResult` and `SafariExport` leave them out of their
   `CodingKeys` and encode only the counts. They're held in `SecretBytes`; `Wire.swift` serialises them into
@@ -66,7 +66,7 @@ Shared code: `Model.swift` (`ImportKind`, `ImportResult` and the other result ty
 
 ## Fixtures
 
-`pnpm --filter @netnyahoo/import fixtures` runs `fixtures/generate.py`, which wipes `fixtures/home/` and
+`pnpm --filter @arcadia/import fixtures` runs `fixtures/generate.py`, which wipes `fixtures/home/` and
 `fixtures/misc/` and rebuilds everything below deterministically. The test secrets are in `fixtures/secrets.json`.
 `fixtures/dia/` and `fixtures/extensions/` are written by hand. Don't open the Firefox `places.sqlite` with the
 sqlite3 CLI: it checkpoints the WAL the tests depend on.
@@ -88,20 +88,20 @@ sqlite3 CLI: it checkpoints the WAL the tests depend on.
 
 | What | Command |
 |---|---|
-| Swift tests (`tests/`, against `fixtures/`) | `pnpm --filter @netnyahoo/import test` (`swift test`, scratch path in `$TMPDIR`) |
-| Rebuild fixtures | `pnpm --filter @netnyahoo/import fixtures` |
-| Typecheck the JS wrapper | `pnpm --filter @netnyahoo/import typecheck` |
-| End to end in a hidden Debug instance (cookies, addresses, cards) | `node packages/import/scripts/e2e.mjs <Netnyahoo.app> <scratch dir>` (`--help`) |
-| Run one script in that instance (`e2e.mjs --keep`) | `scripts/agent/nn eval <scratch dir>/data '<js>'` |
+| Swift tests (`tests/`, against `fixtures/`) | `pnpm --filter @arcadia/import test` (`swift test`, scratch path in `$TMPDIR`) |
+| Rebuild fixtures | `pnpm --filter @arcadia/import fixtures` |
+| Typecheck the JS wrapper | `pnpm --filter @arcadia/import typecheck` |
+| End to end in a hidden Debug instance (cookies, addresses, cards) | `node packages/import/scripts/e2e.mjs <Arcadia.app> <scratch dir>` (`--help`) |
+| Run one script in that instance (`e2e.mjs --keep`) | `scripts/agent/ac eval <scratch dir>/data '<js>'` |
 
 ## Test hooks (`ios/ImportModule.swift`)
 
 | Variable | Effect |
 |---|---|
-| `NETNYAHOO_IMPORT_SOURCE_DIR` | Discovery reads browsers from this folder instead of `~/Library/Application Support`. Point it at `<fake home>/Library/Application Support` |
-| `NETNYAHOO_IMPORT_SAFARI_HOME` | Safari direct reads from this home. If it isn't set, the home is two levels above `NETNYAHOO_IMPORT_SOURCE_DIR`, and only when that is set |
-| `NETNYAHOO_IMPORT_TEST_SECRET` | `unlockBrowser` uses this as every browser's Safe Storage secret and never touches the Keychain |
-| `NETNYAHOO_IMPORT_DIA_BUNDLE_ID` | The Dia tabs functions talk to this bundle ID instead of `company.thebrowser.dia` |
+| `ARCADIA_IMPORT_SOURCE_DIR` | Discovery reads browsers from this folder instead of `~/Library/Application Support`. Point it at `<fake home>/Library/Application Support` |
+| `ARCADIA_IMPORT_SAFARI_HOME` | Safari direct reads from this home. If it isn't set, the home is two levels above `ARCADIA_IMPORT_SOURCE_DIR`, and only when that is set |
+| `ARCADIA_IMPORT_TEST_SECRET` | `unlockBrowser` uses this as every browser's Safe Storage secret and never touches the Keychain |
+| `ARCADIA_IMPORT_DIA_BUNDLE_ID` | The Dia tabs functions talk to this bundle ID instead of `company.thebrowser.dia` |
 
 ## Adding a source or a kind
 
@@ -114,7 +114,7 @@ sqlite3 CLI: it checkpoints the WAL the tests depend on.
 3. Write the reader in `ios/Core/<Source><Kind>.swift`. Read SQLite through `SQLiteSnapshot`, check `cancellation`,
    and throw `ImportError`. Then add its `(kind, family)` case in `Importer.importData`.
 4. Add a fixture: a `build_*` function in `fixtures/generate.py`, or a branch of an existing one. Run
-   `pnpm --filter @netnyahoo/import fixtures` and write a test in `tests/`.
+   `pnpm --filter @arcadia/import fixtures` and write a test in `tests/`.
 5. Apply it in the app. Add the kind to `KINDS` (and `ENCRYPTED` if it's encrypted) in `ImportWindow.tsx`, and write
    it in `apply.ts`. A secret kind goes through `ImportWriter` and a new engine call instead.
 6. Run `test`, `typecheck` and `pnpm -w typecheck`. For anything that reaches the engine, also run `scripts/e2e.mjs`

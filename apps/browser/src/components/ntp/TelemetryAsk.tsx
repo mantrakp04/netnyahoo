@@ -1,4 +1,4 @@
-import { Surface, Symbol, VisualEffect } from "@netnyahoo/shell";
+import { Surface, Symbol, VisualEffect } from "@arcadia/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import { useDefaultBrowserCheckIn } from "../../lib/defaultBrowserCheckIn";

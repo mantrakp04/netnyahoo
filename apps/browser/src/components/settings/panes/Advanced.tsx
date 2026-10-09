@@ -1,4 +1,4 @@
-import { engineInfo, listComponents, WIDEVINE_COMPONENT_ID, type EngineComponent, type EngineInfo } from "@netnyahoo/nncore";
+import { engineInfo, listComponents, WIDEVINE_COMPONENT_ID, type EngineComponent, type EngineInfo } from "@arcadia/arcadiacore";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -54,7 +54,7 @@ export function AdvancedPane() {
 
       <SectionHeader title="Web engine" />
       <Group>
-        <Row title="Chromium" description={info ? "NNCore" : undefined}>
+        <Row title="Chromium" description={info ? "ArcadiaCore" : undefined}>
           <Text selectable style={{ fontSize: 13, color: theme.textSecondary }}>
             {info?.chromiumVersion ?? "…"}
           </Text>

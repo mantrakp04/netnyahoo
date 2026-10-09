@@ -6,7 +6,7 @@ React continues to render the sidebar, top strip, dots and tint.
 
 ## Motion ownership
 
-`NNSwipe` forwards phased inputs synchronously to the window's `NNPager`. MayBegin interrupts a
+`ACSwipe` forwards phased inputs synchronously to the window's `ACPager`. MayBegin interrupts a
 settle at its current position. Horizontal recognition starts native tracking, using Dia's half-speed
 movement, 100 ms velocity history, 5 pt/s flick threshold and 0.25 s critically damped spring. A
 screen display link updates the position at the screen's refresh rate; a 60 Hz timer is the fallback

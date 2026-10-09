@@ -1,4 +1,4 @@
-import { claimLaunchTab, prepareTabTransfer, releaseTabTransfer } from "@netnyahoo/nncore";
+import { claimLaunchTab, prepareTabTransfer, releaseTabTransfer } from "@arcadia/arcadiacore";
 import { isInternalTab } from "../components/pages/urls";
 import { useBrowser } from "../store/browser";
 import { changedIds } from "../store/changes";
@@ -9,7 +9,7 @@ import { webviews } from "./webviews";
 
 // A tab's web page across its views. A web view can go while its tab stays (the tab moved to another window, its pane
 // remounted): the page then waits, parked, for the tab's next view instead of closing with this one, however long that
-// takes (NNCoreWebView prepareTransfer). Its loss was a moved tab's page going when its new window mounted late
+// takes (ArcadiaCoreWebView prepareTransfer). Its loss was a moved tab's page going when its new window mounted late
 // (acceptance move-tab-slow-mount). Once the tab no longer wants that page (closed, asleep, on one of the app's own
 // pages, in another profile), the app releases it.
 
@@ -27,7 +27,7 @@ export function handOff(tabId: string, profile: string) {
 
 /** Before lib/native.ts's sync (startNativeSync), which closes a window the store dropped: store listeners run in the
  *  order they subscribed, so a tab moved out of a window that closes with the move (its last tab) is handed off before
- *  that window's close reaches the main queue (NNCoreWebView keepTransfersOfWindow:). */
+ *  that window's close reaches the main queue (ArcadiaCoreWebView keepTransfersOfWindow:). */
 export function startTabPages() {
   claimLaunch();
   useBrowser.subscribe((s, prev) => {
@@ -46,7 +46,7 @@ export function startTabPages() {
   });
 }
 
-// The engine started the launch's first page from session.json's hint before the app ran (NNCoreHost): the hydrated
+// The engine started the launch's first page from session.json's hint before the app ran (ArcadiaCoreHost): the hydrated
 // store says which page its focused window shows. That page waits, parked, for its tab's view as a handed-off one does,
 // and is released the same way if the tab stops wanting it first; any other page the engine started closes. Before
 // startNativeSync opens the windows, so the claim reaches the main queue ahead of the view.

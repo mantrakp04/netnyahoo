@@ -1,7 +1,7 @@
 // Tab dragging in the top tab strip (and the sidebar's drag onto the page), driven through AppKit's own event path
 // (DEV `drag:`: mouseDown, mouseDragged…, mouseUp sent to the window) in a hidden instance.
 //
-//   node apps/browser/scripts/tab-drag-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]
+//   node apps/browser/scripts/tab-drag-test.mjs <Debug Arcadia.app> [--port=<DevTools port>] [--keep-data]
 //
 // Guards the owner's 0.2.18 report: pressing a tab in the strip moved the window (the press climbed the responder
 // chain to the strip's WindowDragRegion) and nothing could be dragged. A real mouse is still needed for the feel
@@ -19,13 +19,13 @@ import { launch, reporter, session, sleep } from "../../../scripts/lib/instance.
 const args = process.argv.slice(2);
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node tab-drag-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]");
+  console.error("usage: node tab-drag-test.mjs <Debug Arcadia.app> [--port=<DevTools port>] [--keep-data]");
   process.exit(2);
 }
 const appPath = resolve(appArg);
 const port = args.find((a) => a.startsWith("--port="))?.slice(7);
 const keep = args.includes("--keep-data");
-const scratch = mkdtempSync(join(tmpdir(), "nn-tab-drag-"));
+const scratch = mkdtempSync(join(tmpdir(), "ac-tab-drag-"));
 const data = join(scratch, "data");
 const rep = reporter(join(scratch, "tab-drag-test.log"), { name: "tab-drag-test" });
 
@@ -51,8 +51,8 @@ let app = null;
 // The page's helpers: `win(id)` the native window number of a store window, `act(id, action)` a DEV window action,
 // `items(id)` the strip's items as [left, right] runs of the hit test along the strip's middle line.
 const HELPERS = `
-const C = globalThis.expo.modules.NetnyahooCEF;
-const st = () => nn.store.getState();
+const C = globalThis.expo.modules.ArcadiaCEF;
+const st = () => ac.store.getState();
 const win = (id) => C.chromeWindows().then((ws) => { const f = st().windows[id].frame; const w = ws.filter((w) => w.hasRoot).find((w) => { const r = w.frame.match(/[-\\d.]+/g).map(Number); return Math.abs(r[0] - f[0]) < 2 && Math.abs(r[2] - f[2]) < 2; }); return w && w.window; });
 const act = (id, a) => win(id).then((n) => C.devWindow(n, a));
 const items = (id) => win(id).then((n) => { const xs = []; for (let x = 70; x < st().windows[id].frame[2] - 100; x += 1) xs.push(x);
@@ -124,7 +124,7 @@ try {
   const mid = (i) => Math.round((strip[i][0] + strip[i][1]) / 2);
 
   // The dragged tab's picture: a native panel that never takes the mouse or activates the app.
-  const PREVIEW = `const preview = () => globalThis.expo.modules.NetnyahooShell.devDragPreviewState();`;
+  const PREVIEW = `const preview = () => globalThis.expo.modules.ArcadiaShell.devDragPreviewState();`;
   const watch = (w, path, ms) => run(`${PREVIEW}
     const seen = [];
     const iv = setInterval(() => preview().then((p) => seen.push(p)), 30);
@@ -146,24 +146,24 @@ try {
     // Only tabs with a page are Chrome's: the two it trades places with get one.
     const live = before.slice(2, 4);
     await run(`${JSON.stringify(live)}.forEach((id, i) => st().navigate(id, "data:text/html,<h1>" + i));
-      const ready = () => globalThis.nnChromeTabs.strips().some((s) => ${JSON.stringify(live)}.every((id) => s.tabs.some((t) => t.key === id)));
+      const ready = () => globalThis.acChromeTabs.strips().some((s) => ${JSON.stringify(live)}.every((id) => s.tabs.some((t) => t.key === id)));
       const wait = (n) => (ready() || !n ? Promise.resolve(ready()) : settle(100).then(() => wait(n - 1)));
       return wait(100);`);
     // The third item (a tab) right past the fourth's middle, with plenty of moves on the way.
     const path = [[at(2), 21], [at(2) + 20, 21], [at(3), 21], [at(3) + 40, 21]];
     const seen = await run(`
-      const cef = globalThis.expo.modules.NetnyahooCEF;
+      const cef = globalThis.expo.modules.ArcadiaCEF;
       const send = cef.tabStripCommand;
       const t0 = performance.now();
       const log = { commands: [], windows: [], drag: [], picture: [] };
       cef.tabStripCommand = (...a) => { log.commands.push(performance.now() - t0); return send.apply(cef, a); };
-      const unsubscribe = nn.store.subscribe((s, p) => { if (s.windows !== p.windows) log.windows.push(performance.now() - t0); });
-      const begin = nn.shell.dragPreview.begin;
-      nn.shell.dragPreview.begin = (...a) => { log.picture.push(performance.now() - t0); return begin(...a); };
+      const unsubscribe = ac.store.subscribe((s, p) => { if (s.windows !== p.windows) log.windows.push(performance.now() - t0); });
+      const begin = ac.shell.dragPreview.begin;
+      ac.shell.dragPreview.begin = (...a) => { log.picture.push(performance.now() - t0); return begin(...a); };
       // The drag's own store says when it starts and ends (the drop's store update comes right after, in the same task).
-      const stop = globalThis.nnTabDrag.subscribe((d, was) => { if (!d.tabIds.length !== !was.tabIds.length) log.drag.push([d.tabIds.length > 0, performance.now() - t0]); });
+      const stop = globalThis.acTabDrag.subscribe((d, was) => { if (!d.tabIds.length !== !was.tabIds.length) log.drag.push([d.tabIds.length > 0, performance.now() - t0]); });
       return act("w1", "drag:${path.map((p) => p.join(",")).join(";")}").then(() => settle(${path.length * 12 * 16 + 1200})).then(() => {
-        stop(); unsubscribe(); cef.tabStripCommand = send; nn.shell.dragPreview.begin = begin;
+        stop(); unsubscribe(); cef.tabStripCommand = send; ac.shell.dragPreview.begin = begin;
         return log;
       });`);
     const start = seen.drag.find(([on]) => on)?.[1];
@@ -191,13 +191,13 @@ try {
     const x1 = x0 + Math.round((a[1] - a[0]) * 0.4);
     // Selected, so it has its card. Under the empty end of the dragged tab (its close button's slot, past its title),
     // the neighbour's icon and title: alone, then with the tab held over them.
-    await run(`nn.shell.setAppearance("dark"); st().activate(${JSON.stringify(before[2])}); return settle(800).then(() => st().settings);`);
+    await run(`ac.shell.setAppearance("dark"); st().activate(${JSON.stringify(before[2])}); return settle(800).then(() => st().settings);`);
     const end = a[1] + (x1 - x0);
     const icon = [end - 24, 12, end - 6, 30];
     const shots = [join(data, "z-alone.png"), join(data, "z-over.png")];
-    await run(`return nn.shell.devSnapshotWindow("w1", ${JSON.stringify(shots[0])}).then(() => {
+    await run(`return ac.shell.devSnapshotWindow("w1", ${JSON.stringify(shots[0])}).then(() => {
       act("w1", "drag:${x0},21;${x0 + 10},21;${x1},21;${x1},21;${x1},21;${x1},21");
-      return settle(150 + 12 * 16 * 2 + 200).then(() => nn.shell.devSnapshotWindow("w1", ${JSON.stringify(shots[1])}));
+      return settle(150 + 12 * 16 * 2 + 200).then(() => ac.shell.devSnapshotWindow("w1", ${JSON.stringify(shots[1])}));
     }).then(() => settle(1500));`);
     const [alone, over] = shots.map((path) => contrast(readPng(path), icon));
     // Drawn under the neighbour, its icon would show over the tab's card at full contrast; under a card that lets it
@@ -273,7 +273,7 @@ try {
 
   await check("a tab dragged onto another window's tabs: the strip makes room at the pointer, and it lands there", async () => {
     // w6 in front of the others under the pointer.
-    await run(`nn.store.setState((s) => ({ ui: { ...s.ui, focusOrder: ["w6", "w5", ...s.ui.focusOrder.filter((id) => id !== "w6" && id !== "w5")] } })); return 1;`);
+    await run(`ac.store.setState((s) => ({ ui: { ...s.ui, focusOrder: ["w6", "w5", ...s.ui.focusOrder.filter((id) => id !== "w6" && id !== "w5")] } })); return 1;`);
     const from = await run(`return items("w5");`);
     const into = await run(`return items("w6");`);
     const dx = 600; // w6's left edge in w5's coordinates
@@ -282,7 +282,7 @@ try {
     const between = dx + Math.round((into[0][1] + into[1][1]) / 2);
     const seen = await run(`${PREVIEW}
       const seen = [];
-      const iv = setInterval(() => preview().then((p) => { const d = globalThis.nnTabDrag.getState(); seen.push({ shape: p.shape, insert: d.insert, over: d.overWindow }); }), 30);
+      const iv = setInterval(() => preview().then((p) => { const d = globalThis.acTabDrag.getState(); seen.push({ shape: p.shape, insert: d.insert, over: d.overWindow }); }), 30);
       return act("w5", "drag:${a1},21;${a1},-20;${dx - 30},-20;${between},21;${between + 2},22;${between + 3},21").then(() => settle(1400)).then(() => { clearInterval(iv); return seen; });`);
     assert.ok(seen.some((s) => s.over === "w6" && s.insert?.windowId === "w6" && s.insert.beforeId === "b2"), JSON.stringify(seen.slice(-4)));
     assert.ok(seen.some((s) => s.insert && s.shape === "pill"), "the pill over the strip");
@@ -322,7 +322,7 @@ try {
     assert.equal(ids[3], "t3");
     const state = await run(`
       const seen = [];
-      const iv = setInterval(() => { const d = globalThis.nnTabDrag.getState(); seen.push({ lifted: d.lifted, onPage: d.onPage, target: d.target }); }, 60);
+      const iv = setInterval(() => { const d = globalThis.acTabDrag.getState(); seen.push({ lifted: d.lifted, onPage: d.onPage, target: d.target }); }, 60);
       return act("w1", "drag:${x},21;${x},120;${width - 260},380;${width - 255},390;${width - 250},400;${width - 250},402").then(() => settle(1700)).then(() => { clearInterval(iv); return seen; });`);
     assert.ok(state.some((s) => s.lifted && s.onPage), "lifted onto the page");
     assert.ok(state.some((s) => s.target?.side === "right"), `right target ${JSON.stringify(state.slice(-6))}`);
@@ -415,7 +415,7 @@ try {
     const left = Math.round(row.x + row.w + 140);
     const state = await run(`
       const seen = [];
-      const iv = setInterval(() => { const d = globalThis.nnTabDrag.getState(); seen.push(d.target); }, 60);
+      const iv = setInterval(() => { const d = globalThis.acTabDrag.getState(); seen.push(d.target); }, 60);
       return act("w1", "drag:${sx},${sy};${sx + 40},${sy + 20};${left},380;${left + 4},390;${left + 6},396;${left + 6},398").then(() => settle(1700)).then(() => { clearInterval(iv); return seen; });`);
     assert.ok(state.some((t) => t?.side === "left"), `left target ${JSON.stringify(state.slice(-5))}`);
     const splits = await run(`return Object.values(st().splits).map((v) => v.tabIds);`);

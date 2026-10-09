@@ -1,4 +1,4 @@
-import { showMenu, translation, type MenuItem } from "@netnyahoo/shell";
+import { showMenu, translation, type MenuItem } from "@arcadia/shell";
 import { memo } from "react";
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";

@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import NetnyahooImportCore
+@testable import ArcadiaImportCore
 
 enum Fixtures {
   static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()

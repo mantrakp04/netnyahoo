@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-const script = readFileSync(new URL("../../../../packages/nncore/ios/page_script.js", import.meta.url), "utf8");
+const script = readFileSync(new URL("../../../../packages/arcadiacore/ios/page_script.js", import.meta.url), "utf8");
 const source = script.match(/const pauseUnasked = (\(media, activated\) => \{[\s\S]*?\n {2}\});\n/)?.[1];
 assert.ok(source, "page_script.js defines pauseUnasked");
 const pauseUnasked = new Function(`return ${source}`)();

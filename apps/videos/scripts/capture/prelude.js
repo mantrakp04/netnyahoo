@@ -1,7 +1,7 @@
 // Shared by every scene (scenes/*.js), run inside a hidden DEV instance through the dev harness.
 // Hermes' eval: no async functions, so scenes are promise chains.
 const OUT = "__OUT__";
-const st = () => nn.store.getState();
+const st = () => ac.store.getState();
 const W = st().windowOrder[0];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const frames = [];
@@ -20,14 +20,14 @@ const tabBy = (m) => Object.values(st().tabs).find((t) => t.url && t.url.indexOf
 const snap = (label, extra) => {
   const f = OUT + "/" + String(seq++).padStart(4, "0") + ".png";
   const t = Date.now();
-  return Promise.resolve(nn.shell.devSnapshotWindow(W, f, true)).then((ok) => {
+  return Promise.resolve(ac.shell.devSnapshotWindow(W, f, true)).then((ok) => {
     frames.push(Object.assign({ f, label, ok, t, profile: win().profileId, tabs: shownTabs(), color: (st().profiles[win().profileId] || {}).color, dark: !!st().ui.appDark }, extra || {}));
   });
 };
 const snapFor = (label, ms) => { const end = Date.now() + ms; const loop = () => (Date.now() > end ? Promise.resolve() : snap(label).then(loop)); return loop(); };
 // The page as painted (a JPEG) and its frame in the window, per tab; kept under a key so a scene can capture a tab twice.
 const pic = (tabId, key, tries) => {
-  const h = nn.webviews.get(tabId);
+  const h = ac.webviews.get(tabId);
   const left = tries === undefined ? 4 : tries;
   const retry = () => (left > 0 ? sleep(500).then(() => pic(tabId, key, left - 1)) : null);
   if (!h) return Promise.resolve(retry());
@@ -46,7 +46,7 @@ const goProfile = (pid) => {
   const to = order.indexOf(pid);
   if (from === to || to < 0) return Promise.resolve();
   const dir = to > from ? -1 : 1;
-  const area = globalThis.nnSwipe.sidebar(W);
+  const area = globalThis.acSwipe.sidebar(W);
   const step = (steps) => Promise.resolve(area.devSimulate(steps, { ignorePreference: true }));
   let c = Promise.resolve();
   Array.from({ length: Math.abs(to - from) }, (_, k) => k).forEach(() => {
@@ -60,7 +60,7 @@ const unsplit = () => Object.values(st().splits || {}).forEach((s) => st().separ
 // Another window (settings, import): its own snapshot, with no page in it.
 const snapWin = (id, label, extra) => {
   const f = OUT + "/" + String(seq++).padStart(4, "0") + ".png";
-  return Promise.resolve(nn.shell.devSnapshotWindow(id, f, true)).then((ok) => { frames.push(Object.assign({ f, label, ok, t: Date.now(), tabs: [], window: id, dark: !!st().ui.appDark }, extra || {})); });
+  return Promise.resolve(ac.shell.devSnapshotWindow(id, f, true)).then((ok) => { frames.push(Object.assign({ f, label, ok, t: Date.now(), tabs: [], window: id, dark: !!st().ui.appDark }, extra || {})); });
 };
 // Live: page pictures and window snapshots together, as fast as they come, for `ms` (a reload, a counter rising).
 let live = 0;

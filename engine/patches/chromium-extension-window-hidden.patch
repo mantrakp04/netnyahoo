@@ -4,9 +4,9 @@
  
  static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
  
-+// Netnyahoo: NNCore (engine/nncore) keeps the windows of its own pages (its
++// Arcadia: ArcadiaCore (engine/arcadiacore) keeps the windows of its own pages (its
 +// popups, side panels, the content blocker's page) from extensions.
-+bool (*g_netnyahoo_hidden_from_extensions)(
++bool (*g_arcadia_hidden_from_extensions)(
 +    const BrowserWindowInterface* browser) = nullptr;
 +
  namespace extensions {
@@ -16,9 +16,9 @@
      return false;
    }
  
-+  // Netnyahoo: windows NNCore uses internally.
-+  if (extension && g_netnyahoo_hidden_from_extensions &&
-+      g_netnyahoo_hidden_from_extensions(&*browser_)) {
++  // Arcadia: windows ArcadiaCore uses internally.
++  if (extension && g_arcadia_hidden_from_extensions &&
++      g_arcadia_hidden_from_extensions(&*browser_)) {
 +    return false;
 +  }
 +

@@ -9,7 +9,7 @@ import {
   Symbol,
   updaterState,
   type UpdaterState,
-} from "@netnyahoo/shell";
+} from "@arcadia/shell";
 import { useEffect, useState } from "react";
 import { AppState, Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -18,7 +18,7 @@ import { SHARING_COPY } from "../../../telemetry/copy";
 import { Button, Group, PopUp, Row, SectionHeader, Toggle, useFormColors } from "../controls";
 import { openImport } from "../windows";
 
-const APP = "Netnyahoo";
+const APP = "Arcadia";
 
 export function GeneralPane() {
   const settings = useBrowser((s) => s.settings);
@@ -52,18 +52,18 @@ export function GeneralPane() {
         <Row
           title="Open links from other apps in"
           description={
-            settings.openLinksInSmallYahu
-              ? `A link from Discord, Slack or Mail opens in Small Yahu, a small window of its own. ⌘O moves it into ${APP}; closing it throws it away.`
+            settings.openLinksInLittleArcadia
+              ? `A link from Discord, Slack or Mail opens in Little Arcadia, a small window of its own. ⌘O moves it into ${APP}; closing it throws it away.`
               : `A link from Discord, Slack or Mail opens as a new tab in your ${APP} window, in the default profile.`
           }
         >
           <PopUp
-            value={settings.openLinksInSmallYahu ? "small" : "tab"}
+            value={settings.openLinksInLittleArcadia ? "small" : "tab"}
             options={[
-              { value: "small", title: "Small Yahu" },
+              { value: "small", title: "Little Arcadia" },
               { value: "tab", title: "A new tab" },
             ]}
-            onChange={(v) => update({ openLinksInSmallYahu: v === "small" })}
+            onChange={(v) => update({ openLinksInLittleArcadia: v === "small" })}
             minWidth={190}
           />
         </Row>

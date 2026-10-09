@@ -23,7 +23,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 // Versioned by content: X and others cache a card image by its URL for days.
 const ogVersion = createHash("sha256").update(readFileSync(`${process.cwd()}/public/og.png`)).digest("hex").slice(0, 10);
 const og = new URL(`${base}/og.png?v=${ogVersion}`, Astro.site);
-const OG_ALT = "Full immunity. Big Yahu, the Netnyahoo mascot, next to the words; netnyahoo, a Chromium browser for the Mac.";
+const OG_ALT = "Full immunity. The mascot, the Arcadia mascot, next to the words; arcadia, a Chromium browser for the Mac.";
 ---
 
 <!doctype html>
@@ -40,7 +40,7 @@ const OG_ALT = "Full immunity. Big Yahu, the Netnyahoo mascot, next to the words
     <link rel="apple-touch-icon" href={`${base}/apple-touch-icon.png`} />
     {noindex && <meta name="robots" content="noindex" />}
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Netnyahoo" />
+    <meta property="og:site_name" content="Arcadia" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content={canonical} />
     <meta property="og:title" content={title} />

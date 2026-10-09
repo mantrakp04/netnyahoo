@@ -1,4 +1,4 @@
-import { Symbol } from "@netnyahoo/shell";
+import { Symbol } from "@arcadia/shell";
 import { memo } from "react";
 import { Text, View } from "react-native";
 import { useIsSleeping } from "../../lib/tabLifecycle";

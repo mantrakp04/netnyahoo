@@ -1,12 +1,12 @@
 ---
 name: stats
-description: Netnyahoo's numbers in one short report — users and installs, site traffic and downloads, the phone Send to my Mac panel, GitHub, and new errors. Use whenever the owner asks how things are going, "what are the stats", "how many users/downloads/installs", "how many updated", "how's the site doing", GitHub stats, or a growth check-in, even if they don't say "stats".
+description: Arcadia's numbers in one short report — users and installs, site traffic and downloads, the phone Send to my Mac panel, GitHub, and new errors. Use whenever the owner asks how things are going, "what are the stats", "how many users/downloads/installs", "how many updated", "how's the site doing", GitHub stats, or a growth check-in, even if they don't say "stats".
 ---
 
-# Netnyahoo stats
+# Arcadia stats
 
 Fetch the numbers yourself: our ClickHouse for site and app events (`node scripts/telemetry-sql.mjs "<SQL>"`,
-read-only, credentials in `~/.config/netnyahoo/telemetry.env`; the query for each number below is in
+read-only, credentials in `~/.config/arcadia/telemetry.env`; the query for each number below is in
 [queries.md](queries.md)), `node scripts/update-checks.mjs` for installs, and GitHub through `gh` (repo,
 traffic, release download counts). `docs/growth.md` explains what the events mean ("Telemetry" has the
 tables); compare against its last **Log** entry and say what changed since. If the env file is missing, say

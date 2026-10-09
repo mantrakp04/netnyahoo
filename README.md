@@ -1,14 +1,14 @@
-# Netnyahoo
+# Arcadia
 
 A macOS browser that looks and feels like [Dia](https://diabrowser.com): Chrome's own framework from our
-patched Chromium with our layer on top (NNCore), an Expo + React Native macOS shell, and Metal shaders
+patched Chromium with our layer on top (ArcadiaCore), an Expo + React Native macOS shell, and Metal shaders
 reconstructed from Dia's own New Tab effects.
 
 ```
 apps/
   browser/            Expo + react-native-macos app (UI in src/, Xcode project in macos/)
 packages/
-  nncore/             The engine: Chromium 154's framework with our layer (Chrome tabs hosted in our views), JS API in src/
+  arcadiacore/             The engine: Chromium 154's framework with our layer (Chrome tabs hosted in our views), JS API in src/
   shell/              Native menu bar + shortcuts → JS, windows, SF Symbols, native primitives
   shaders/            Metal: New Tab effects + grained OKLab window backdrop
   import/             Import from other browsers (bookmarks, history, passwords, Arc spaces)
@@ -25,15 +25,15 @@ pnpm install
 
 The engine (Chrome's framework, built from our patched Chromium) comes prebuilt: with no local engine build, the app's
 build downloads the one matching your checkout's `engine/` (about 110 MB, once; Apple Silicon only) and checks it
-against `packages/nncore/prebuilt-engines.tsv`. Every release whose engine changed publishes one. If `main`'s engine
+against `packages/arcadiacore/prebuilt-engines.tsv`. Every release whose engine changed publishes one. If `main`'s engine
 is newer than the last release's, work from a release tag (`v0.2.30`, say), or run
-`packages/nncore/scripts/fetch-engine.sh --nearest` to build against the newest prebuilt anyway. Passkeys and saved
+`packages/arcadiacore/scripts/fetch-engine.sh --nearest` to build against the newest prebuilt anyway. Passkeys and saved
 cards need our team ID and won't work in a build signed by anyone else.
 
 To change the engine itself (anything under `engine/`), build it from source: Chrome's framework from our patched
 Chromium tree in `~/chromium-build` (plain Chromium 154.0.8037.97, ungoogled-chromium and our patches;
 `docs/engine-build.md` › "Rebuilding", then `engine/chromium/apply.sh`,
-`engine/nncore/apply.sh` and `autoninja -C out/Release_GN_arm64 chrome_framework`; the first build takes about 2
+`engine/arcadiacore/apply.sh` and `autoninja -C out/Release_GN_arm64 chrome_framework`; the first build takes about 2
 hours). The app's build stages it from there when it exists.
 
 ```bash
@@ -46,8 +46,8 @@ In one terminal, start Metro:
 pnpm dev
 ```
 
-In another, build and launch the Debug app (on its own data, `~/Library/Application Support/Netnyahoo Dev`, or
-`NETNYAHOO_DATA_DIR`):
+In another, build and launch the Debug app (on its own data, `~/Library/Application Support/Arcadia Dev`, or
+`ARCADIA_DATA_DIR`):
 
 ```bash
 pnpm macos
@@ -63,7 +63,7 @@ Shortcuts: ⌘T new tab, ⌘L command bar, ⌘W close, ⇧⌘T reopen, ⌘S side
 ## How Dia's New Tab light works
 
 Dia 1.50 turns this light off along with its rebrand (a painted mark, a single-colour power-up band
-and a halo around the bar; `docs/dia-spec.md` › "1.50 Sunglow"), and so does Netnyahoo. The
+and a halo around the bar; `docs/dia-spec.md` › "1.50 Sunglow"), and so does Arcadia. The
 reconstruction stays in the tree.
 
 These findings come from disassembling the Metal libraries in `Dia.app` (v1.49.1) with
@@ -126,6 +126,6 @@ Feature parity with Dia (everything but its AI) is tracked row by row in
 
 ## License
 
-Netnyahoo is licensed under the [Apache License 2.0](LICENSE). It builds on Chromium and ungoogled-chromium,
+Arcadia is licensed under the [Apache License 2.0](LICENSE). It builds on Chromium and ungoogled-chromium,
 carries a few of the Chromium Embedded Framework's patches to Chromium (BSD-3-Clause), and bundles uBlock Origin
 Lite, each under its own license; see [NOTICE](NOTICE).

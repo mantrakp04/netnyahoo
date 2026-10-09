@@ -1,4 +1,4 @@
-// usage: sparkle-host <installed Netnyahoo.app> <feed URL> <expected CFBundleShortVersionString>
+// usage: sparkle-host <installed Arcadia.app> <feed URL> <expected CFBundleShortVersionString>
 // Updates an installed copy in place the way Sparkle's automatic updates do: reads the feed, picks the newest item,
 // downloads it, checks its EdDSA signature against the copy's SUPublicEDKey, extracts it, and runs Sparkle's
 // installer, which swaps the bundle. Silently (no installer progress window) and without relaunching it.

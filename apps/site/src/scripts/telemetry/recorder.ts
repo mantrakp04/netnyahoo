@@ -1,5 +1,5 @@
-// rrweb session recording (loaded lazily by replay.ts). Inputs are masked, text inside .nn-private /
-// [data-private] is masked and .nn-block / [data-private-block] is blocked; no canvas, fonts, network or
+// rrweb session recording (loaded lazily by replay.ts). Inputs are masked, text inside .ac-private /
+// [data-private] is masked and .ac-block / [data-private-block] is blocked; no canvas, fonts, network or
 // console. Every session is recorded; chunks go up only once the session is REPLAY_MIN_SESSION_MS old:
 //   every REPLAY_CHUNK_MS  gzip → POST /otel/replay/<session>/<seq>.json.gz
 //   page hidden            plain JSON by sendBeacon → /otel/replay/<session>/<seq>.json
@@ -20,7 +20,7 @@ interface eventWithTime {
 const MAX_CHUNK = 1_900_000;
 const MAX_BEACON = 60_000;
 
-const SEQ_KEY = "nn:replay_seq";
+const SEQ_KEY = "ac:replay_seq";
 let memorySeq: { sid: string; next: number } = { sid: "", next: 0 };
 
 /** The next chunk number for this session, shared by its tabs and pages. */

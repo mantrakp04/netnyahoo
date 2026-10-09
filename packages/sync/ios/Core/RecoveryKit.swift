@@ -3,20 +3,20 @@ import CoreImage
 import Foundation
 
 public enum RecoveryKit {
-  public static let pdfName = "Netnyahoo Recovery Kit.pdf"
-  public static let textName = "Netnyahoo Recovery Kit.txt"
+  public static let pdfName = "Arcadia Recovery Kit.pdf"
+  public static let textName = "Arcadia Recovery Kit.txt"
 
   static let intro = "If you don’t have access to the Mac on which you first turned on sync, you can still get your synced data on another Mac:"
   static let steps = [
-    "Open Netnyahoo › Settings › Sync, and choose the same sync folder.",
+    "Open Arcadia › Settings › Sync, and choose the same sync folder.",
     "Click Enter Recovery Phrase.",
     "Paste the 24 words below.",
   ]
-  static let warning = "Keep this kit somewhere safe, like a password manager or a printed copy. Anyone with these words and your sync folder can read your synced data. Netnyahoo can’t recover the words for you: there’s no server and no other copy."
+  static let warning = "Keep this kit somewhere safe, like a password manager or a printed copy. Anyone with these words and your sync folder can read your synced data. Arcadia can’t recover the words for you: there’s no server and no other copy."
 
   public static func text(words: [String], created: Date, device: String) -> String {
     let date = DateFormatter.localizedString(from: created, dateStyle: .long, timeStyle: .none)
-    var lines = ["Netnyahoo Recovery Kit", "Created \(date) on \(device)", "", intro, ""]
+    var lines = ["Arcadia Recovery Kit", "Created \(date) on \(device)", "", intro, ""]
     lines += steps.enumerated().map { "\($0 + 1). \($1)" }
     lines += ["", "Recovery phrase:", ""]
     lines += words.enumerated().map { String(format: "%2d. %@", $0 + 1, $1) }
@@ -41,7 +41,7 @@ public enum RecoveryKit {
     let data = NSMutableData()
     var box = CGRect(x: 0, y: 0, width: 612, height: 792)
     guard let consumer = CGDataConsumer(data: data as CFMutableData),
-          let context = CGContext(consumer: consumer, mediaBox: &box, [kCGPDFContextTitle as String: "Netnyahoo Recovery Kit"] as CFDictionary)
+          let context = CGContext(consumer: consumer, mediaBox: &box, [kCGPDFContextTitle as String: "Arcadia Recovery Kit"] as CFDictionary)
     else { return Data() }
     context.beginPDFPage(nil)
     let previous = NSGraphicsContext.current
@@ -71,7 +71,7 @@ public enum RecoveryKit {
       y += height + spacing
     }
 
-    text("Netnyahoo Recovery Kit", .boldSystemFont(ofSize: 26), ink, spacing: 4)
+    text("Arcadia Recovery Kit", .boldSystemFont(ofSize: 26), ink, spacing: 4)
     let date = DateFormatter.localizedString(from: created, dateStyle: .long, timeStyle: .none)
     text("Created \(date) on \(device)", .systemFont(ofSize: 12), grey, spacing: 26)
     text(intro, .systemFont(ofSize: 13), ink, spacing: 10)

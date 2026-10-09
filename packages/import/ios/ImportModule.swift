@@ -5,10 +5,10 @@ public class ImportModule: Module {
   // Calls arrive concurrently; lazy initialization is not thread-safe.
   private let importer: Importer = {
     let env = ProcessInfo.processInfo.environment
-    let support = env["NETNYAHOO_IMPORT_SOURCE_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    let support = env["ARCADIA_IMPORT_SOURCE_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
       ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     let icons = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("\(Bundle.main.bundleIdentifier ?? "Netnyahoo")/ImportIcons", isDirectory: true)
+      .appendingPathComponent("\(Bundle.main.bundleIdentifier ?? "Arcadia")/ImportIcons", isDirectory: true)
     return Importer(discovery: BrowserDiscovery(
       applicationSupport: support,
       locateApp: AppIcons.locate,
@@ -16,32 +16,32 @@ public class ImportModule: Module {
     ))
   }()
 
-  // Safari's home folder; a test instance pointed at fixtures (NETNYAHOO_IMPORT_SOURCE_DIR = <home>/Library/Application
+  // Safari's home folder; a test instance pointed at fixtures (ARCADIA_IMPORT_SOURCE_DIR = <home>/Library/Application
   // Support) reads Safari's data from that fixture home too, never the user's.
   private static let safariHome: URL = {
     let env = ProcessInfo.processInfo.environment
-    if let home = env["NETNYAHOO_IMPORT_SAFARI_HOME"] { return URL(fileURLWithPath: home, isDirectory: true) }
-    if let support = env["NETNYAHOO_IMPORT_SOURCE_DIR"] {
+    if let home = env["ARCADIA_IMPORT_SAFARI_HOME"] { return URL(fileURLWithPath: home, isDirectory: true) }
+    if let support = env["ARCADIA_IMPORT_SOURCE_DIR"] {
       return URL(fileURLWithPath: support, isDirectory: true).deletingLastPathComponent().deletingLastPathComponent()
     }
     return FileManager.default.homeDirectoryForCurrentUser
   }()
 
   private static let secret: Importer.SecretProvider = {
-    if let fixed = ProcessInfo.processInfo.environment["NETNYAHOO_IMPORT_TEST_SECRET"] {
+    if let fixed = ProcessInfo.processInfo.environment["ARCADIA_IMPORT_TEST_SECRET"] {
       return { _, _ in Data(fixed.utf8) }
     }
     return SafeStorageKeychain.secret
   }()
 
-  private static let diaBundleId = ProcessInfo.processInfo.environment["NETNYAHOO_IMPORT_DIA_BUNDLE_ID"] ?? DiaAutomation.bundleIdentifier
+  private static let diaBundleId = ProcessInfo.processInfo.environment["ARCADIA_IMPORT_DIA_BUNDLE_ID"] ?? DiaAutomation.bundleIdentifier
 
   private let jobs = ImportJobs()
   private let vault = ImportVault()
-  private static let work = DispatchQueue(label: "netnyahoo.import", qos: .userInitiated, attributes: .concurrent)
+  private static let work = DispatchQueue(label: "arcadia.import", qos: .userInitiated, attributes: .concurrent)
 
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooImport")
+    Name("ArcadiaImport")
     Events("onImportEvent")
 
     AsyncFunction("listBrowsers") { (promise: Promise) in

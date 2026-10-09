@@ -1,5 +1,5 @@
-import { engineInfo } from "@netnyahoo/nncore";
-import { launchEnvironment, readDocument, systemInfo, writeDocument, type SystemInfo } from "@netnyahoo/shell";
+import { engineInfo } from "@arcadia/arcadiacore";
+import { launchEnvironment, readDocument, systemInfo, writeDocument, type SystemInfo } from "@arcadia/shell";
 import { create } from "zustand";
 import { DEV_SEND_ENV, LOGS_URL, MAX_BODY_BYTES } from "./config";
 import { EVENTS_SCOPE, eventRecord, LOGS_SCOPE, logRecord, logsRequest, outcome, type OtlpLogRecord, type QueuedEvent } from "./otlp";
@@ -87,9 +87,9 @@ const canSend = () => !__DEV__ || devSendAllowed();
 function context(): Record<string, unknown> {
   const info = appInfo();
   return {
-    $lib: "netnyahoo-telemetry",
+    $lib: "arcadia-telemetry",
     $lib_version: "1",
-    $app_name: "Netnyahoo",
+    $app_name: "Arcadia",
     $app_version: info.appVersion,
     $app_build: info.appBuild,
     $os: "macOS",
@@ -235,7 +235,7 @@ async function post(kind: RequestLogEntry["kind"], url: string, body: string, co
 function resource(): Record<string, unknown> {
   const info = appInfo();
   return {
-    "service.name": "netnyahoo-app",
+    "service.name": "arcadia-app",
     "service.version": info.appVersion,
     "deployment.environment": environment() === "production" ? "production" : "development",
     "os.type": "darwin",
@@ -362,7 +362,7 @@ export type ClientSession = {
 export function startClient(): ClientSession | null {
   loadChoice();
   void engineInfo()
-    .then((e) => (engineVersion = `NNCore / Chromium ${e.chromiumVersion}`))
+    .then((e) => (engineVersion = `ArcadiaCore / Chromium ${e.chromiumVersion}`))
     .catch(() => {});
   if (!saved.sharing) {
     const stale = readJson<Queue>(QUEUE_DOC);

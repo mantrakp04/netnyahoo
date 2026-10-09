@@ -9,9 +9,9 @@
           "guid": "00000000-0000-4000-8000-000000000101",
           "id": "0101",
           "meta_info": {},
-          "name": "Netnyahoo",
+          "name": "Arcadia",
           "type": "url",
-          "url": "https://netnyahoo.example/"
+          "url": "https://arcadia.example/"
         },
         {
           "children": [

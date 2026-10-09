@@ -1,5 +1,5 @@
 import Foundation
-import NetnyahooNNCore
+import ArcadiaCore
 
 // What an import read that must not reach JS (cookie values, card numbers), kept in memory until the app writes it
 // into a profile or drops it. Entries go after ten minutes; dropping the last reference wipes the secrets (SecretBytes).
@@ -45,7 +45,7 @@ final class ImportVault: @unchecked Sendable {
 }
 
 enum ImportWriter {
-  // A batch of nn_cookies_import's arguments; Chrome's own cookie store takes them (engine/chromium nn_cookies.h).
+  // A batch of ac_cookies_import's arguments; Chrome's own cookie store takes them (engine/chromium ac_cookies.h).
   static let cookieBatch = 500
   static let autofillBatch = 500
 
@@ -60,7 +60,7 @@ enum ImportWriter {
       let wire = CookieWire.batches(entry.cookies, size: cookieBatch)
       out["cookiesRejected"] = wire.dropped
       for batch in wire.batches {
-        let reply = await engine("nn_cookies_import", profile: profile, args: batch)
+        let reply = await engine("ac_cookies_import", profile: profile, args: batch)
         if let message = reply["error"] as? String {
           error = message
           out["cookiesFailed"] = 1
@@ -79,7 +79,7 @@ enum ImportWriter {
         let addresses = Array(entry.addresses[min(start, entry.addresses.count)..<min(start + autofillBatch, entry.addresses.count)])
         let cards = Array(entry.cards[min(start, entry.cards.count)..<min(start + autofillBatch, entry.cards.count)])
         start += autofillBatch
-        let reply = await engine("nn_autofill_import", profile: profile, args: AutofillWire.batch(addresses: addresses, cards: cards))
+        let reply = await engine("ac_autofill_import", profile: profile, args: AutofillWire.batch(addresses: addresses, cards: cards))
         if let message = reply["error"] as? String {
           error = error ?? message
           out["autofillFailed"] = 1
@@ -102,7 +102,7 @@ enum ImportWriter {
     let data = args.withUnsafeBytes { NSMutableData(bytes: $0.baseAddress, length: $0.count) }
     args.wipe()
     let json: String = await withCheckedContinuation { done in
-      NNCoreEngineBridge.callWithSecret(name, profile: profile, args: data) { done.resume(returning: $0) }
+      ArcadiaCoreEngineBridge.callWithSecret(name, profile: profile, args: data) { done.resume(returning: $0) }
     }
     let parsed = try? JSONSerialization.jsonObject(with: Data(json.utf8))
     return parsed as? [String: Any] ?? ["error": "bad reply from the engine"]

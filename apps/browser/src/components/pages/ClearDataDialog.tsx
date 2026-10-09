@@ -1,5 +1,5 @@
-import { clearBrowsingData, type BrowsingDataType } from "@netnyahoo/nncore";
-import { Surface } from "@netnyahoo/shell";
+import { clearBrowsingData, type BrowsingDataType } from "@arcadia/arcadiacore";
+import { Surface } from "@arcadia/shell";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { create } from "zustand";

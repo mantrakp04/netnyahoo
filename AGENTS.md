@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Netnyahoo is a macOS browser: Dia's polish and Arc's sidebar, built on Chrome's own framework (Chromium 154) through NNCore, our thin layer,
-with no account. It's also a satire brand. This file is how the owner works; follow it.
+Arcadia is a macOS browser: Dia's polish and Arc's sidebar, built on Chrome's own framework (Chromium 154) through ArcadiaCore, our thin layer,
+with no account. This file is how the owner works; follow it.
 For the architecture and the test tooling, read `docs/agent-brief.md`.
 
 ## How work gets done
@@ -12,9 +12,9 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   time, interleaved with their control, because sharing the CPU skews them.
 - **Orchestrate.** The main session plans, hands implementation to Opus subagents, and verifies what they
   return (build, run, capture). Give each agent its own files, its own derived-data dir and its own
-  `NETNYAHOO_DATA_DIR`.
+  `ARCADIA_DATA_DIR`.
 - **Watch the agents.** Every ~30 minutes the main session checks any agent it hasn't heard from (last
-  transcript activity, a pending tool call, `/tmp/nn-*.holder`, its processes). A stuck agent means a root
+  transcript activity, a pending tool call, `/tmp/ac-*.holder`, its processes). A stuck agent means a root
   cause to fix (a lock, a wait, a hang), not just a restart. Send new feedback to the agent that owns
   that area (SendMessage) instead of starting a new one, and batch finished fixes into the next release.
 - **Ask Codex for a second opinion** on risky logic (races, lifetimes, security, migrations, sync) and reviews,
@@ -25,7 +25,7 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 - **No git worktrees, ever.** Everyone works in this checkout.
 - **Commit straight to `main`.** Stage only your own hunks (`git add -p` or explicit paths), never
   someone else's work in progress. Never stage with `git apply --unidiff-zero`: it drops hunks into the wrong
-  place (it once committed an `NNClient.mm` that didn't compile). Check `git diff --cached` reads as you meant. End every message with
+  place (it once committed an `ACClient.mm` that didn't compile). Check `git diff --cached` reads as you meant. End every message with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Progress reports.** Keep them short and plain: what shipped, what's left, what needs the owner.
 - **Clean up.** Quit your test instances, stop the servers and background jobs you started, and never
@@ -36,18 +36,15 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   and never run `gclient sync` or `gn clean`: a full rebuild costs about 5 hours. Engine changes are
   incremental builds only, holding the chromium lock (`scripts/agent/locked chromium`,
   `docs/engine-build.md`). When freeing disk space, stay out of `~/chromium-build`.
-- **Never launch or touch `/Applications/Netnyahoo.app`.** The owner is using it.
+- **Never launch or touch `/Applications/Arcadia.app`.** The owner is using it.
 - **Never steal focus.** Run builds only as hidden instances:
-  `open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR=<throwaway dir> --env NETNYAHOO_REMOTE_DEBUGGING_PORT=<port> <app>`.
+  `open -g -n --env ARCADIA_BACKGROUND=1 --env ARCADIA_DATA_DIR=<throwaway dir> --env ARCADIA_REMOTE_DEBUGGING_PORT=<port> <app>`.
   Never use plain `open`. Background mode logs context menus and file panels instead of showing them.
   Keep test data in a scratch dir, not in `~/Documents`.
 - **Dia is a read-only reference.** You may take screenshots and read its app bundle; never click or type
   in it, and never read its user data or any browser's real profile.
 - **No AI features.** This is the owner's decision. Dia's AI rows in `docs/dia-feature-parity.md`
   stay ⏸.
-- **Satire guardrails.** Netanyahu appears only as a public figure (the mascot is Big Yahu). No ethnic,
-  religious or war imagery, no accusations against real named people, and nothing sexual about any real
-  person.
 
 ## Building features
 - **Sources of truth.** `docs/dia-feature-parity.md` is the checklist; update its row when you ship.
@@ -108,6 +105,6 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   composition; render with `pnpm -C apps/videos render <id>`.
 
 ## Repo map
-`apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{nncore,shell,shaders,import,sync}`; `engine/chromium` is our Chrome-services code (the `nn_*` C calls) and `engine/nncore` NNCore's window and tab layer,
+`apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{arcadiacore,shell,shaders,import,sync}`; `engine/chromium` is our Chrome-services code (the `ac_*` C calls) and `engine/arcadiacore` ArcadiaCore's window and tab layer,
 and `packages/core` holds the omnibox logic and its tests. `apps/site` is netnyahoo.com and
 `apps/videos` holds the Remotion videos. The license is Apache-2.0.

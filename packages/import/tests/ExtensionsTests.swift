@@ -1,5 +1,5 @@
 import XCTest
-@testable import NetnyahooImportCore
+@testable import ArcadiaImportCore
 
 final class ExtensionsTests: XCTestCase {
   func testListsWebStoreExtensionsWithNames() {

@@ -1,4 +1,4 @@
-import { ContextMenuArea, Surface, Symbol, VisualEffect, type SymbolProps } from "@netnyahoo/shell";
+import { ContextMenuArea, Surface, Symbol, VisualEffect, type SymbolProps } from "@arcadia/shell";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
 import { hex, useTheme } from "../../lib/theme";

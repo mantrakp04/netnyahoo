@@ -1,7 +1,7 @@
-import { FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
+import { FadeLabel, Surface, Symbol } from "@arcadia/shell";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { displayUrl } from "@netnyahoo/core";
+import { displayUrl } from "@arcadia/core";
 import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useIsBookmarked } from "../../store/hooks";

@@ -8,7 +8,7 @@ import { AppRegistry, Text, View } from "react-native";
 export const NATIVE_API_VERSION = 8;
 
 // Only modules every build has: on another version the app's own imports may throw before anything shows.
-const built = requireOptionalNativeModule<{ apiVersion?: number }>("NetnyahooApp")?.apiVersion ?? 0;
+const built = requireOptionalNativeModule<{ apiVersion?: number }>("ArcadiaApp")?.apiVersion ?? 0;
 
 export const nativeApiSkew =
   built === NATIVE_API_VERSION
@@ -24,7 +24,7 @@ type Shell = {
 
 // Instead of the app: one window that shows the skew, and in Debug the dev harness answering every script with it.
 export function startSkewed(message: string) {
-  console.error(`[netnyahoo] ${message}`);
+  console.error(`[arcadia] ${message}`);
   AppRegistry.registerComponent("main", () => () => (
     <View style={{ flex: 1, backgroundColor: "#1b1416", padding: 24, paddingTop: 48 }}>
       <Text selectable style={{ color: "#ff8a8a", fontSize: 14, fontFamily: "Menlo" }}>
@@ -32,14 +32,14 @@ export function startSkewed(message: string) {
       </Text>
     </View>
   ));
-  void requireNativeModule<Shell>("NetnyahooShell").openWindow("native-api-skew", { kind: "settings", title: "Netnyahoo", focus: false });
+  void requireNativeModule<Shell>("ArcadiaShell").openWindow("native-api-skew", { kind: "settings", title: "Arcadia", focus: false });
   if (__DEV__) answerWithSkew(message, "dev-eval.js", "dev-eval-result.json");
 }
 
 // Answers every script a driver drops into the data folder as `command` (first line `// <id>`) with the skew, in
 // `result`, so the driver fails at once instead of waiting for an app that never loaded.
 export function answerWithSkew(message: string, command: string, result: string) {
-  const shell = requireNativeModule<Shell>("NetnyahooShell");
+  const shell = requireNativeModule<Shell>("ArcadiaShell");
   const idOf = (source: string | null) => source?.match(/^\/\/ *(\S+)/)?.[1];
   let lastId = idOf(shell.readDocument(command)) ?? "";
   setInterval(() => {

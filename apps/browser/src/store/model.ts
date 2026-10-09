@@ -1,4 +1,4 @@
-import { appUrlOrigin, displayHost } from "@netnyahoo/core";
+import { appUrlOrigin, displayHost } from "@arcadia/core";
 import type { BrowserState } from "./browser";
 import { DEFAULT_PROFILE_ID } from "./settings";
 import type { BrowserWindow, Profile, Tab, TabLive, TabSnapshot } from "./types";
@@ -13,7 +13,7 @@ export const navigationTo = (url: string, userInitiated = false) => ({ url, seq:
 
 // A private window's profile: incognito:<window id>@<the regular profile it was opened from>. Its engine profile is
 // that profile's off-the-record one (Chrome's GetPrimaryOTRProfile): private windows opened from one profile share a
-// session, never another profile's (packages/nncore NNCoreHost.mm OriginalProfileName).
+// session, never another profile's (packages/arcadiacore ArcadiaCoreHost.mm OriginalProfileName).
 export const incognitoProfileId = (windowId: string, originalProfileId: string) => `incognito:${windowId}@${originalProfileId}`;
 export const isIncognitoProfile = (profileId: string) => profileId.startsWith("incognito:");
 // The regular profile a private profile id was opened from (an id without one: the default profile's, as before).
@@ -141,7 +141,7 @@ export function bookmarkProfileId(s: BrowserState, window: BrowserWindow | undef
 
 export function resolveWindowId(s: BrowserState, id?: string | null): string | undefined {
   if (id && s.windows[id]) return id;
-  // Without a window named, never pick a Small Yahu: it holds one page (store/small.ts).
+  // Without a window named, never pick a Little Arcadia: it holds one page (store/small.ts).
   const main = (w: string) => !!s.windows[w] && s.windows[w]!.kind !== "small";
   return s.ui.focusOrder.find(main) ?? s.windowOrder.find(main);
 }

@@ -1,5 +1,5 @@
-import { cleanUrl, markdownLink } from "@netnyahoo/core";
-import { copyText, prompt } from "@netnyahoo/shell";
+import { cleanUrl, markdownLink } from "@arcadia/core";
+import { copyText, prompt } from "@arcadia/shell";
 import { updateFolder } from "../../live/store";
 import { useBrowser } from "../../store/browser";
 import { activeTabId, bookmarkProfileId, viewTabIds } from "../../store/model";

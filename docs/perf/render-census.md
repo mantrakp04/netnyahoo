@@ -8,7 +8,7 @@ Tool: `apps/browser/scripts/perf/census.mjs` (scenarios `cen*` in `bench-app.js`
 
 ```sh
 node apps/browser/scripts/perf/js-bench.mjs bundle <dir> --profiling 1      # React's profiling renderer
-node apps/browser/scripts/perf/census.mjs run --app dist/0.2.27/export/Netnyahoo.app --bundle <dir>/main.jsbundle \
+node apps/browser/scripts/perf/census.mjs run --app dist/0.2.27/export/Arcadia.app --bundle <dir>/main.jsbundle \
   --label <name> --runs 3 --tabs 20 --out <dir>                              # cheap pass (renders, hooks, ms)
   ... --probe renders,selectors,listeners                                    # + selector call sites, subscriptions
   ... --tabs 100 | --address-bar sidebar | --trace 12                        # scale, the other layout, timer call sites

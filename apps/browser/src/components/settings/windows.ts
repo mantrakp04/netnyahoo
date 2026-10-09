@@ -1,4 +1,4 @@
-import { openWindow } from "@netnyahoo/shell";
+import { openWindow } from "@arcadia/shell";
 import { create } from "zustand";
 import { TASK_MANAGER_WINDOW_ID } from "../taskManager/window";
 

@@ -1,5 +1,5 @@
-import { cleanUrl } from "@netnyahoo/core";
-import { ContextMenuArea, copyText, MouseArea, prompt, showMenu, Symbol, type MenuItem } from "@netnyahoo/shell";
+import { cleanUrl } from "@arcadia/core";
+import { ContextMenuArea, copyText, MouseArea, prompt, showMenu, Symbol, type MenuItem } from "@arcadia/shell";
 import { memo, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View, type LayoutRectangle } from "react-native";
 import { useTheme } from "../../lib/theme";

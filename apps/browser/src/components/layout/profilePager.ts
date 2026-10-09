@@ -1,5 +1,5 @@
-import * as cef from "@netnyahoo/nncore";
-import type { NativePagerConfig, PagerStateEvent, SwipeEvent } from "@netnyahoo/nncore";
+import * as cef from "@arcadia/arcadiacore";
+import type { NativePagerConfig, PagerStateEvent, SwipeEvent } from "@arcadia/arcadiacore";
 import { useEffect, useMemo } from "react";
 import { Animated, unstable_batchedUpdates } from "react-native";
 import { create } from "zustand";
@@ -21,7 +21,7 @@ const WHEEL_THRESHOLD = 1;
 const WHEEL_BURST_MS = 49;
 const WHEEL_COOLDOWN_MS = 250;
 
-// The native controller (NNPager) tracks, settles and selects; JS only commits its selections.
+// The native controller (ACPager) tracks, settles and selects; JS only commits its selections.
 class ProfilePager {
   // The absolute profile index, written only by the native controller's frames.
   readonly pos: Animated.Value;
@@ -222,5 +222,5 @@ export function usePageStyle(windowId: string, slot: number, width: number) {
 }
 
 if (__DEV__) {
-  (globalThis as { nnPager?: unknown }).nnPager = (windowId: string) => pagerFor(windowId);
+  (globalThis as { acPager?: unknown }).acPager = (windowId: string) => pagerFor(windowId);
 }

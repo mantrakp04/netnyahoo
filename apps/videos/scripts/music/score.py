@@ -16,7 +16,7 @@ and swipe effects. A generated stereo hall and room (convolution), a kick sidech
 glue compressor and a 4x-oversampled true-peak limiter master it to cuts.json's `lufs` and `truePeak`.
 
 The arrangement, the sound effects, the silent windows and the breaths (bars where the kick, bass and hats drop out
-under brass stabs) come from src/lib/nn-launch/cuts.json, the file the edit reads, so every hit lands on the frame
+under brass stabs) come from src/lib/ac-launch/cuts.json, the file the edit reads, so every hit lands on the frame
 the picture cuts on: each sample is trimmed so its attack starts exactly on its beat (beat * 22400 samples).
 
 usage: python3 scripts/music/score.py [cut ...]   (default: every cut) -> public/music/<cut>.wav (48 kHz, 24-bit)
@@ -40,7 +40,7 @@ from scipy import ndimage, signal
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
-CUTS = json.load(open(os.path.join(ROOT, "src", "lib", "nn-launch", "cuts.json")))
+CUTS = json.load(open(os.path.join(ROOT, "src", "lib", "ac-launch", "cuts.json")))
 SAMPLES = os.path.join(ROOT, "public", "music", "samples")
 
 SR = 48000

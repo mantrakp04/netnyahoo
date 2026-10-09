@@ -142,7 +142,7 @@ type AppModule = {
 };
 
 
-const App = requireNativeModule<AppModule>("NetnyahooApp");
+const App = requireNativeModule<AppModule>("ArcadiaApp");
 
 export const updaterState = () => App.updaterState();
 export const checkForUpdates = () => App.checkForUpdates();

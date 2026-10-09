@@ -1,5 +1,5 @@
-import { listTasks, onExtensionsChanged } from "@netnyahoo/nncore";
-import { onAppEvent } from "@netnyahoo/shell";
+import { listTasks, onExtensionsChanged } from "@arcadia/arcadiacore";
+import { onAppEvent } from "@arcadia/shell";
 import { useTranslate } from "../components/site/translate";
 import { useBrowser } from "../store/browser";
 import { useSync } from "../sync/engine";

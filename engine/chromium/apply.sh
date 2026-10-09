@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Puts Netnyahoo's own Chromium code into the tree: engine/chromium/src mirrors paths under
+# Puts Arcadia's own Chromium code into the tree: engine/chromium/src mirrors paths under
 # chromium/src, and each directory listed in `owned` is ours alone, so it is copied with --delete.
 # The hook that makes Chromium build it is a patch in engine/patches (`series`:
-# chromium-netnyahoo-layer.patch links it into Chrome's framework for NNCore). Idempotent; never
+# chromium-arcadia-layer.patch links it into Chrome's framework for ArcadiaCore). Idempotent; never
 # touches args.gn.
 #
-# The convention, shared with engine/nncore: engine/<layer>/src mirrors the tree, engine/<layer>/apply.sh
+# The convention, shared with engine/arcadiacore: engine/<layer>/src mirrors the tree, engine/<layer>/apply.sh
 # copies it in (`--check` exits 1 when the tree differs), and the repo copy is the only one to edit.
 #
 #   engine/chromium/apply.sh            copy
@@ -13,7 +13,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src=${CHROMIUM_SRC:-$HOME/chromium-build/chromium_git/chromium/src}
-owned=(chrome/browser/netnyahoo)
+owned=(chrome/browser/arcadia)
 
 for dir in "${owned[@]}"; do
   if [[ "${1:-}" == --check ]]; then

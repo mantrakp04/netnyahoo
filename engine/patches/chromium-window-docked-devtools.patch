@@ -10,9 +10,9 @@
  #include "chrome/browser/ui/views/frame/scrim_view.h"
  #include "ui/views/focus/external_focus_tracker.h"
  
-+// Netnyahoo: NNCore (engine/nncore) shows the docked DevTools of the tabs it
++// Arcadia: ArcadiaCore (engine/arcadiacore) shows the docked DevTools of the tabs it
 +// hosts itself.
-+void (*g_netnyahoo_devtools_dock_changed)(BrowserWindowInterface* browser,
++void (*g_arcadia_devtools_dock_changed)(BrowserWindowInterface* browser,
 +                                          content::WebContents* inspected,
 +                                          content::WebContents* devtools) =
 +    nullptr;
@@ -24,17 +24,17 @@
  bool DevtoolsUIController::UpdateDevtools(
      content::WebContents* web_contents,
      bool update_devtools_web_contents) {
-+  // Netnyahoo: NNCore, which shows its tabs itself, shows their docked
++  // Arcadia: ArcadiaCore, which shows its tabs itself, shows their docked
 +  // DevTools too, whether or not the tab is the one Chrome's contents view
 +  // shows.
-+  if (g_netnyahoo_devtools_dock_changed && web_contents &&
++  if (g_arcadia_devtools_dock_changed && web_contents &&
 +      update_devtools_web_contents) {
 +    BrowserWindowInterface* browser =
 +        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
 +            web_contents);
 +    if (browser) {
 +      DevToolsContentsResizingStrategy strategy;
-+      g_netnyahoo_devtools_dock_changed(
++      g_arcadia_devtools_dock_changed(
 +          browser, web_contents,
 +          DevToolsWindow::GetInTabWebContents(web_contents, &strategy));
 +    }

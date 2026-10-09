@@ -3,13 +3,13 @@
 
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
-  const MANIFEST = window.YAHU_MANIFEST;
+  const MANIFEST = window.MASCOT_MANIFEST;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const theme = params.get("theme");
   if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
 
-  const injected = window.YAHU_ERROR || {};
+  const injected = window.GAME_ERROR || {};
   const errorCode = injected.code || params.get("code");
   const failedUrl = injected.url || params.get("url");
   let failedHost = "";
@@ -22,14 +22,14 @@
     document.title = failedHost ? `${failedHost} · No internet` : "No internet";
   } else {
     document.body.classList.add("standalone");
-    document.title = "Where's Big Yahu?";
-    $("offline-title").textContent = "Where's Big Yahu?";
+    document.title = "Where's the mascot?";
+    $("offline-title").textContent = "Where's the mascot?";
     $("offline-sub").textContent = "One man, one crowd, a great deal of money. Find him before the clock runs out.";
   }
 
   function retry() {
     try {
-      const host = window.netnyahoo;
+      const host = window.arcadia;
       if (host && typeof host.retry === "function") return void host.retry();
       const epc = window.errorPageController;
       if (epc && typeof epc.reloadButtonClick === "function") return void epc.reloadButtonClick();
@@ -42,7 +42,7 @@
   addEventListener("online", () => { if (errorCode || failedUrl) $("online").hidden = false; });
   addEventListener("offline", () => { $("online").hidden = true; });
 
-  const BEST_KEY = "netnyahoo.yahu.best";
+  const BEST_KEY = "arcadia.mascot.best";
   function loadBest() {
     try { return Math.max(0, parseInt(localStorage.getItem(BEST_KEY) || "0", 10) || 0); } catch (_) { return 0; }
   }
@@ -132,12 +132,12 @@
   const nextTimeout = makeBag(TIMEOUT_LINES);
   const nextMiss = { crowd: makeBag(MISS.crowd), hair: makeBag(MISS.hair), tie: makeBag(MISS.tie) };
 
-  const sprites = { crowd: [], decoy: [], yahu: [] };
+  const sprites = { crowd: [], decoy: [], mascot: [] };
   const backgrounds = [];
   function parseMask(rows) {
     return Uint32Array.from(rows, (h) => parseInt(h, 16) >>> 0);
   }
-  const INLINED = window.YAHU_ASSETS || {};
+  const INLINED = window.MASCOT_ASSETS || {};
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -234,30 +234,30 @@
 
     const minVis = lerp(0.95, 0.55, t);
     const wantOccluded = n >= 3;
-    const pose = pick(sprites.yahu);
+    const pose = pick(sprites.mascot);
     const candidates = people.filter((p) => {
       const top = p.y - p.h;
       return p.x > W * 0.07 && p.x < W * 0.93 && top > H * 0.03 && p.y - p.h * 0.45 < H * 0.95 &&
         (t < 0.15 || p.depth < lerp(1, 0.7, t));
     });
     for (const p of candidates) p.rot *= 0.5;
-    let yahu = null;
+    let mascot = null;
     let fallback = null;
     for (let i = 0; i < 80 && candidates.length; i++) {
       const p = pick(candidates);
       const prev = { sprite: p.sprite, kind: p.kind };
-      p.sprite = pose; p.kind = "yahu";
+      p.sprite = pose; p.kind = "mascot";
       const vis = visibility(p, people);
-      if (vis >= minVis && (!wantOccluded || i > 50 || vis <= 0.9)) { yahu = p; break; }
+      if (vis >= minVis && (!wantOccluded || i > 50 || vis <= 0.9)) { mascot = p; break; }
       if (!fallback || vis > fallback.vis) fallback = { p, vis };
       p.sprite = prev.sprite; p.kind = prev.kind;
     }
-    if (!yahu) {
-      yahu = fallback ? fallback.p : pick(people);
-      yahu.sprite = pose; yahu.kind = "yahu";
-      for (let guard = 0; guard < 24 && visibility(yahu, people) < minVis; guard++) {
-        const idx = people.indexOf(yahu);
-        const blocker = people.slice(idx + 1).find((q) => blocksFace(yahu, q));
+    if (!mascot) {
+      mascot = fallback ? fallback.p : pick(people);
+      mascot.sprite = pose; mascot.kind = "mascot";
+      for (let guard = 0; guard < 24 && visibility(mascot, people) < minVis; guard++) {
+        const idx = people.indexOf(mascot);
+        const blocker = people.slice(idx + 1).find((q) => blocksFace(mascot, q));
         if (!blocker) break;
         people.splice(people.indexOf(blocker), 1);
       }
@@ -265,15 +265,15 @@
 
     if (n >= 4) {
       const near = people
-        .filter((p) => p !== yahu && p.kind === "crowd" && Math.abs(p.y - yahu.y) < yahu.h * 0.6)
-        .sort((a, b) => Math.abs(a.x - yahu.x) - Math.abs(b.x - yahu.x))
+        .filter((p) => p !== mascot && p.kind === "crowd" && Math.abs(p.y - mascot.y) < mascot.h * 0.6)
+        .sort((a, b) => Math.abs(a.x - mascot.x) - Math.abs(b.x - mascot.x))
         .slice(0, n >= 7 ? 2 : 1);
       const saved = near.map((p) => ({ p, sprite: p.sprite, kind: p.kind }));
       for (const p of near) { p.sprite = nextDecoy(); p.kind = p.sprite.trait; }
-      if (visibility(yahu, people) < minVis) for (const r of saved) { r.p.sprite = r.sprite; r.p.kind = r.kind; }
+      if (visibility(mascot, people) < minVis) for (const r of saved) { r.p.sprite = r.sprite; r.p.kind = r.kind; }
     }
 
-    return { n, t, bg, W, H, people, yahu, time: Math.max(35, 60 - (n - 1) * 2.5) };
+    return { n, t, bg, W, H, people, mascot, time: Math.max(35, 60 - (n - 1) * 2.5) };
   }
 
   function faceSamples(p) {
@@ -401,7 +401,7 @@
     const view = { x0: -cam.x / cam.k, y0: -cam.y / cam.k, x1: (vw - cam.x) / cam.k, y1: (vh - cam.y) / cam.k };
     const revealing = reveal && state !== "over";
     for (const p of L.people) {
-      if (revealing && p === L.yahu) continue;
+      if (revealing && p === L.mascot) continue;
       const r = p.h * 0.8;
       if (p.x + r < view.x0 || p.x - r > view.x1 || p.y - p.h > view.y1 || p.y < view.y0) continue;
       drawPerson(p);
@@ -445,7 +445,7 @@
 
     if (reveal) {
       const t = (now - reveal.start) / 1000;
-      const Y = L.yahu;
+      const Y = L.mascot;
       if (state === "found") {
         ctx.fillStyle = `rgba(10, 8, 9, ${0.55 * Math.min(1, t * 3)})`;
         ctx.fillRect(0, 0, vw, vh);
@@ -595,7 +595,7 @@
     stage.classList.remove("paused");
     last = performance.now();
     updateHud();
-    toast(n === 1 ? "Find Big Yahu. Click him." : `Level ${n}: ${level.people.length} suspects`);
+    toast(n === 1 ? "Find the mascot. Click him." : `Level ${n}: ${level.people.length} suspects`);
   }
 
   function pause() {
@@ -618,7 +618,7 @@
     if (state !== "playing" || hintsUsed >= 3) return;
     hintsUsed++;
     timeLeft -= 8;
-    const Y = level.yahu;
+    const Y = level.mascot;
     const hc = headCenter(Y);
     const r1 = Y.h * [2.4, 1.4, 0.75][hintsUsed - 1];
     const off = r1 * (hintsUsed === 3 ? 0.15 : 0.5) * Math.sqrt(rng());
@@ -636,7 +636,7 @@
 
   function found() {
     state = "found";
-    const Y = level.yahu;
+    const Y = level.mascot;
     const bonus = misses === 0 ? 150 : 0;
     const points = 100 * level.n + Math.round(Math.max(0, timeLeft) * 10) + bonus;
     score += points;
@@ -669,7 +669,7 @@
     timeLeft = 0;
     reveal = { start: performance.now() };
     hint = null;
-    const Y = level.yahu;
+    const Y = level.mascot;
     const hc = headCenter(Y);
     tweenCam(camToShow(hc.x, hc.y, 0.42, Y.h), 700);
     const newBest = score > 0 && score >= best;
@@ -702,7 +702,7 @@
       const p = L.people[i];
       if (Math.abs(p.x - w.x) > p.h || w.y > p.y || w.y < p.y - p.h * 1.2) continue;
       if (!hits(p, w.x, w.y)) continue;
-      if (p === L.yahu) return found();
+      if (p === L.mascot) return found();
       misses++;
       timeLeft -= 5;
       effects.push({ wx: w.x, wy: w.y, start: performance.now(), ms: 600 });
@@ -856,7 +856,7 @@
       console.error(err);
       return;
     }
-    const face = sprites.yahu[0];
+    const face = sprites.mascot[0];
     if (face) {
       $("wanted").src = face.img.src;
       card.portrait.src = face.img.src;
@@ -868,7 +868,7 @@
     state = "title";
     $("loading").classList.add("done");
     showCard({
-      title: "Where's Big Yahu?",
+      title: "Where's the mascot?",
       body: "He's hiding in a crowd of donors, lobbyists and very generous friends. Click him before the clock runs out. Wrong guesses cost 5 seconds.",
       action: "Start",
     });
@@ -877,18 +877,18 @@
   }
 
   if (params.get("debug") === "1") {
-    window.__yahu = {
+    window.__mascot = {
       get state() { return state; },
       get level() { return level; },
       get score() { return score; },
       get timeLeft() { return timeLeft; },
       set timeLeft(v) { timeLeft = v; },
-      yahuScreen() {
-        const c = headCenter(level.yahu);
+      mascotScreen() {
+        const c = headCenter(level.mascot);
         return toScreen(c.x, c.y);
       },
-      yahuVisiblePage() {
-        const Y = level.yahu;
+      mascotVisiblePage() {
+        const Y = level.mascot;
         const r = canvas.getBoundingClientRect();
         const ps = level.people;
         const pts = faceSamples(Y).sort((a, b) => Math.hypot(a.x - Y.x, a.y - Y.y + Y.h * 0.64) - Math.hypot(b.x - Y.x, b.y - Y.y + Y.h * 0.64));
@@ -906,7 +906,7 @@
         const ps = level.people;
         for (let i = ps.length - 1; i >= 0; i--) {
           const p = ps[i];
-          if (p === level.yahu || (kind && p.kind !== kind)) continue;
+          if (p === level.mascot || (kind && p.kind !== kind)) continue;
           const c = headCenter(p);
           const top = ps.slice().reverse().find((q) => hits(q, c.x, c.y));
           const s = toScreen(c.x, c.y);
@@ -914,7 +914,7 @@
         }
         return null;
       },
-      visibility: () => visibility(level.yahu, level.people),
+      visibility: () => visibility(level.mascot, level.people),
       renderCost(frames = 60) {
         const t0 = performance.now();
         for (let i = 0; i < frames; i++) render(performance.now());

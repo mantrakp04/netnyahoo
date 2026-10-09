@@ -1,11 +1,11 @@
-// Runs inside the app (the dev harness evaluates it as `function (nn) { … }`) and installs
-// globalThis.nnBench: the benchmark's scenarios. Each one resets the probe (src/lib/perfProbe.ts),
+// Runs inside the app (the dev harness evaluates it as `function (ac) { … }`) and installs
+// globalThis.acBench: the benchmark's scenarios. Each one resets the probe (src/lib/perfProbe.ts),
 // drives the app the way its native events would (inside a React batch), and returns timings plus
-// the probe's counters. js-bench.mjs loads it and calls nnBench.run(name, options).
+// the probe's counters. js-bench.mjs loads it and calls acBench.run(name, options).
 
-const P = globalThis.nnPerf;
+const P = globalThis.acPerf;
 if (!P) throw new Error("perf probe is off (no perf-probe file in the data folder)");
-const store = nn.store;
+const store = ac.store;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const S = () => store.getState();
 const windowId = () => S().ui.focusedWindowId;
@@ -56,7 +56,7 @@ function hostOf(fiber) {
 const scenarios = {
   async startup() {
     await until(() => P.marks.firstWindow, 20000);
-    const info = nn.shell.systemInfo();
+    const info = ac.shell.systemInfo();
     const read = P.read();
     return { marks: { ...P.marks, processStart: info.processStart ?? null, firstCommit: P.firstCommit }, stats: read };
   },
@@ -76,9 +76,9 @@ const scenarios = {
     await sleep(200);
     S().openPanel(w);
     const id = `${w}:panel`;
-    if (!(await until(() => nn.omnibox.get(id), 3000))) throw new Error("omnibox driver missing");
+    if (!(await until(() => ac.omnibox.get(id), 3000))) throw new Error("omnibox driver missing");
     await sleep(500);
-    const driver = nn.omnibox.get(id);
+    const driver = ac.omnibox.get(id);
     P.reset();
     const keys = [];
     for (let i = 1; i <= query.length; i++) {
@@ -233,7 +233,7 @@ const scenarios = {
     const out = [];
     for (const command of ["nextProfile", "previousProfile"]) {
       P.reset();
-      const ms = timed(() => nn.runCommand({ command, arg: null, windowId: w }));
+      const ms = timed(() => ac.runCommand({ command, arg: null, windowId: w }));
       await sleep(settleMs);
       out.push({ command, ms, profile: S().windows[w].profileId, stats: P.read() });
     }
@@ -420,9 +420,9 @@ function renderScenarios() {
       if (bar === "panel") S().openPanel(w);
       else tab = S().newTab(w);
       const id = `${w}:${bar}`;
-      if (!(await until(() => nn.omnibox.get(id), 4000))) throw new Error(`no omnibox driver ${id}`);
+      if (!(await until(() => ac.omnibox.get(id), 4000))) throw new Error(`no omnibox driver ${id}`);
       await sleep(800);
-      const driver = nn.omnibox.get(id);
+      const driver = ac.omnibox.get(id);
       P.reset();
       const keys = [];
       for (let i = 1; i <= query.length; i++) {
@@ -561,13 +561,13 @@ function censusScenarios() {
     const w = s.windows[windowId()];
     return w.tabIds.filter((id) => s.tabs[id]?.profileId === w.profileId);
   };
-  const run = (command, arg = null) => () => nn.runCommand({ command, arg, windowId: windowId() });
+  const run = (command, arg = null) => () => ac.runCommand({ command, arg, windowId: windowId() });
   // The command bar's variant: a floating panel, or the sidebar's dropdown with the address bar there.
   const panelId = (w) => `${w}:${S().settings.addressBar === "sidebar" ? "sidebar" : "panel"}`;
   async function driverOf(id) {
-    if (!(await until(() => nn.omnibox.get(id), 4000))) throw new Error(`no omnibox driver ${id}`);
+    if (!(await until(() => ac.omnibox.get(id), 4000))) throw new Error(`no omnibox driver ${id}`);
     await sleep(800);
-    return nn.omnibox.get(id);
+    return ac.omnibox.get(id);
   }
   function untilStore(test, timeoutMs) {
     return new Promise((resolve) => {
@@ -600,10 +600,10 @@ function censusScenarios() {
         await quiet(500);
         let id;
         await action(() => {
-          nn.runCommand({ command: "newTab", arg: null, windowId: windowId() });
+          ac.runCommand({ command: "newTab", arg: null, windowId: windowId() });
           id = activeId();
         }, 900, out);
-        await until(() => nn.omnibox.get(`${windowId()}:hero`), 3000);
+        await until(() => ac.omnibox.get(`${windowId()}:hero`), 3000);
         S().closeTab(id);
         await sleep(500);
       }
@@ -720,8 +720,8 @@ function censusScenarios() {
   };
 }
 
-globalThis.nnBench = {
+globalThis.acBench = {
   names: Object.keys(scenarios),
   run: (name, options) => scenarios[name](options ?? {}),
 };
-return globalThis.nnBench.names;
+return globalThis.acBench.names;

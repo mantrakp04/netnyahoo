@@ -74,7 +74,7 @@ test("private windows don't page to another profile", () => {
   assert.equal(session(p), work);
 });
 
-test("Small Yahu from a profile-2 private window opens in profile 2, never privately (d9a8899e)", () => {
+test("Little Arcadia from a profile-2 private window opens in profile 2, never privately (d9a8899e)", () => {
   const { work } = twoProfiles();
   const p = S().createWindow({ incognito: true });
   S().setFocusedWindow(p);

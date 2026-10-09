@@ -10,9 +10,9 @@ import { capture, type Props } from "./core";
 
 const AUTOCAPTURE = 'a, button, [role="button"], [role="link"], summary, label, select, input[type="button"], input[type="submit"], input[type="checkbox"], input[type="radio"], [data-track]';
 /** Nothing about these is reported (no events). */
-const NO_CAPTURE = ".ph-no-capture, [data-nn-no-capture]";
+const NO_CAPTURE = ".ph-no-capture, [data-ac-no-capture]";
 /** These are reported without their text. */
-const PRIVATE = ".nn-private, [data-private], .ph-sensitive";
+const PRIVATE = ".ac-private, [data-private], .ph-sensitive";
 const FIELD = /^(input|textarea|select|option)$/;
 
 const clean = (s: string) => s.replace(/\s+/g, " ").trim();

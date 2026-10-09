@@ -1,4 +1,4 @@
-import { copyText, focusWindow } from "@netnyahoo/shell";
+import { copyText, focusWindow } from "@arcadia/shell";
 import { useEffect, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
@@ -57,7 +57,7 @@ export function LiveFoldersPane() {
         <SourceRow id="confluence" />
         <SourceRow id="gdrive" />
       </Group>
-      {isMocked ? <Text style={{ marginTop: 10, fontSize: 11, color: "#D29922" }}>Development build: services are served by NETNYAHOO_LIVE_MOCK.</Text> : null}
+      {isMocked ? <Text style={{ marginTop: 10, fontSize: 11, color: "#D29922" }}>Development build: services are served by ARCADIA_LIVE_MOCK.</Text> : null}
     </View>
   );
 }
@@ -185,7 +185,7 @@ function GithubConnect({ busy, run }: ConnectProps) {
   if (flow) {
     return (
       <View>
-        <Help>Enter this code on GitHub (it's on your clipboard), then approve Netnyahoo. This sheet closes when you're signed in.</Help>
+        <Help>Enter this code on GitHub (it's on your clipboard), then approve Arcadia. This sheet closes when you're signed in.</Help>
         <Text selectable style={{ fontSize: 26, fontWeight: "600", letterSpacing: 3, fontFamily: "Menlo", color: theme.textPrimary, textAlign: "center", marginVertical: 8 }}>
           {flow.userCode}
         </Text>
@@ -297,7 +297,7 @@ function GoogleConnect({ busy, run }: ConnectProps) {
   return (
     <View>
       <Help>
-        In Google Cloud Console, enable the Drive API and create an OAuth client of type "Desktop app" (add yourself as a test user). Netnyahoo opens Google's consent page in a tab and reads the result from its redirect; it asks only to see your files' names and dates.
+        In Google Cloud Console, enable the Drive API and create an OAuth client of type "Desktop app" (add yourself as a test user). Arcadia opens Google's consent page in a tab and reads the result from its redirect; it asks only to see your files' names and dates.
       </Help>
       <Field label="Client ID">
         <TextField value={clientId} onChangeText={setClientId} placeholder="…apps.googleusercontent.com" />

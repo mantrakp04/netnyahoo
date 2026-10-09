@@ -1,5 +1,5 @@
-import { SwipeArea, type SwipeAreaHandle, type SwipeEvent } from "@netnyahoo/nncore";
-import { WindowBackdrop } from "@netnyahoo/shaders";
+import { SwipeArea, type SwipeAreaHandle, type SwipeEvent } from "@arcadia/arcadiacore";
+import { WindowBackdrop } from "@arcadia/shaders";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Animated, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useShallow } from "zustand/react/shallow";
@@ -95,9 +95,9 @@ const devAreas = new Map<string, React.RefObject<SwipeAreaHandle | null>>();
 // DEV: every onSwipe JS received, to compare with the native emits.
 const received: object[] = [];
 if (__DEV__) {
-  const g = globalThis as { nnSwipe?: Record<string, unknown> };
-  g.nnSwipe = {
-    ...g.nnSwipe,
+  const g = globalThis as { acSwipe?: Record<string, unknown> };
+  g.acSwipe = {
+    ...g.acSwipe,
     received: () => received.splice(0),
     sidebar: (windowId: string) => devAreas.get(`sidebar:${windowId}`)?.current ?? null,
     strip: (windowId: string) => devAreas.get(`strip:${windowId}`)?.current ?? null,

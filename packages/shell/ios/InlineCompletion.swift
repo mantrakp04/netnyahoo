@@ -4,7 +4,7 @@ import ExpoModulesCore
 /// Apply text and selection together before the next key is handled.
 public final class InlineCompletionModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooInlineCompletion")
+    Name("ArcadiaInlineCompletion")
 
     AsyncFunction("complete") { (tag: Int, typed: String, completion: String) -> Int in
       guard let host = self.appContext?.findView(withTag: tag, ofType: NSView.self),

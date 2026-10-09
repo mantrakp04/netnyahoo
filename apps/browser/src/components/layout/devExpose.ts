@@ -6,5 +6,5 @@ import { devPeeks, useDockMotion } from "./dockMotion";
 import { useUrlAnchors } from "./windowLayout";
 
 if (__DEV__) {
-  (globalThis as { nnLayout?: unknown }).nnLayout = { pages: usePages, anchors: useUrlAnchors, toasts: splitActions.useToasts, splitActions, tabDrag, permissions, peek: devPeeks, dockMotion: useDockMotion };
+  (globalThis as { acLayout?: unknown }).acLayout = { pages: usePages, anchors: useUrlAnchors, toasts: splitActions.useToasts, splitActions, tabDrag, permissions, peek: devPeeks, dockMotion: useDockMotion };
 }

@@ -1,5 +1,5 @@
-import { toAppUrl, urlForDisplay } from "@netnyahoo/core";
-import { Surface, Symbol } from "@netnyahoo/shell";
+import { toAppUrl, urlForDisplay } from "@arcadia/core";
+import { Surface, Symbol } from "@arcadia/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { hex, useTheme } from "../../lib/theme";

@@ -18,7 +18,7 @@ core/ungoogled-chromium/disable-domain-reliability.patch	applied	exact
 core/ungoogled-chromium/block-trk-and-subdomains.patch	applied	exact
 core/ungoogled-chromium/disable-gaia.patch	applied	exact
 core/ungoogled-chromium/disable-fonts-googleapis-references.patch	applied	exact
-core/ungoogled-chromium/disable-webstore-urls.patch	reverted	disables the Chrome Web Store and extension update checks; Netnyahoo needs both (user decision)
+core/ungoogled-chromium/disable-webstore-urls.patch	reverted	disables the Chrome Web Store and extension update checks; Arcadia needs both (user decision)
 core/ungoogled-chromium/fix-learn-doubleclick-hsts.patch	applied	exact
 core/ungoogled-chromium/disable-webrtc-log-uploader.patch	applied	exact
 core/ungoogled-chromium/disable-ai.patch	applied	exact, plus a BUILDFLAG(ENABLE_SCREEN_AI_SERVICE) guard around the ScreenAI sandbox setup in ChromeContentBrowserClient (macOS path the patch misses)

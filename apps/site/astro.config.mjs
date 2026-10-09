@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { constants, gzipSync } from "node:zlib";
 
-// Big Yahu's model stays at public/models/big-yahu.glb (pages from before a deploy ask for that path). A build
-// also writes it as big-yahu.<content hash>.glb, the name the page asks for (scripts/stage.ts) and the only one
+// the mascot's model stays at public/models/big-mascot.glb (pages from before a deploy ask for that path). A build
+// also writes it as big-mascot.<content hash>.glb, the name the page asks for (scripts/stage.ts) and the only one
 // nginx caches for good (infra/site/nginx.conf). `astro dev` serves public/ as it is, so there the page asks for
 // the plain name.
-const modelSource = new URL("./public/models/big-yahu.glb", import.meta.url);
+const modelSource = new URL("./public/models/big-mascot.glb", import.meta.url);
 const modelHash = createHash("sha256").update(readFileSync(modelSource)).digest("hex").slice(0, 10);
-const hashedModel = `big-yahu.${modelHash}.glb`;
+const hashedModel = `big-mascot.${modelHash}.glb`;
 
 /** The model under its hashed name, and a gzip at the highest level next to every text file and the model,
  * served as-is by nginx's gzip_static (infra/site/nginx.conf), so no request waits on compression and none
@@ -24,11 +24,11 @@ function dist() {
       return statSync(path).isDirectory() ? walk(path) : [path];
     });
   return {
-    name: "netnyahoo:dist",
+    name: "arcadia:dist",
     hooks: {
       "astro:config:setup": ({ command, updateConfig }) => {
-        const model = command === "build" ? hashedModel : "big-yahu.glb";
-        updateConfig({ vite: { define: { __YAHU_MODEL__: JSON.stringify(model) } } });
+        const model = command === "build" ? hashedModel : "big-mascot.glb";
+        updateConfig({ vite: { define: { __MASCOT_MODEL__: JSON.stringify(model) } } });
       },
       "astro:build:done": ({ dir, logger }) => {
         copyFileSync(modelSource, new URL(`models/${hashedModel}`, dir));

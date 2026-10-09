@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import NetnyahooImportCore
+@testable import ArcadiaImportCore
 
 // Card numbers are secrets: they're decrypted into SecretBytes and need the browser key; addresses don't.
 final class AutofillTests: XCTestCase {
@@ -11,7 +11,7 @@ final class AutofillTests: XCTestCase {
   func testWebDataAddressesAndCards() throws {
     let outcome = try ChromiumAutofill.load(profile: chrome, key: Fixtures.chromiumKey)
     XCTAssertEqual(outcome.addresses, [
-      ImportedAddress(name: "Alex Example", organization: "Netnyahoo Ltd", street: "1 Example Way\nSuite 2",
+      ImportedAddress(name: "Alex Example", organization: "Arcadia Ltd", street: "1 Example Way\nSuite 2",
                       city: "Cupertino", state: "CA", postalCode: "95014", country: "US", phone: "+14155550100",
                       email: "alex@example.com"),
       ImportedAddress(name: "Sam Smith", street: "10 High Street\nFlat 1", city: "London", postalCode: "SW1A 1AA",

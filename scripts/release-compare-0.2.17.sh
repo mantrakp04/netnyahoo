@@ -1,14 +1,14 @@
 #!/bin/bash
 # Release day: 0.2.17 against the release candidate, as the table the release notes carry under "## Faster".
 #
-#   scripts/release-compare-0.2.17.sh <rc Netnyahoo.app> <out dir>      (about 45 minutes; run it in the background)
+#   scripts/release-compare-0.2.17.sh <rc Arcadia.app> <out dir>      (about 45 minutes; run it in the background)
 #
-# The RC is dist/<v>-rc/export/Netnyahoo.app from `scripts/release.sh <v> --rc`, built from this working tree (its bench
+# The RC is dist/<v>-rc/export/Arcadia.app from `scripts/release.sh <v> --rc`, built from this working tree (its bench
 # bundle is built from the tree, so check the tree is the RC's). Prints the table (Markdown) last and leaves it in
 # <out>/table.md (<out>/perf-gate/ when <out> has no /perf-gate/ in its path); <out>/table-detail.md has every row with min–max and runs, for judging the gate.
 #
 # What it does, all under the perflab lock, nothing launched with plain `open`, the owner's /Applications app untouched:
-#   1. fetches 0.2.17's own release zip once (cached in $NN_COMPARE_CACHE, default ~/.cache/netnyahoo/perf-gate/0.2.17:
+#   1. fetches 0.2.17's own release zip once (cached in $AC_COMPARE_CACHE, default ~/.cache/arcadia/perf-gate/0.2.17:
 #      the path has to contain /perf-gate/ so scripts/agent/cpu-cap leaves these instances at normal QoS) and builds its
 #      bench bundle from its own source (apps/browser/scripts/perf/legacy-bundle.mjs -> dist/0.2.17/bench/main.jsbundle);
 #   2. native-bench interleaved, both apps, run by run: launch x8, then session x2 (idle, memory, tab switch, new tab,
@@ -20,8 +20,8 @@
 #      has no field timing (journeys) and no perf probe or dev harness in a release bundle. Those rows show "–" for it;
 #   5. scripts/release-compare-table.mjs turns the results into the table.
 # Afterwards check scripts/agent/cpu-cap's log for pauses during the run (a pause makes the timings invalid).
-# Test knobs (a release-day run uses the defaults): NN_COMPARE_LAUNCH_RUNS (8), NN_COMPARE_RUNS (2), NN_COMPARE_IDLE (60 s),
-# NN_COMPARE_RC_BUNDLE (a prebuilt bench bundle for the RC; default: built from this tree), NN_COMPARE_CACHE, BENCH_CMD_TIMEOUT_MS.
+# Test knobs (a release-day run uses the defaults): AC_COMPARE_LAUNCH_RUNS (8), AC_COMPARE_RUNS (2), AC_COMPARE_IDLE (60 s),
+# AC_COMPARE_RC_BUNDLE (a prebuilt bench bundle for the RC; default: built from this tree), AC_COMPARE_CACHE, BENCH_CMD_TIMEOUT_MS.
 # Ports: CDP 9770 (native-bench), js-bench 47971 (its instances use CDP 9500+). Needs the display awake (caffeinate runs).
 # The old release is the control: the rows that need the new phases (frames, J4) aren't in it. See docs/perf/README.md.
 set -uo pipefail
@@ -35,9 +35,9 @@ case "$(cd "$RC" && pwd -P)" in /Applications/*) echo "never the owner's /Applic
 RC=$(cd "$RC" && pwd -P); mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd -P)
 
 OLD=0.2.17
-CACHE=${NN_COMPARE_CACHE:-$HOME/.cache/netnyahoo/perf-gate/$OLD}
-case "$CACHE" in */perf-gate/*) ;; *) echo "NN_COMPARE_CACHE must contain /perf-gate/ (cpu-cap keeps normal QoS for those paths)" >&2; exit 64 ;; esac
-# The instances run from <out>/…/app/Netnyahoo.app: that path needs /perf-gate/ too.
+CACHE=${AC_COMPARE_CACHE:-$HOME/.cache/arcadia/perf-gate/$OLD}
+case "$CACHE" in */perf-gate/*) ;; *) echo "AC_COMPARE_CACHE must contain /perf-gate/ (cpu-cap keeps normal QoS for those paths)" >&2; exit 64 ;; esac
+# The instances run from <out>/…/app/Arcadia.app: that path needs /perf-gate/ too.
 case "$OUT" in */perf-gate/*) ;; *) OUT=$OUT/perf-gate; mkdir -p "$OUT" ;; esac
 NEW=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$RC/Contents/Info.plist")
 [ -n "$NEW" ] || { echo "can't read the RC's version" >&2; exit 66; }
@@ -46,9 +46,9 @@ BUNDLE_OLD=$REPO/dist/$OLD/bench/main.jsbundle
 log() { echo "[compare $(date +%H:%M:%S)] $*"; }
 
 # 1. The old release: its own zip from our GitHub release, and its own bench bundle.
-if [ ! -d "$CACHE/Netnyahoo.app" ]; then
-  log "downloading Netnyahoo-$OLD.zip (our own release asset)"
-  mkdir -p "$CACHE" && (cd "$CACHE" && gh release download "v$OLD" -R mantrakp04/netnyahoo -p "Netnyahoo-$OLD.zip" --clobber && ditto -x -k "Netnyahoo-$OLD.zip" .) || exit 1
+if [ ! -d "$CACHE/Arcadia.app" ]; then
+  log "downloading Arcadia-$OLD.zip (our own release asset)"
+  mkdir -p "$CACHE" && (cd "$CACHE" && gh release download "v$OLD" -R mantrakp04/arcadia -p "Arcadia-$OLD.zip" --clobber && ditto -x -k "Arcadia-$OLD.zip" .) || exit 1
 fi
 if [ ! -f "$BUNDLE_OLD" ]; then
   log "building $OLD's bench bundle from its own tree"
@@ -58,14 +58,14 @@ if [ ! -f "$BUNDLE_OLD" ]; then
 fi
 
 # 2-4. Everything that times something holds the perflab lock for the whole run (one lock, one command).
-export LAUNCH_RUNS=${NN_COMPARE_LAUNCH_RUNS:-8} RUNS=${NN_COMPARE_RUNS:-2} IDLE=${NN_COMPARE_IDLE:-60}
-export RC_BUNDLE_FLAG=${NN_COMPARE_RC_BUNDLE:+--bundle $NN_COMPARE_RC_BUNDLE}
+export LAUNCH_RUNS=${AC_COMPARE_LAUNCH_RUNS:-8} RUNS=${AC_COMPARE_RUNS:-2} IDLE=${AC_COMPARE_IDLE:-60}
+export RC_BUNDLE_FLAG=${AC_COMPARE_RC_BUNDLE:+--bundle $AC_COMPARE_RC_BUNDLE}
 export REPO RC OUT OLD NEW CACHE BUNDLE_OLD PERF
 exec caffeinate -d scripts/agent/locked perflab --wait 3000 --as compare -- bash -c '
 set -uo pipefail
 cd "$REPO"
 log() { echo "[compare $(date +%H:%M:%S)] $*"; }
-NB="node $PERF/native-bench.mjs --app $RC --label $NEW --control $CACHE/Netnyahoo.app --control-label $OLD --control-bundle $BUNDLE_OLD $RC_BUNDLE_FLAG --idle $IDLE"
+NB="node $PERF/native-bench.mjs --app $RC --label $NEW --control $CACHE/Arcadia.app --control-label $OLD --control-bundle $BUNDLE_OLD $RC_BUNDLE_FLAG --idle $IDLE"
 log "launch, session, windows: $OLD and $NEW interleaved"
 $NB --out $OUT/nb --port 9770 --only launch,session,windows --launch-runs $LAUNCH_RUNS --runs $RUNS || exit 1
 log "tab switches, right after the tabs open (0.2.17 freezes background tabs after a minute; a full session switches late)"

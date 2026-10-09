@@ -5,7 +5,7 @@
 // ms columns are not (run those under `scripts/agent/locked perflab`).
 //
 //   node js-bench.mjs bundle <dir> --profiling 1            the bundle (main.jsbundle) to run
-//   node census.mjs run --app <Release Netnyahoo.app> --bundle <dir>/main.jsbundle --label <name>
+//   node census.mjs run --app <Release Arcadia.app> --bundle <dir>/main.jsbundle --label <name>
 //                       [--runs 3] [--tabs 20] [--probe renders|renders,selectors,listeners] [--port 47841]
 //                       [--debug-port 9640] [--out <dir>] [--only cenSwitch,cenPanel,…] [--trace 1|<frames>] [--address-bar sidebar]
 //       Clones the app with the bundle swapped in; per run launches a hidden instance on a fresh `--tabs`-tab
@@ -25,7 +25,7 @@ import { evaluate, launch, quit, startServer } from "./js-bench.mjs";
 import { buildSeed } from "./seed.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const defaultOut = process.env.NN_PERF_OUT ?? "/tmp/nn-perf-census";
+const defaultOut = process.env.AC_PERF_OUT ?? "/tmp/ac-perf-census";
 
 const [command, ...rest] = process.argv.slice(2);
 const flags = {};
@@ -95,7 +95,7 @@ async function run() {
   const debugPort = Number(flags["debug-port"] ?? 9640);
   if (!app || !jsbundle || !label) throw new Error("run needs --app, --bundle and --label");
   const scenarios = flags.only ? ["cenStartup", "wake", ...flags.only.split(",")] : SCENARIOS;
-  const clone = join(out, "apps", label, "Netnyahoo.app");
+  const clone = join(out, "apps", label, "Arcadia.app");
   rmSync(dirname(clone), { recursive: true, force: true });
   mkdirSync(dirname(clone), { recursive: true });
   execFileSync("cp", ["-cR", app, clone]);
@@ -119,17 +119,17 @@ async function run() {
         if (!ready) throw new Error("dev harness never answered");
         await evaluate(dir, pid, lib, 60_000);
         // --trace 1 names anonymous timers by the functions that scheduled them (slower: for finding, not timing).
-        if (flags.trace) await evaluate(dir, pid, `nnPerf.traceTimers = true; nnPerf.traceDepth = ${Number(flags.trace) > 1 ? Number(flags.trace) : 4}; return 1;`);
+        if (flags.trace) await evaluate(dir, pid, `acPerf.traceTimers = true; acPerf.traceDepth = ${Number(flags.trace) > 1 ? Number(flags.trace) : 4}; return 1;`);
         // --address-bar sidebar: the field in the sidebar instead of the toolbar (the default).
-        if (flags["address-bar"]) await evaluate(dir, pid, `nn.store.getState().updateSettings({ addressBar: ${JSON.stringify(flags["address-bar"])} }); return 1;`);
+        if (flags["address-bar"]) await evaluate(dir, pid, `ac.store.getState().updateSettings({ addressBar: ${JSON.stringify(flags["address-bar"])} }); return 1;`);
         for (const name of scenarios) {
           process.stderr.write(`[${label} ${r}] ${name}\n`);
           const options = JSON.stringify({ origin });
-          result[name] = await evaluate(dir, pid, `return nnBench.run(${JSON.stringify(name)}, ${options});`, 240_000);
+          result[name] = await evaluate(dir, pid, `return acBench.run(${JSON.stringify(name)}, ${options});`, 240_000);
           // The probe's live subscription gauge, by call site (the "selectors" probe), after the first window.
-          if (name === "cenStartup") result.subscriptions = await evaluate(dir, pid, "return nnPerf.subscriptions?.() ?? {};");
+          if (name === "cenStartup") result.subscriptions = await evaluate(dir, pid, "return acPerf.subscriptions?.() ?? {};");
         }
-        result.subscriptionsAfter = await evaluate(dir, pid, "return nnPerf.subscriptions?.() ?? {};");
+        result.subscriptionsAfter = await evaluate(dir, pid, "return acPerf.subscriptions?.() ?? {};");
       } finally {
         await quit(pid);
       }
@@ -179,7 +179,7 @@ const METRICS = [
 
 const sum = (o) => Object.values(o ?? {}).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);
 // Host wrappers render whenever their parent does; the offender tables list the app's own components.
-const HOST = /^(View|Text|Pressable|Image|ScrollView|TextInput|InternalTextInput|Animated\(.*\)|Netnyahoo.*|Surface|Symbol|MouseArea|ContextMenuArea|FadeLabel|VirtualizedList.*|CellRenderer.*|ScrollViewBase|TouchableOpacity|AnimatedComponent.*|OutsidePressArea|WindowDragRegion)$/;
+const HOST = /^(View|Text|Pressable|Image|ScrollView|TextInput|InternalTextInput|Animated\(.*\)|Arcadia.*|Surface|Symbol|MouseArea|ContextMenuArea|FadeLabel|VirtualizedList.*|CellRenderer.*|ScrollViewBase|TouchableOpacity|AnimatedComponent.*|OutsidePressArea|WindowDragRegion)$/;
 const fmt = (v) => (v === null || v === undefined ? "–" : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, "") || "0");
 
 function collect(report, read) {

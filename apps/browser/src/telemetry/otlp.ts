@@ -13,8 +13,8 @@ export type OtlpLogRecord = {
 
 export type QueuedEvent = { uuid: string; event: string; distinct_id: string; timestamp: string; properties: Record<string, unknown> };
 
-export const EVENTS_SCOPE = "netnyahoo.analytics";
-export const LOGS_SCOPE = "netnyahoo.app";
+export const EVENTS_SCOPE = "arcadia.analytics";
+export const LOGS_SCOPE = "arcadia.app";
 
 // OTLP JSON has no nested values here: objects and arrays go as JSON text, int64 as a decimal string.
 export function otlpValue(value: unknown): OtlpValue | null {

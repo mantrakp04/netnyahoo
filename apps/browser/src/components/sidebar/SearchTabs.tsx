@@ -1,5 +1,5 @@
-import { displayUrl, fuzzyScore } from "@netnyahoo/core";
-import { FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
+import { displayUrl, fuzzyScore } from "@arcadia/core";
+import { FadeLabel, Surface, Symbol } from "@arcadia/shell";
 import { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { switchToTab } from "../../lib/actions";

@@ -1,5 +1,5 @@
-import { showMenu, Symbol } from "@netnyahoo/shell";
-import { SyncNative, type FolderInfo } from "@netnyahoo/sync";
+import { showMenu, Symbol } from "@arcadia/shell";
+import { SyncNative, type FolderInfo } from "@arcadia/sync";
 import { useEffect, useState, type ReactNode } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -209,7 +209,7 @@ function ConnectDeviceSheet() {
     <Sheet width={480} onClose={closeSettingsSheet}>
       <Title>Connect Another Device</Title>
       <Body>
-        On your other Mac, open Netnyahoo › Settings › Sync and choose the same sync folder. Then click Enter Recovery Phrase and enter the 24 words
+        On your other Mac, open Arcadia › Settings › Sync and choose the same sync folder. Then click Enter Recovery Phrase and enter the 24 words
         of your recovery phrase.
       </Body>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 16, marginTop: 16 }}>

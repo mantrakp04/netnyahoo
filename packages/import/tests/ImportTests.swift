@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import NetnyahooImportCore
+@testable import ArcadiaImportCore
 
 // Importing reads another browser's live profile: it must never change it, never leave its data folder, and
 // never read secrets without the user's consent (Keychain, Firefox's primary password).

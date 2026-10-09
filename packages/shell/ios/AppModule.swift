@@ -4,7 +4,7 @@ import ExpoModulesCore
 
 public class AppModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("NetnyahooApp")
+    Name("ArcadiaApp")
     // The JS/native contract: NATIVE_API_VERSION in apps/browser/src/nativeApi.tsx, which a JS bundle checks before it
     // loads the app. Bump both together whenever JS starts needing native code that older builds lack.
     Constant("apiVersion") { () -> Int in 8 }
@@ -67,7 +67,7 @@ public class AppModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("appIcon") { () -> String in AppIcons.current }.runOnQueue(.main)
     // A test instance leaves the installed app's Dock tile alone.
-    AsyncFunction("setAppIcon") { (id: String) in AppIcons.set(id, announce: NNIsolatedDataDirectory() == nil) }.runOnQueue(.main)
+    AsyncFunction("setAppIcon") { (id: String) in AppIcons.set(id, announce: ACIsolatedDataDirectory() == nil) }.runOnQueue(.main)
 
     // MARK: Notifications
 
@@ -110,7 +110,7 @@ public class AppModule: Module {
       let configuration = "Release"
       #endif
       return [
-        "appName": info["CFBundleName"] as? String ?? "Netnyahoo",
+        "appName": info["CFBundleName"] as? String ?? "Arcadia",
         "appVersion": info["CFBundleShortVersionString"] as? String ?? "",
         "appBuild": info["CFBundleVersion"] as? String ?? "",
         "bundleId": Bundle.main.bundleIdentifier ?? "",
@@ -122,12 +122,12 @@ public class AppModule: Module {
         "memoryGB": Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824,
         "locale": Locale.current.identifier,
         "updates": AppUpdater.shared.isAvailable,
-        "feedbackURL": Self.infoString("NNFeedbackURL") as Any,
-        "feedbackEmail": Self.infoString("NNFeedbackEmail") as Any,
-        "videoTourURL": Self.infoString("NNVideoTourURL") as Any,
-        "releaseNotesURL": Self.infoString("NNReleaseNotesURL") as Any,
-        "isolatedInstance": env["NETNYAHOO_BACKGROUND"] == "1" || env["NETNYAHOO_DATA_DIR"] != nil,
-        "forceReleaseNotes": env["NETNYAHOO_RELEASE_NOTES"] == "1",
+        "feedbackURL": Self.infoString("ACFeedbackURL") as Any,
+        "feedbackEmail": Self.infoString("ACFeedbackEmail") as Any,
+        "videoTourURL": Self.infoString("ACVideoTourURL") as Any,
+        "releaseNotesURL": Self.infoString("ACReleaseNotesURL") as Any,
+        "isolatedInstance": env["ARCADIA_BACKGROUND"] == "1" || env["ARCADIA_DATA_DIR"] != nil,
+        "forceReleaseNotes": env["ARCADIA_RELEASE_NOTES"] == "1",
         "processStart": Self.processStart as Any,
         "bootTime": Self.bootTime as Any,
         "inApplicationsFolder": Self.inApplicationsFolder,
@@ -347,7 +347,7 @@ public class AppModule: Module {
     return value?.isEmpty == false ? value : nil
   }
 
-  private static let scriptQueue = DispatchQueue(label: "netnyahoo.dev-applescript")
+  private static let scriptQueue = DispatchQueue(label: "arcadia.dev-applescript")
 
   static func snapshot(windowId: String, path: String, transparent: Bool = false) -> Bool {
     guard let view = WindowManager.shared.windows[windowId]?.contentView, let layer = view.layer else { return false }
@@ -696,7 +696,7 @@ enum KeyEquivalents {
   }
 
   // The window key for the press, as the user's click into it would make it (a test instance's key window is its
-  // app-active seam's, NNCoreActivation.mm); the one that was key before is again afterwards, unless the press itself
+  // app-active seam's, ArcadiaCoreActivation.mm); the one that was key before is again afterwards, unless the press itself
   // made another window key (⌘N).
   private static func standInKeyWindow(_ window: NSWindow) -> () -> Void {
     let previous = NSApp.keyWindow

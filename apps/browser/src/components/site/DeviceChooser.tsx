@@ -5,8 +5,8 @@ import {
   refreshDeviceChooser,
   selectDevice,
   type DeviceChooser as Chooser,
-} from "@netnyahoo/nncore";
-import { Symbol } from "@netnyahoo/shell";
+} from "@arcadia/arcadiacore";
+import { Symbol } from "@arcadia/shell";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { create } from "zustand";
@@ -17,7 +17,7 @@ import { tabForBrowser } from "../layout/pageState";
 import { useHover } from "../primitives";
 
 const useChoosers = create<{ byTab: Record<string, Chooser> }>()(() => ({ byTab: {} }));
-if (__DEV__) (globalThis as { nnDeviceChoosers?: unknown }).nnDeviceChoosers = { useChoosers, selectDevice, cancelDeviceChooser };
+if (__DEV__) (globalThis as { acDeviceChoosers?: unknown }).acDeviceChoosers = { useChoosers, selectDevice, cancelDeviceChooser };
 
 let started = false;
 export function startDeviceChoosers() {
@@ -108,7 +108,7 @@ export function DeviceChooser({ tabId, left, top }: { tabId: string; left: numbe
     body = (
       <Notice
         icon="lock"
-        text="Netnyahoo needs access to Bluetooth to find devices."
+        text="Arcadia needs access to Bluetooth to find devices."
         link="Open Bluetooth Settings"
         onLink={() => void openBluetoothSettings(chooser.id)}
       />

@@ -1,4 +1,4 @@
-import { showMenu, Surface, Symbol, type MenuItem } from "@netnyahoo/shell";
+import { showMenu, Surface, Symbol, type MenuItem } from "@arcadia/shell";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
 import { hex, useTheme, type Theme } from "../../lib/theme";

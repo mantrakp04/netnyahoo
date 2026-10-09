@@ -8,7 +8,7 @@ import {
   type StripState,
   type TabStripCommand,
   type TabStripTransaction,
-} from "@netnyahoo/nncore";
+} from "@arcadia/arcadiacore";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { changedIds } from "../store/changes";
 import { chromeChanged, groupStep, stripActual, stripPlan, type GroupBindings } from "../store/liveTabs";
@@ -44,7 +44,7 @@ const changedAt = new Map<number, number>();
 const madeInFront = new Map<number, { browser: number; over: string | null }>();
 
 if (__DEV__) {
-  (globalThis as { nnChromeTabs?: unknown }).nnChromeTabs = {
+  (globalThis as { acChromeTabs?: unknown }).acChromeTabs = {
     chromeWindows,
     engineInfo,
     devWindowAction,

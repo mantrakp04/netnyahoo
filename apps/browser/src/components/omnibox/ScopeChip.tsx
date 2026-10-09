@@ -1,4 +1,4 @@
-import type { SearchScope } from "@netnyahoo/core";
+import type { SearchScope } from "@arcadia/core";
 import { Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { Favicon } from "../primitives";

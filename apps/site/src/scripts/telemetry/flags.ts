@@ -38,7 +38,7 @@ export async function flagVariant(key: FlagKey): Promise<string | null> {
   }
 }
 
-const REPORTED = "nn:flag_called";
+const REPORTED = "ac:flag_called";
 
 /** Like posthog.getFeatureFlag: the variant, and the exposure ($feature_flag_called and
  * $experiment_exposure) the first time this visitor sees this variant. */
@@ -84,5 +84,5 @@ export async function registerFlags() {
   }
   const all = { ...props, $active_feature_flags: active };
   register(all);
-  write("nn:flags", JSON.stringify({ id: distinctId, props: all }));
+  write("ac:flags", JSON.stringify({ id: distinctId, props: all }));
 }

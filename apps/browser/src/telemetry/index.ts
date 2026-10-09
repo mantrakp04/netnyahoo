@@ -1,4 +1,4 @@
-import { devCrash } from "@netnyahoo/shell";
+import { devCrash } from "@arcadia/shell";
 import { createElement } from "react";
 import { devState, flush, requestLog, setSharing, useTelemetry } from "./client";
 import { captureException, installErrorReporting, reportNativeCrashes } from "./errors";
@@ -11,7 +11,7 @@ export { installErrorReporting };
 export function startTelemetry() {
   startUsage();
   if (__DEV__) {
-    (globalThis as { nnTelemetry?: unknown }).nnTelemetry = {
+    (globalThis as { acTelemetry?: unknown }).acTelemetry = {
       store: useTelemetry,
       state: devState,
       requests: requestLog,

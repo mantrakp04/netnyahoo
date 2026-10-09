@@ -1,5 +1,5 @@
-import { engineHost, type SearchEngine } from "@netnyahoo/core";
-import { Symbol } from "@netnyahoo/shell";
+import { engineHost, type SearchEngine } from "@arcadia/core";
+import { Symbol } from "@arcadia/shell";
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -56,7 +56,7 @@ export function SearchPane() {
 
       {fromExtensions.length > 0 && (
         <>
-          <SectionHeader title="Extensions" description="Some extensions can add search engines to Netnyahoo." />
+          <SectionHeader title="Extensions" description="Some extensions can add search engines to Arcadia." />
           <Group>
             {fromExtensions.map((e) => (
               <EngineRow key={e.id} engine={e} selected={selectedId === e.id} locked={locked} />

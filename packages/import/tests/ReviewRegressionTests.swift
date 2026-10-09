@@ -1,5 +1,5 @@
 import XCTest
-@testable import NetnyahooImportCore
+@testable import ArcadiaImportCore
 
 // Cases from the Codex review of the cookie import (2026-10-02).
 final class ReviewRegressionTests: XCTestCase {

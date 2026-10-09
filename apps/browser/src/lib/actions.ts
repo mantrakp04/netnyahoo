@@ -1,6 +1,6 @@
-import * as cef from "@netnyahoo/nncore";
-import { listExtensions } from "@netnyahoo/nncore";
-import { confirm, focusWindow } from "@netnyahoo/shell";
+import * as cef from "@arcadia/arcadiacore";
+import { listExtensions } from "@arcadia/arcadiacore";
+import { confirm, focusWindow } from "@arcadia/shell";
 import { pageToProfile } from "../components/layout/profilePager";
 import { profileNames, requestCreateProfile, type CreateProfilePreset } from "../components/profiles/CreateProfile";
 import { useBrowser, type CreateWindowOptions } from "../store/browser";
@@ -75,7 +75,7 @@ export async function deleteProfile(profileId: string, windowId?: string) {
 }
 
 // Chrome won't remove the original profile's extensions without asking, so they're only turned off
-// (packages/nncore/ios/NNCoreProfileData.swift); say so.
+// (packages/arcadiacore/ios/ArcadiaCoreProfileData.swift); say so.
 async function keptExtensionsNote(): Promise<string> {
   const names = await listExtensions("").then(
     (list) => list.filter((e) => e.mayModify).map((e) => e.name),

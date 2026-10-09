@@ -50,7 +50,7 @@ type SyncNative = {
   readPasswords(engineProfile: string): Promise<SavedLogin[] | null>;
 };
 
-export const SyncNative = requireOptionalNativeModule<SyncNative>("NetnyahooSync");
+export const SyncNative = requireOptionalNativeModule<SyncNative>("ArcadiaSync");
 
 export const folderTransport = (native: SyncNative, folder: string): Transport => ({
   write: (scope, payload) => native.write(folder, scope, payload),

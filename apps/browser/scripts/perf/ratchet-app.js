@@ -1,8 +1,8 @@
 // Scenarios only ratchet.mjs needs, loaded after bench-app.js (js-bench.mjs --lib bench-app.js,ratchet-app.js). Runs
-// inside the app like bench-app.js: the dev harness evaluates it as `function (nn) { … }`.
+// inside the app like bench-app.js: the dev harness evaluates it as `function (ac) { … }`.
 
-const P = globalThis.nnPerf;
-const bench = globalThis.nnBench;
+const P = globalThis.acPerf;
+const bench = globalThis.acBench;
 if (!P || !bench) throw new Error("load bench-app.js first (and turn the perf probe on)");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sum = (o) => Object.values(o ?? {}).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);

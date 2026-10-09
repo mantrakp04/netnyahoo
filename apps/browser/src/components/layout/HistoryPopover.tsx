@@ -1,4 +1,4 @@
-import { MouseArea, Symbol } from "@netnyahoo/shell";
+import { MouseArea, Symbol } from "@arcadia/shell";
 import { useEffect, useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";

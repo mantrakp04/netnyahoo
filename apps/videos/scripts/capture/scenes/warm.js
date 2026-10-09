@@ -7,4 +7,4 @@
 });
 then(() => goProfile("default"));
 then(() => sleep(1000).then(() => snap("warm")));
-return finish({ titles: Object.values(st().tabs).map((t) => [t.id, t.title]), toasts: nn.toasts ? Object.keys(nn.toasts) : null });
+return finish({ titles: Object.values(st().tabs).map((t) => [t.id, t.title]), toasts: ac.toasts ? Object.keys(ac.toasts) : null });

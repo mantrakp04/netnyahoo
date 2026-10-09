@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sparkle's update of <previous>'s export to this build, end to end, in a scratch folder.
-# usage: update-test.sh <previous Netnyahoo.app> <new Netnyahoo.app> <appcast.xml> <version>
+# usage: update-test.sh <previous Arcadia.app> <new Arcadia.app> <appcast.xml> <version>
 #
 # Copies both apps, gives both copies a test bundle id and a throwaway EdDSA key (so Sparkle's settings land in that
 # id's defaults, never the real app's, and no release key is needed), zips the new one as release.sh does and serves
@@ -14,9 +14,9 @@ set -euo pipefail
 old="${1:?usage: update-test.sh <previous app> <new app> <appcast.xml> <version>}"
 new="${2:?}" appcast="${3:?}" version="${4:?}"
 here="$(cd "$(dirname "$0")" && pwd)"
-test_id="com.netnyahoo.browser.updatetest"
+test_id="com.arcadia.browser.updatetest"
 port="${UPDATE_TEST_PORT:-8796}"
-work="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/nn-update-test.XXXXXX")" && pwd -P)"
+work="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/ac-update-test.XXXXXX")" && pwd -P)"
 server=""
 cleanup() {
   [ -n "$server" ] && { kill "$server"; wait "$server"; } 2>/dev/null || true
@@ -39,10 +39,10 @@ retag() { # app: the test bundle id and key, re-signed (without the entitlements
   codesign --force --deep --timestamp=none --sign "$identity" "$1" 2>/dev/null
 }
 mkdir -p "$work/installed" "$work/new" "$work/feed" "$work/home"
-ditto "$old" "$work/installed/Netnyahoo.app"
-ditto "$new" "$work/new/Netnyahoo.app"
-retag "$work/installed/Netnyahoo.app"
-retag "$work/new/Netnyahoo.app"
+ditto "$old" "$work/installed/Arcadia.app"
+ditto "$new" "$work/new/Arcadia.app"
+retag "$work/installed/Arcadia.app"
+retag "$work/new/Arcadia.app"
 # The Sparkle that runs the update is the one in the copy people have (built against the pod's headers, which the
 # exported framework doesn't carry).
 ditto "$old/Contents/Frameworks/Sparkle.framework" "$work/fw/Sparkle.framework"
@@ -51,8 +51,8 @@ swiftc -O "$here/sparkle-host.swift" -F "$pods" -framework Sparkle -Xlinker -rpa
   -o "$work/sparkle-host" 2>"$work/swiftc.log" || { cat "$work/swiftc.log" >&2; exit 1; }
 codesign --force --timestamp=none --sign "$identity" "$work/sparkle-host" 2>/dev/null
 
-zip="$work/feed/Netnyahoo-$version.zip"
-ditto -c -k --keepParent "$work/new/Netnyahoo.app" "$zip"
+zip="$work/feed/Arcadia-$version.zip"
+ditto -c -k --keepParent "$work/new/Arcadia.app" "$zip"
 signature="$("$work/ed25519" sign "$zip" "$work/key")"
 # The release appcast's item for this version, pointed at the local zip.
 python3 - "$appcast" "$version" "http://127.0.0.1:$port/$(basename "$zip")" "$(stat -f %z "$zip")" "$signature" > "$work/feed/appcast.xml" <<'PY'
@@ -77,16 +77,16 @@ python3 -m http.server "$port" --bind 127.0.0.1 --directory "$work/feed" >/dev/n
 server=$!
 sleep 1
 
-from="$(plist -c "Print :CFBundleShortVersionString" "$work/installed/Netnyahoo.app/Contents/Info.plist")"
-HOME="$work/home" CFFIXED_USER_HOME="$work/home" timeout 300 "$work/sparkle-host" "$work/installed/Netnyahoo.app" \
+from="$(plist -c "Print :CFBundleShortVersionString" "$work/installed/Arcadia.app/Contents/Info.plist")"
+HOME="$work/home" CFFIXED_USER_HOME="$work/home" timeout 300 "$work/sparkle-host" "$work/installed/Arcadia.app" \
   "http://127.0.0.1:$port/appcast.xml" "$version" > "$work/sparkle.log" 2>&1 \
   || { sed 's/^/      /' "$work/sparkle.log"; fail "Sparkle didn't install it"; }
 sed 's/^/      /' "$work/sparkle.log"
-installed="$work/installed/Netnyahoo.app"
+installed="$work/installed/Arcadia.app"
 codesign --verify --deep --strict "$installed" 2>/dev/null || fail "the installed bundle isn't sealed"
 # Every file, symlink and mode the new build has, and nothing else (the old bundle's CEF framework and helpers gone).
-mtree -c -k type,mode,link,size,sha256digest -p "$work/new/Netnyahoo.app" > "$work/new.mtree"
+mtree -c -k type,mode,link,size,sha256digest -p "$work/new/Arcadia.app" > "$work/new.mtree"
 differences="$(mtree -p "$installed" -f "$work/new.mtree" 2>&1 | head -5 || true)"
 [ -z "$differences" ] || fail "the installed bundle differs from the new build: $differences"
-ls "$work/installed" | grep -qv '^Netnyahoo.app$' && fail "left beside it: $(ls "$work/installed" | tr '\n' ' ')"
+ls "$work/installed" | grep -qv '^Arcadia.app$' && fail "left beside it: $(ls "$work/installed" | tr '\n' ' ')"
 echo "PASS  Sparkle on $from updates a copy in place to $version (feed, EdDSA, extraction, installer; the bundle is the new build's, sealed)"

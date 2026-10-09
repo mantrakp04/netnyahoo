@@ -1,4 +1,4 @@
-import { dragPreview, hapticTick, windowFrame, type DragPreviewShape } from "@netnyahoo/shell";
+import { dragPreview, hapticTick, windowFrame, type DragPreviewShape } from "@arcadia/shell";
 import { create } from "zustand";
 import { focus } from "../../lib/actions";
 import { lastPicture, startTabPictures } from "../../lib/tabPictures";
@@ -47,7 +47,7 @@ export const useTabDrag = create<TabDrag>()(() => ({
   insert: null,
 }));
 
-if (__DEV__) (globalThis as { nnTabDrag?: typeof useTabDrag }).nnTabDrag = useTabDrag;
+if (__DEV__) (globalThis as { acTabDrag?: typeof useTabDrag }).acTabDrag = useTabDrag;
 
 // Background tabs' last pictures, for their drag picture.
 startTabPictures();

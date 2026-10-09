@@ -64,23 +64,22 @@ decrees, the press, "no plans to leave". Deadpan, never a pun on the change and 
 The fact under the joke must be true.
 
 - 0.1.0 "Sworn in on Chromium 154. No plans to leave." (first release)
-- 0.1.1 "The ad blocker returns to work. Big Yahu goes into hiding." (ad blocking fixed; the offline game)
+- 0.1.1 "The ad blocker returns to work. The mascot goes into hiding." (ad blocking fixed; the offline game)
 - 0.1.2 "Menus no longer bring down the government." (menu commands crashed the app)
 - 0.1.3 "Autofill starts counting clicks again." (autofill suggestions ignored clicks)
 - 0.1.4 "Chrome makes no further unscheduled appearances." (Chrome's bubbles over the page)
 
-Keep the satire on politics as theatre (campaigns, incumbency, bureaucracy, press conferences). No
-jokes about war, violence, religion or ethnicity, and none at the user's expense.
+Keep titles short, calm and dry, with one outdoor phrase at most. No jokes at the user's expense.
 
 **Items.**
 
 - Lead with what the user sees, not with what the code does: "Menu commands no longer crash the app", not
   "Fix selector in MenuTarget".
-- Name the symptom people hit, so they recognise it: "every command in the menu bar crashed Netnyahoo",
+- Name the symptom people hit, so they recognise it: "every command in the menu bar crashed Arcadia",
   "sites like Google waited forever at 'Complete sign-in using your passkey'".
 - One short "why" is welcome when it explains the fix in user terms ("The menu items pointed at the wrong
   method."). No file names, class names, commit hashes or internal flags.
-- Name menus by their path (Netnyahoo › Check for Updates…, System Settings › Privacy & Security), shortcuts
+- Name menus by their path (Arcadia › Check for Updates…, System Settings › Privacy & Security), shortcuts
   with symbols (⌘T, ⇧⌘T), settings by their label in quotes.
 - Say which versions a regression affected when it matters ("In 0.1.0 and 0.1.1, …").
 - "Like Dia" / "as in Dia" is fine where the feature copies Dia's behaviour.

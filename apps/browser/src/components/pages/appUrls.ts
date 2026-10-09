@@ -1,4 +1,4 @@
-import { appUrlRoute } from "@netnyahoo/core";
+import { appUrlRoute } from "@arcadia/core";
 import { useBrowser } from "../../store/browser";
 import { setAppUrlOpener } from "../../store/tabs";
 import { openSettings, type SettingsPane } from "../settings/windows";

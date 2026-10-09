@@ -1,5 +1,5 @@
-import { listTasks, onSystemState, releaseProfile, systemState, type SystemState, type WebViewHandle } from "@netnyahoo/nncore";
-import { onAppEvent, onWindowEvent } from "@netnyahoo/shell";
+import { listTasks, onSystemState, releaseProfile, systemState, type SystemState, type WebViewHandle } from "@arcadia/arcadiacore";
+import { onAppEvent, onWindowEvent } from "@arcadia/shell";
 import { create } from "zustand";
 import { pageOf, usePages } from "../components/layout/pageState";
 import { showToast } from "../components/layout/splitActions";
@@ -384,7 +384,7 @@ export function startTabLifecycle() {
   }, FREEZE_SWEEP_MS);
 
   if (__DEV__) {
-    (globalThis as { nnLifecycle?: unknown }).nnLifecycle = {
+    (globalThis as { acLifecycle?: unknown }).acLifecycle = {
       policy: POLICY,
       sweep,
       sleepTab,

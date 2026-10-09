@@ -2,8 +2,8 @@ import CryptoKit
 import Foundation
 
 public struct SyncKeys {
-  static let magic = Data("NNS1".utf8)
-  static let salt = Data("netnyahoo-sync/v1".utf8)
+  static let magic = Data("ACS1".utf8)
+  static let salt = Data("arcadia-sync/v1".utf8)
   static let padding = 1024
 
   let fileKey: SymmetricKey

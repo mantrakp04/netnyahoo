@@ -51,7 +51,7 @@ export function readJSON<T>(key: string): T | null {
 // ---------------------------------------------------------------- switch
 
 const production = PRODUCTION_HOSTS.includes(location.hostname);
-/** Only netnyahoo.com reports; anything else only after `localStorage.setItem("nn:telemetry", "dev")`. */
+/** Only netnyahoo.com reports; anything else only after `localStorage.setItem("ac:telemetry", "dev")`. */
 export const enabled = production || DEV_OPT_IN.some((key) => read(key) === "dev");
 const environment = production ? "production" : "development";
 
@@ -91,18 +91,18 @@ function posthogId(): string | null {
 }
 
 function visitorId(): string {
-  const stored = read("nn:id");
+  const stored = read("ac:id");
   if (stored) return stored;
   const id = posthogId() ?? uuidv7();
-  write("nn:id", id);
+  write("ac:id", id);
   return id;
 }
 
 export const distinctId = visitorId();
 
 /** One per tab. */
-export const windowId: string = read("nn:window", "session") ?? uuidv7();
-write("nn:window", windowId, "session");
+export const windowId: string = read("ac:window", "session") ?? uuidv7();
+write("ac:window", windowId, "session");
 
 // ---------------------------------------------------------------- page facts
 
@@ -146,7 +146,7 @@ const language = navigator.language || "";
 
 /** What every event carries about the browser; the URL parts are read when the event happens. */
 const constant: Props = {
-  $lib: "netnyahoo-web",
+  $lib: "arcadia-web",
   $lib_version: LIB_VERSION,
   ...device,
   $raw_user_agent: navigator.userAgent,
@@ -171,7 +171,7 @@ const constant: Props = {
 
 // Reduced Android UAs say "K"; Chromium tells the model through client hints.
 if (device.$os === "Android" && !device.$device_model) {
-  const cached = read("nn:model", "session");
+  const cached = read("ac:model", "session");
   if (cached) constant.$device_model = cached;
   else
     (navigator as Navigator & { userAgentData?: { getHighEntropyValues?(h: string[]): Promise<{ model?: string }> } }).userAgentData
@@ -179,7 +179,7 @@ if (device.$os === "Android" && !device.$device_model) {
       .then(({ model }) => {
         if (!model) return;
         constant.$device_model = model;
-        write("nn:model", model, "session");
+        write("ac:model", model, "session");
       })
       .catch(() => {});
 }
@@ -191,7 +191,7 @@ export function register(props: Props) {
 }
 
 // The flags' super properties from the last page (flags.ts), so this page view carries them too, as with posthog-js.
-const cachedFlags = readJSON<{ id: string; props: Props }>("nn:flags");
+const cachedFlags = readJSON<{ id: string; props: Props }>("ac:flags");
 if (cachedFlags?.id === distinctId && cachedFlags.props) register(cachedFlags.props);
 
 // ---------------------------------------------------------------- session
@@ -225,14 +225,14 @@ export function onSessionChange(fn: (id: string, previous: string) => void) {
 
 /** The current session, renewed if it has lapsed; activity keeps it going. Shared by the tabs of the browser. */
 function touchSession(now = Date.now()): Session {
-  const stored = readJSON<Session>("nn:session");
+  const stored = readJSON<Session>("ac:session");
   let s = stored && typeof stored.id === "string" ? stored : session;
   const lapsed = !s || now - s.last > SESSION_IDLE_MS || now - s.start > SESSION_MAX_MS;
   const previous = session?.id;
   if (lapsed) s = { id: uuidv7(now), start: now, last: now, entry: entryProps() };
   else s!.last = Math.max(s!.last, now);
   session = s!;
-  write("nn:session", JSON.stringify(session));
+  write("ac:session", JSON.stringify(session));
   if (previous && previous !== session.id) for (const fn of sessionListeners) fn(session.id, previous);
   return session;
 }
@@ -305,7 +305,7 @@ const resource = {
 
 // ---------------------------------------------------------------- queue
 
-type Scope = "netnyahoo.analytics" | "netnyahoo.site";
+type Scope = "arcadia.analytics" | "arcadia.site";
 interface Queued {
   scope: Scope;
   record: LogRecord;
@@ -414,7 +414,7 @@ export function capture(event: string, props: Props = {}, options: CaptureOption
       ...props,
     };
     enqueue(
-      "netnyahoo.analytics",
+      "arcadia.analytics",
       {
         timeUnixNano: nanos(options.timestamp ?? now),
         severityNumber: 9,
@@ -442,7 +442,7 @@ export function log(level: keyof typeof SEVERITY, message: string, props: Props 
   if (!enabled) return;
   try {
     const [severityNumber, severityText] = SEVERITY[level];
-    enqueue("netnyahoo.site", {
+    enqueue("arcadia.site", {
       timeUnixNano: nanos(Date.now()),
       severityNumber,
       severityText,

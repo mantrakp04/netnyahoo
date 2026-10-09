@@ -7,8 +7,8 @@ once, drops what's in flight (a launch that saw it off is never sent), and a JS 
 state, while the old bridge going away turns native timing off. Everything sent is a duration, a count or a rough
 range: never a URL, a title, or what was typed.
 
-Code: `apps/browser/src/telemetry/journeys.ts` (journeys, aggregation, events), `packages/nncore/ios/NNCoreFieldTiming.mm`
-(native marks), hooks in `Omnibox.tsx`, `main.tsx`, `NNCoreWebView.mm` and `page_script.js` (› Field timing).
+Code: `apps/browser/src/telemetry/journeys.ts` (journeys, aggregation, events), `packages/arcadiacore/ios/ArcadiaCoreFieldTiming.mm`
+(native marks), hooks in `Omnibox.tsx`, `main.tsx`, `ArcadiaCoreWebView.mm` and `page_script.js` (› Field timing).
 
 ## How a journey is timed
 
@@ -19,8 +19,8 @@ the start unless noted. All clocks are epoch ms on the same Mac: JS's `Date.now(
 
 - **On screen** means the Core Animation transaction carrying the change has committed (a post-commit handler); the
   display shows it at the next refresh, ≤ 1 frame later. A JS step's frame is marked through the UI manager's queue
-  (`NNFieldTiming.markFrame`), so it rides the same batch as the commit's view updates.
-- **Engine steps** come from `NNCoreWebView`: `request` (we asked the engine to load), `start` (Chrome's loading
+  (`ACFieldTiming.markFrame`), so it rides the same batch as the commit's view updates.
+- **Engine steps** come from `ArcadiaCoreWebView`: `request` (we asked the engine to load), `start` (Chrome's loading
   began), `commit` (`tabDidCommitDocument:`), `fcp` (the page's first-contentful-paint entry, Chrome's presentation
   time) and `shown` (a page that was hidden: two `requestAnimationFrame`s after it became visible, as native-bench's
   tab switch).
@@ -55,7 +55,7 @@ the start unless noted. All clocks are epoch ms on the same Mac: JS's `Date.now(
 
 Each `perf_journeys` step goes as `<step>_p50`, `_p75`, `_p95`, `_max` and `_n` (ms; at most 500 samples per step per
 summary). Counts: `j3_cold` (the page was hidden), `j3_warm` (it was still painting), `j3_load` (it had to load),
-`j3_other` (no page: New Tab), `j2_no_bar`, `j4_no_load` (not a page load: a netnyahoo: page, a download),
+`j3_other` (no page: New Tab), `j2_no_bar`, `j4_no_load` (not a page load: a arcadia: page, a download),
 `j4_no_paint` (nothing painted within 30 s), `j4_replaced` (another navigation came first).
 `perf_journeys` goes hourly and at quit, like `perf_omnibox`; `perf_launch` once its steps are in (≤ 30 s after the first
 window, or at quit), not at the first window as before.
@@ -70,7 +70,7 @@ bundle before `main`, so these launches are slower; a copy from before this fiel
 ### A session's payload
 
 A Debug build with Metro (so slower than a release), in a hidden instance, with every journey driven by posted key
-events (`expo.modules.NetnyahooApp.devPostKey`): ⌘1–4 between four restored tabs, ⌘T and an address typed into the
+events (`expo.modules.ArcadiaApp.devPostKey`): ⌘1–4 between four restored tabs, ⌘T and an address typed into the
 new tab's bar, Enter, and ⌘L, an address, Enter. The `$`-context properties are left out.
 
 ```json

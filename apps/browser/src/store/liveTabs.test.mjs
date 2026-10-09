@@ -211,7 +211,7 @@ class FakeChrome {
 }
 
 const chrome = new FakeChrome();
-globalThis.nnTestTabStrip = chrome;
+globalThis.acTestTabStrip = chrome;
 const { useBrowser } = await import("./browser.ts");
 const model = await import("./model.ts");
 const { startChromeTabs } = await import("../lib/chromeTabs.ts");

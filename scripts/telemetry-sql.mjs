@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs one read-only ClickHouse query against Netnyahoo's telemetry and prints the rows as TSV.
+// Runs one read-only ClickHouse query against Arcadia's telemetry and prints the rows as TSV.
 // usage: node scripts/telemetry-sql.mjs "SELECT event, count() FROM telemetry.events GROUP BY event"
 // Tables and example queries: docs/growth.md ("Telemetry") and .claude/skills/stats/queries.md.
 import { clickhouse } from "./telemetry-env.mjs";

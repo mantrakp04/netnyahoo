@@ -1,4 +1,4 @@
-import { systemInfo } from "@netnyahoo/shell";
+import { systemInfo } from "@arcadia/shell";
 import { openUrls } from "./actions";
 
 export function releaseNotesUrl(version = systemInfo().appVersion): string | null {
