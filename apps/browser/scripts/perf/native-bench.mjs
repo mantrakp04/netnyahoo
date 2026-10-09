@@ -56,6 +56,10 @@
 //     --fresh-copy            launch phase only: every launch runs from its own APFS clone of the app (same signature,
 //                             a new path and inodes), removed after, as the first launch after an install or update
 //                             is. Without it only the first launch of a prepared copy is cold; the rest are warm.
+//     --trace-startup <cats>  launch phase only: each launch records Chrome's startup trace of those categories
+//                             (`--trace-startup`, 4 s, JSON) into <out>/<label>/traces/launch-<i>.json, named in its
+//                             result's `trace`; launch-trace.mjs compares two sides'. Tracing slows the launch:
+//                             compare traced launches with traced launches only.
 //     --hold <secs>           keep each measured instance alive that long before it quits, its pid and data dir logged
 //                             (lldb -p <pid>, heap <pid>, vmmap --summary <pid>). Ctrl-C quits it and stops.
 //     --port <n>              the instances' CDP port (default 9377). One instance runs at a time.
@@ -149,6 +153,7 @@ const { values: opt } = parseArgs({
     env: { type: "string", multiple: true, default: [] },
     seed: { type: "string" },
     "fresh-copy": { type: "boolean" },
+    "trace-startup": { type: "string" },
     "page-port": { type: "string", default: "0" },
     "journey-n": { type: "string", default: "10" },
     "frames-n": { type: "string", default: "8" },
@@ -614,6 +619,10 @@ async function launchRun(side, i) {
     execFileSync("cp", ["-Rc", side.app, join(copy, "Netnyahoo.app")]);
   }
   const app = new Instance(copy ? { ...side, app: join(copy, "Netnyahoo.app") } : side, freshDir(side, `launch-${i}`));
+  const traceFile = join(app.dataDir, "startup-trace.json");
+  if (opt["trace-startup"]) {
+    app.env.push(`NETNYAHOO_CHROMIUM_SWITCHES=--trace-startup=${opt["trace-startup"]} --trace-startup-file=${traceFile} --trace-startup-duration=4 --trace-startup-format=json`);
+  }
   try {
     await app.launch();
     const page = await app.pageState("id=seed", 30_000, (s) => s.fcp);
@@ -631,6 +640,15 @@ async function launchRun(side, i) {
       load: Math.round(loadavg()[0] * 10) / 10,
     };
     if (opt.seed) r.pageTargets = (await app.cdp.targets()).length;
+    if (opt["trace-startup"]) {
+      // Chrome writes the trace when its duration ends.
+      const trace = await app.waitFile("startup-trace.json", 15_000, (v) => Array.isArray(v.traceEvents));
+      if (trace) {
+        mkdirSync(join(side.dir, "traces"), { recursive: true });
+        r.trace = join(side.dir, "traces", `launch-${i}.json`);
+        execFileSync("cp", [traceFile, r.trace]);
+      }
+    }
     log(`${side.tag}launch ${i}:`, JSON.stringify(r));
     side.results.launch.push(r);
   } finally {
@@ -1262,6 +1280,7 @@ for (const p of only) if (!PHASES.includes(p)) fail(`--only: no phase "${p}"; ph
 if (only.has("frames") || only.has("framecounts")) opt.seed ??= "big";
 if (opt.seed && opt.seed !== "big") fail(`--seed: only "big" exists, got "${opt.seed}"`);
 if (opt["fresh-copy"] && ![...only].every((p) => p === "launch" || p === "prepare")) fail("--fresh-copy works with --only launch");
+if (opt["trace-startup"] && ![...only].every((p) => p === "launch")) fail("--trace-startup works with --only launch");
 if (opt.seed && ![...only].every((p) => p === "launch" || p === "prepare" || JOURNEY_PHASES.includes(p) || FRAME_PHASES.includes(p))) fail("--seed big works with --only launch, newtabkey, navigate, frames and framecounts (the other phases measure a one-tab session)");
 for (const e of opt.env) if (!/^[A-Za-z_]\w*=/.test(e)) fail(`--env wants K=V, got "${e}"`);
 if (!(+opt.hold >= 0)) fail(`--hold wants seconds, got "${opt.hold}"`);
