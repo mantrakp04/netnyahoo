@@ -142,6 +142,8 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   `node scripts/replay.mjs --list` / `<session-id>`. The stats skill's queries are in
   `.claude/skills/stats/queries.md`. Secrets are Hexclave project secrets (`TELEMETRY_*`); a backup is in
   `~/.config/netnyahoo/telemetry-secrets.env`.
+  hekuto reads the same tables as `reader` through a Composio ClickHouse connection (Basic auth, base URL
+  `https://netnyahoo.com/_ch`); `/_ch/` takes Basic auth for `reader` only.
 - **Checks of the pipeline:** send with service `netnyahoo-selftest` (or version `0.0.0-selftest`); the views
   leave those out.
 - **PostHog Cloud** (EU project 287835) is untouched. App versions released before the switch still send
