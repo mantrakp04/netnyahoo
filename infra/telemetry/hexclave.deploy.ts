@@ -64,8 +64,6 @@ export const deploy = ({ secret, service }: any) => ({
       ports: { 8888: { protocol: "tcp" } },
       image: SEAWEEDFS,
       startCommand:
-        // Once: clear what the trial PostHog left on this disk.
-        "{ [ -f /data/.ac-telemetry ] || { find /data -mindepth 1 -maxdepth 1 ! -name weed -exec rm -rf {} +; touch /data/.ac-telemetry; }; }; " +
         "mkdir -p /data/weed && cd /data/weed && " +
         "{ (until echo 'fs.configure -locationPrefix=/buckets/replays/ -ttl=30d -apply' | weed shell -master=localhost:9333 2>/dev/null | grep -q replays; do sleep 3; done; echo '[ac] replays kept 30 days') & } && " +
         "exec weed server -dir=/data/weed -filer -master.volumePreallocate=false -volume.max=200",
