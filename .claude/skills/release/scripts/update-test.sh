@@ -64,6 +64,9 @@ if not items: sys.exit(f"no {version} item in {source}")
 item = re.sub(r'url="[^"]*"', f'url="{url}"', items[0])
 item = re.sub(r'length="[^"]*"', f'length="{length}"', item)
 item = re.sub(r'sparkle:edSignature="[^"]*"', f'sparkle:edSignature="{signature}"', item)
+# A phased release offers the update to a random seventh of copies a day, so this copy's group may not have it yet
+# ("You're up to date"); the test is the install, not the schedule.
+item = re.sub(r"\s*<sparkle:phasedRolloutInterval>.*?</sparkle:phasedRolloutInterval>", "", item)
 print(xml[: xml.index("<item>")] + item + "\n    </channel>\n</rss>")
 PY
 if nc -z -G 2 127.0.0.1 "$port" 2>/dev/null; then
