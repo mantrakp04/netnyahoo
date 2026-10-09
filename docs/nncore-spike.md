@@ -48,9 +48,10 @@ How it fits together:
   - Popups and new windows are rewritten into tabs of our `Browser`.
   - The host gets `didInsertTab:opener:disposition:` with the original disposition. Nothing is adopted and nothing
     is replayed.
-- **The CEF seams.** With CEF's patches in the tree, `//chrome` calls a few `cef::` seams (`cef::BrowserDelegate::Create`,
-  the WebContentsDelegate factory…), which `nn_cef_seams.mm` defines: our Browsers get our delegate, everything else
-  keeps Chrome's behaviour. Our own hooks (the password bubble, the install prompt, choosers, docked DevTools,
+- **The CEF seams.** With CEF's patches in the tree, `//chrome` called a few `cef::` seams (`cef::BrowserDelegate::Create`,
+  the WebContentsDelegate factory…), which `nn_cef_seams.mm` defined: our Browsers got our delegate, everything else
+  kept Chrome's behaviour. Since 2026-10-09 CEF is out of the tree and those seams are our hooks H1–H6
+  (`docs/engine-build.md`). Our own hooks (the password bubble, the install prompt, choosers, docked DevTools,
   keep-without-tabs…) are `g_netnyahoo_*` pointers in Chrome's files that `nn_seams.mm` sets as the browser starts
   (2026-10-08; before that they borrowed CEF's namespace through our `cef-*.patch`).
 - **Our UI where Chrome's needs its toolbar.**
@@ -213,10 +214,11 @@ What it deletes when it ships, from the review's inventory:
    - The parity checklist decides when to switch.
 4. **Switch:** ship the NNCore build. Then delete `packages/cef/ios`, the CEF patches, the distrib and setup steps,
    and the CEF checkout.
-   - Re-sync `~/chromium-build` as plain Chromium + ungoogled + our patches (`enable_cef=false`). That is the one
-     5-hour rebuild, and the moment to rename the framework.
-   - The CEF-era hooks and `nn_seams.mm` become one small `netnyahoo::` hook patch at the same call sites: Browser
-     delegate creation, the password and install-prompt hooks, docked DevTools.
+   - **Done 2026-10-09 (Chromium 154.0.8037.97): CEF left the tree.** `~/chromium-build` is plain Chromium +
+     ungoogled-chromium + our series; CEF's patches and `//cef` are gone, except a few kept as
+     `chromium-cef-carryover.patch`. The seams NNCore used are our hooks H1–H6 in `apply.sh`, and
+     `nn_cef_seams.{h,mm}` is deleted (`docs/engine-build.md` › "Our hooks in Chrome's code", "CEF's 117 patches").
+     The framework rename is a separate change.
 
 ## Revised effort
 
@@ -271,9 +273,8 @@ spikes/nncore-host/build.sh /tmp/nncore-host
 node spikes/nncore-host/acceptance.mjs /tmp/nncore-host/NNHost.app /tmp/nncore-acceptance
 ```
 
-`apply.sh` must run again after anything resets the tree (steps 2–4 of `docs/cef-source-build.md`). Building
-`cefclient` afterwards still works. It picks up the two CEF-neutral `CHECK` changes, so a CEF distribution built
-from this tree includes them.
+`apply.sh` must run again after anything resets the tree (steps 1–4 of `docs/engine-build.md`). (While CEF was in
+the tree, `cefclient` still built from it; CEF left on 2026-10-09.)
 
 ## Needs a visual check
 

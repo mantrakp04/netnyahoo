@@ -138,7 +138,7 @@ Keep what's ours on purpose:
 
 **Status (2026-10-01): done**, except publishing the engine archive. The handshake is `NATIVE_API_VERSION`
 (`apps/browser/src/nativeApi.tsx`) against `apiVersion` (`AppModule.swift`); the engine is pinned in
-`packages/cef/engine.lock` (`docs/cef-source-build.md` › "The pinned engine"), and its release asset waits for the
+`packages/cef/engine.lock` (`docs/engine-build.md` › "The pinned engine"), and its release asset waits for the
 owner's go-ahead.
 
 **What.**

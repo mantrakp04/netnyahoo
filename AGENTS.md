@@ -35,7 +35,7 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 - **The Chromium build cache is sacred.** Never touch `~/chromium-build/chromium_git/chromium/src/out`,
   and never run `gclient sync` or `gn clean`: a full rebuild costs about 5 hours. Engine changes are
   incremental builds only, holding the chromium lock (`scripts/agent/locked chromium`,
-  `docs/cef-source-build.md`). When freeing disk space, stay out of `~/chromium-build`.
+  `docs/engine-build.md`). When freeing disk space, stay out of `~/chromium-build`.
 - **Never launch or touch `/Applications/Netnyahoo.app`.** The owner is using it.
 - **Never steal focus.** Run builds only as hidden instances:
   `open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR=<throwaway dir> --env NETNYAHOO_REMOTE_DEBUGGING_PORT=<port> <app>`.

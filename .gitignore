@@ -30,7 +30,7 @@ Thumbs.db
 
 # Xcode DerivedData, including per-agent build-<name> dirs
 build/
-# …but not the engine source build's step scripts (docs/cef-source-build.md)
+# …but not the engine source build's step scripts (docs/engine-build.md)
 !engine/patches/build/
 build-*/
 DerivedData/

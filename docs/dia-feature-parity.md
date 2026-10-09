@@ -3,7 +3,7 @@
 Dia = installed build **1.49.1 (87398), Chromium 153** plus the public changelog up to **v1.50.0 (2026‑09‑24)**;
 visual rows re-checked against **1.50.1 (87750)** (`docs/dia-spec.md` › "1.50 Sunglow").
 Netnyahoo = this working tree on **2026‑09‑25, after the Chrome migration**: then our patched Chrome-style CEF
-(154.0.28, `docs/cef-source-build.md`), where every app window is Chrome's own Browser window
+(154.0.28, `docs/engine-build.md`), where every app window is Chrome's own Browser window
 (since 0.2.0, `docs/research/chrome-hosted-window.md`) and every tab a real Chrome tab of it, hosted in our React
 Native views. Since 2026‑10‑01 the app runs on NNCore, Chrome's own framework from the same tree with our layer
 (`docs/nncore-parity.md`); the rows hold for both.
@@ -102,7 +102,7 @@ then in `cef-tab-state.patch`, removed 2026-10-08; NNCore's `nn_tab_restore.cc` 
 except extension-provided search engines (§7) and the optional PiP stash, which weren't in its scope (both done
 since, in the polish pass). Chrome's
 surfaces came to the app through our CEF build's `CEF_NN_CHROME_UI`, and now through NNCore's hooks
-(docs/cef-source-build.md › "Our hooks in Chrome's code").
+(docs/engine-build.md › "Our hooks in Chrome's code").
 - "Share this tab instead" bar while a page is capturing (§18).
 - Web Bluetooth chooser and a Cast entry: route Chrome's chooser / cast dialog to our UI, as WP4 did for
   passwords and permissions (§18, 2 ❌; for Cast, first check that discovery works in the ungoogled build).
@@ -271,7 +271,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Battery Saver / freeze CPU‑heavy background tabs | ✓ | ✅ | lib/tabLifecycle: on battery or Low Power Mode, hidden tabs using ≥ 10 % CPU (engine task manager, two samples) freeze through CDP `Page.setWebLifecycleState` and thaw when shown; Dia's Activated/Deactivated toasts; Advanced › Battery Saver |
 | Tab discarding (sleep idle tabs, keep last 10 alive) | ✓ | ✅ | lib/tabLifecycle: background tabs sleep after 30 min of app-active time (sooner under memory pressure); 10 most recent protected; never audio, capture, PiP, split, pinned mini player or unsaved input; faded icon + "This tab needs to reload"; recent tabs reload on launch. Sleeping is Chrome's own discard (in place, `WebContentsDiscard`): the tab keeps its back/forward list, `chrome.tabs` lists it `discarded: true`, and Chrome's own discards (memory pressure, `chrome.tabs.discard`) show as sleeping too. WebAudio-only sound isn't seen as playing |
 | Sad‑tab / native error page with Reload | ✓ | ✅ | SadTab + Page Unresponsive (Wait / Exit Page) in layout/PaneOverlays |
-| Offline page game (Chrome's dino) | ✓ (dino) | ✅ | Our own: "Where's Big Yahu?" (apps/browser/assets/offline-game) wherever Chrome shows the dino, in tabs and popups, with the error code, host and Retry; `netnyahoo://yahu` plays it on its own. Other net errors keep Chrome's page. Engine patch `chromium-neterror-yahu.patch` (docs/cef-source-build.md › "The offline page") |
+| Offline page game (Chrome's dino) | ✓ (dino) | ✅ | Our own: "Where's Big Yahu?" (apps/browser/assets/offline-game) wherever Chrome shows the dino, in tabs and popups, with the error code, host and Retry; `netnyahoo://yahu` plays it on its own. Other net errors keep Chrome's page. Engine patch `chromium-neterror-yahu.patch` (docs/engine-build.md › "The offline page") |
 
 ## 2. Tabs
 | Feature | Dia | Netnyahoo | Gap |
@@ -812,7 +812,7 @@ reproduced.
     Widevine isn't available in this build; `updateComponent` is gone from the engine API.
 12. **Removed (2026-10-01): the stock-CEF path.** `NN_CHROME_TABS=0`, `CEF_PREBUILT=1` and the per-feature `NN_*`
     macros are gone (architecture review, rec. 3): the app builds only against our engine (since the NNCore
-    cutover, Chrome's framework from our tree, `docs/cef-source-build.md`).
+    cutover, Chrome's framework from our tree, `docs/engine-build.md`).
 13. **Fixed (R3): docs and comments that contradicted the code.** `docs/agent-brief.md` rewritten for the current
     architecture (Chrome-style CEF, `NETNYAHOO_BACKGROUND` / NNActivation, the own-CEF rebuild flow, `packages/import`,
     no `packages/webkit`, a repo with history); `docs/migration-status.md`'s finished "In progress", "Known regressions"

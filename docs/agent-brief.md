@@ -11,9 +11,9 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 - `apps/browser`: Expo SDK 54 + react-native-macos 0.81 (Legacy architecture), zustand store,
   inline styles.
 - Native code lives in Expo modules under `packages/*/ios` (Swift / Objective-C++):
-  - `packages/nncore`: the web engine, **NNCore**: Chrome's own framework (`Chromium Framework.framework`, our patched
-    Chromium 154 tree, `docs/cef-source-build.md`) with our layer linked in, and the Expo modules and JS API the app
-    uses (`docs/nncore-spike.md`, `docs/nncore-parity.md`).
+  - `packages/nncore`: the web engine, **NNCore**: Chrome's own framework (`Chromium Framework.framework`, plain
+    Chromium 154.0.8037.97 + ungoogled-chromium + our patch series, `docs/engine-build.md`) with our layer linked
+    in, and the Expo modules and JS API the app uses (`docs/nncore-spike.md`, `docs/nncore-parity.md`).
     - **Chromium runs the process.** `main.swift` calls `NNCoreHost.run`: `ChromeMain` starts with our
       `NNMainDelegate`, `NSApp` is Chrome's `BrowserCrApplication`, and the React Native host (`AppDelegate`) starts
       inside Chrome's run loop. Nothing may touch `NSApp` before that.
@@ -52,7 +52,7 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 
 ## The engine
 - NNCore is built outside the repo in `~/chromium-build` (the tree and its patches: `engine/patches`,
-  `docs/cef-source-build.md` › "Rebuilding"; `engine/chromium/apply.sh` and `engine/nncore/apply.sh` copy our code in).
+  `docs/engine-build.md` › "Rebuilding"; `engine/chromium/apply.sh` and `engine/nncore/apply.sh` copy our code in).
   The app's build stages a copy of `out/Release_GN_arm64/Chromium Framework.framework`
   (`packages/nncore/scripts/stage-framework.sh`: copied and signed once per engine build into
   `apps/browser/build-nncore/staged`, then cloned into each build's own derived data, `NNCORE_STAGE_DIR`), links it
@@ -68,10 +68,12 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   A new framework changes every agent's next build, so say so in your report. To try one privately, build the app with
   `NNCORE_FRAMEWORK=<framework> scripts/agent/build-app --as <you>` (it stages into your own derived data).
 - New engine code goes in `//chrome/browser/netnyahoo` (`engine/chromium/src`) or `//netnyahoo/core`
-  (`engine/nncore/src`), never straight into the tree (`docs/cef-source-build.md` › "Our own code in the tree").
+  (`engine/nncore/src`), never straight into the tree (`docs/engine-build.md` › "Our own code in the tree").
   `engine/patches/series` is the apply order of our patches to Chromium; `engine/patches/series.py check` proves the
-  series reproduces the tree. Hooks in Chrome's code are `g_netnyahoo_*` pointers NNCore sets (`nn_seams.mm`); CEF's
-  own patches to Chrome stay in the tree until the next Chromium bump, and `nn_cef_seams.{h,mm}` fills their seams.
+  series reproduces the tree. Hooks in Chrome's code are `g_netnyahoo_*` pointers NNCore sets (`nn_seams.mm`). CEF
+  left the tree on 2026-10-09: the few of its patches we keep are `chromium-cef-carryover.patch`, and the seams of its
+  that NNCore used are our hooks H1–H6 in `engine/nncore/apply.sh` (`docs/engine-build.md` › "Our hooks in Chrome's
+  code"). Whether a Browser is NNCore's is `WindowHost::ForBrowser`.
 
 ### NNCore code map
 Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/nncore/ios`, JS in `apps/browser/src`.

@@ -10,7 +10,7 @@
 # a line to prebuilt-engines.tsv: engine/'s git tree, the release, the archive's SHA-256. The download is checked
 # against that line, so it is only as trusted as this repo. A line lands after its release is tagged: a checkout of
 # the tag looks it up in main's copy of the table.
-# Uncommitted changes under engine/ can't be in any prebuilt: build the engine (docs/cef-source-build.md).
+# Uncommitted changes under engine/ can't be in any prebuilt: build the engine (docs/engine-build.md).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -31,7 +31,7 @@ esac
 
 git -C "$root" rev-parse --git-dir >/dev/null 2>&1 || die "$root isn't a git checkout: a prebuilt engine is matched to engine/'s git tree"
 [ -z "$(git -C "$root" status --porcelain -- engine)" ] \
-  || die "engine/ has uncommitted changes, and no prebuilt has them: build the engine (docs/cef-source-build.md)"
+  || die "engine/ has uncommitted changes, and no prebuilt has them: build the engine (docs/engine-build.md)"
 tree=$(git -C "$root" rev-parse HEAD:engine)
 
 # Lines of the table: <engine tree> <version> <sha256>. This checkout's copy, then main's.
@@ -57,7 +57,7 @@ if [ -z "$entry" ]; then
     skipped=$((skipped + 1))
     [ "$skipped" -lt 200 ] || break
   done < <(git -C "$root" rev-list HEAD -- engine)
-  [ -n "$found" ] || die "no prebuilt engine for this checkout or any earlier one: build the engine (docs/cef-source-build.md)"
+  [ -n "$found" ] || die "no prebuilt engine for this checkout or any earlier one: build the engine (docs/engine-build.md)"
   version=$(awk '{ print $2 }' <<<"$found")
   if [ "$nearest" = 0 ]; then
     die "no prebuilt engine for this checkout's engine/ ($skipped engine commits since $version's). Check out v$version, \

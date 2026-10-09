@@ -151,7 +151,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
     --strict` failed. From a read-only copy of 0.1.0, nothing was blocked. Nothing else wrote into the bundle
     (settings, extensions, uBlock's pages, a PDF, the offline page, New Tab, chrome://components, YouTube).
   - Fix: Chrome loads uBlock from `<data dir>/Built-in Extensions/ublock-lite`, a clone of the bundled folder
-    (`docs/cef-source-build.md` › "Nothing writes into the app bundle").
+    (`docs/engine-build.md` › "Nothing writes into the app bundle").
   - Verified: over CDP, a fetch of `pagead2.googlesyndication.com/…/adsbygoogle.js` fails with
     `net::ERR_BLOCKED_BY_CLIENT` while `www.iana.org/favicon.ico` loads, and the signature still verifies after
     quitting, in each case: a fresh data dir; a relaunch (copy and indexes untouched); a 0.1.0 data dir; the bundle

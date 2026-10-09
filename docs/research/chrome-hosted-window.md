@@ -124,7 +124,7 @@ deferral as hit testing. Plan: 5–7 weeks in six phases, each one shippable.
 
 ## Phase 1 (engine), done
 
-Two incremental patches (`docs/cef-source-build.md`, `CEF_NN_CLIENT_WINDOW`) replace the spike's runtime overrides:
+Two incremental patches (`docs/engine-build.md`, `CEF_NN_CLIENT_WINDOW`) replace the spike's runtime overrides:
 
 - **`cef-zwindow-client.patch`** (10 CEF files; a new `include/` API, so the translator ran):
   - `CefBrowserSettings.client_window`: no tab strip, toolbar, location bar or bookmarks bar
