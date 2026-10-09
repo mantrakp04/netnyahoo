@@ -74,7 +74,7 @@ takes effect with the first release after 0.2.13):
 - **Downloads:** GitHub's `download_count` for each release's DMG. Sparkle updates are the zip's count.
 - **Update checks:** builds after 0.2.13 poll `https://netnyahoo.com/appcast.xml` (`SUFeedURL`). nginx
   (`infra/site/nginx.conf`) answers every request with a 302 to
-  `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml` and, beside it, mirrors a
+  `https://github.com/mantrakp04/arcadia/releases/latest/download/appcast.xml` and, beside it, mirrors a
   telemetry event `update_check { version, first }` with the day as its timestamp. Only requests whose
   User-Agent is the app's Sparkle (`Arcadia/<version> Sparkle/…`) count. Nothing else is passed on: no IP
   (so no country), no headers, no cookie, a fixed `distinct_id` (`update-check`). The redirect never waits on

@@ -7,7 +7,7 @@ Releases are GitHub releases of `mantrakp04/arcadia`, tagged `v<version>`. Each 
 - `appcast.xml`: the Sparkle feed. The latest release's appcast is the feed. Builds after 0.2.13 poll
   `https://netnyahoo.com/appcast.xml` (`SUFeedURL`), which counts the check by version and day (and whether
   it's the copy's first) and redirects to
-  `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml`, the URL 0.2.13 and
+  `https://github.com/mantrakp04/arcadia/releases/latest/download/appcast.xml`, the URL 0.2.13 and
   earlier poll directly. The count can't block an update: see `infra/site/nginx.conf` and `docs/growth.md`
   › Installs.
 - `ArcadiaCore-<engine tree>.tar.xz`, only when `engine/` changed since the last one: the release's engine (Chrome's

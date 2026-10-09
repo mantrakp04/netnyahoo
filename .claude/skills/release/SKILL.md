@@ -187,7 +187,7 @@ gh release create v<version> -R mantrakp04/arcadia --title "Arcadia <version>" \
   --notes-file dist/<version>/release-notes.md \
   dist/<version>/Arcadia-<version>.dmg dist/<version>/Arcadia-<version>.zip dist/<version>/appcast.xml \
   $(ls dist/<version>/ArcadiaCore-*.tar.xz 2>/dev/null)
-curl -fsL https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml | grep -o 'shortVersionString>[0-9.]*' | head -1
+curl -fsL https://github.com/mantrakp04/arcadia/releases/latest/download/appcast.xml | grep -o 'shortVersionString>[0-9.]*' | head -1
 .claude/skills/release/scripts/feed.sh <version>
 ```
 

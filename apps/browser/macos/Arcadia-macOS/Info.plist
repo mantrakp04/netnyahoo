@@ -5,7 +5,7 @@
 	<key>ACFeedbackEmail</key>
 	<string></string>
 	<key>ACFeedbackURL</key>
-	<string>https://github.com/mantrakp04/netnyahoo/issues/new?body=%s</string>
+	<string>https://github.com/mantrakp04/arcadia/issues/new?body=%s</string>
 	<key>ACReleaseNotesURL</key>
 	<string>https://netnyahoo.com/release-notes</string>
 	<key>ACVideoTourURL</key>

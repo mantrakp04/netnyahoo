@@ -10,7 +10,7 @@ public final class AppUpdater: NSObject {
     let env = ProcessInfo.processInfo.environment
     if let feed = env["ARCADIA_UPDATE_FEED_URL"] ?? UserDefaults.standard.string(forKey: "ACUpdateFeedURL") { return feed }
     // SUFeedURL (netnyahoo.com) counts checks as copies in use; background instances go straight to the same file.
-    return env["ARCADIA_BACKGROUND"] == "1" ? "https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml" : nil
+    return env["ARCADIA_BACKGROUND"] == "1" ? "https://github.com/mantrakp04/arcadia/releases/latest/download/appcast.xml" : nil
   }
 
   // A test instance (ACIsolation.h) checks for updates only when it's given a feed, and keeps Sparkle's state

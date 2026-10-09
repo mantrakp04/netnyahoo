@@ -4,7 +4,7 @@ usage: python3 fetch-images.py"""
 import json, os, urllib.parse, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UA = {"User-Agent": "arcadia-film-capture/1.0 (https://github.com/mantrakp04/netnyahoo)"}
+UA = {"User-Agent": "arcadia-film-capture/1.0 (https://github.com/mantrakp04/arcadia)"}
 FILES = {
     "moodwall.example": [
         "Blue white kitchen interior (Unsplash).jpg", "Lavender field in bloom.jpg", "Moraine Lake 17092005.jpg",
