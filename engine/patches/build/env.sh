@@ -1,14 +1,16 @@
-# Shared environment for the Netnyahoo CEF source build (source this file).
+# Shared environment for the Netnyahoo engine build: plain Chromium + ungoogled-chromium + our
+# series (docs/engine-build.md). Source this file.
 export CB=~/chromium-build
 # The Netnyahoo checkout (yahu-resource.sh reads the offline game from it).
 export NN_REPO="${NN_REPO:-$HOME/Documents/netnyahoo}"
 export DEPOT_TOOLS_UPDATE=0
 export PATH="$CB/depot_tools:$PATH"
-export CEF_BRANCH=8037
-export CEF_USE_GN=1
-export CEF_ENABLE_ARM64=1
+# The Chromium tag step 1 checks out, and the ungoogled-chromium tags made for exactly it
+# (its patches and domain substitution lists are version-specific).
+export CHROMIUM_VERSION=154.0.8037.97
+export UNGOOGLED_TAG=154.0.8037.97-1
+export UNGOOGLED_MACOS_TAG=154.0.8037.97-1.1
 export GN_OUT_CONFIGS=Release_GN_arm64
-export CEF_ARCHIVE_FORMAT=tar.bz2
 # Low priority for everything heavy. CPU-bound steps (compile/link) run in the
 # background QoS band (-b): on this M5 Pro that confines them to the 10
 # lower-tier cores and throttles their disk I/O. Background QoS also throttles

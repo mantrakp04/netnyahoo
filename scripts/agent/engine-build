@@ -89,7 +89,7 @@ step "engine/nncore/apply.sh --check" "$repo/engine/nncore/apply.sh" --check
 if [[ -n "$series_check" ]]; then
   step "engine/patches/series.py check" python3 "$repo/engine/patches/series.py" check
 fi
-# env.sh is written for an interactive shell; it sets PATH (depot_tools), DEPOT_TOOLS_UPDATE=0 and the CEF knobs.
+# env.sh is written for an interactive shell; it sets PATH (depot_tools), DEPOT_TOOLS_UPDATE=0 and the versions.
 step "source engine/patches/build/env.sh" source "$repo/engine/patches/build/env.sh"
 step "cd $src" cd "$src"
 step "autoninja -C $out ${targets[*]}" autoninja -C "$out" "${targets[@]}"

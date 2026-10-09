@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
-# Step 1: check out CEF branch 8037 + Chromium 154.0.8037.58 (no history), no build.
+# Step 1: check out Chromium $CHROMIUM_VERSION (env.sh) for the Mac, without history, and run its
+# hooks; no build. Then step 3 (ungoogled-chromium), step 4 (domain substitution and our series),
+# step 2 (GN args) and step 5 (build).
 set -euo pipefail
 source ~/chromium-build/scripts/env.sh
-unset DEPOT_TOOLS_UPDATE   # first run must bootstrap depot_tools
-# A new checkout needs a new base for `series.py check` (steps 2 and 4 capture it).
+# A new checkout needs a new base for `series.py check` (step 4 captures it).
 rm -rf "$CB/series-base"
-cd "$CB/automate"
-exec taskpolicy -c utility -d throttle nice -n 19 python3 automate-git.py \
-  --download-dir="$CB/chromium_git" --depot-tools-dir="$CB/depot_tools" \
-  --branch=$CEF_BRANCH --no-chromium-history --arm64-build --no-debug-build \
-  --no-build --no-distrib
+mkdir -p "$CB/chromium_git/chromium"
+cd "$CB/chromium_git/chromium"
+cat > .gclient <<GCLIENT
+solutions = [{'managed': False, 'name': 'src',
+  'url': 'https://chromium.googlesource.com/chromium/src.git@refs/tags/$CHROMIUM_VERSION',
+  'custom_vars': {'checkout_pgo_profiles': False, 'source_tarball': False, 'siso_version': 'latest'},
+  'custom_deps': {}, 'deps_file': 'DEPS', 'safesync_url': ''}]
+target_os = ['mac']
+GCLIENT
+lowprio_net gclient sync --no-history --nohooks -j 16
+lowprio_net gclient runhooks
