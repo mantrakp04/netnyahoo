@@ -1,8 +1,8 @@
 # Shared environment for the Arcadia engine build: plain Chromium + ungoogled-chromium + our
 # series (docs/engine-build.md). Source this file.
 export CB=~/chromium-build
-# The Arcadia checkout (game-resource.sh reads the offline game from it).
-export AC_REPO="${AC_REPO:-$HOME/Documents/arcadia}"
+# The Arcadia checkout (game-resource.sh reads the offline game from it): the one this file is in.
+export AC_REPO="${AC_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)}"
 export DEPOT_TOOLS_UPDATE=0
 export PATH="$CB/depot_tools:$PATH"
 # The Chromium tag step 1 checks out, and the ungoogled-chromium tags made for exactly it

@@ -107,7 +107,7 @@ all of them show it.
 The resource file is generated, not patched in: `game-resource.sh` runs
 `apps/browser/assets/offline-game-pipeline/inline.py` (Python standard library only) into
 `components/neterror/resources/game/game.html` of the Chromium tree. `apply-chromium-patches.sh` and step 5 run it,
-so every build ships the game folder as it is; `AC_REPO` (in `env.sh`, default `~/Documents/arcadia`) says where the
+so every build ships the game folder as it is; `AC_REPO` (in `env.sh`, default the checkout `env.sh` is in) says where the
 checkout is. The sprites stay at the art pipeline's 400 px: at the default zoom the front rows already draw them at
 about 1:1 on a 2x screen, so 256 px sprites (about 1 MB) would be visibly soft.
 
