@@ -64,15 +64,14 @@ export function Omnibox({
   const dropdown = variant === "sidebar";
 
   const [restored] = useState(() => (hero ? savedNtpQuery(tabId) : null));
-  const initial = !initialText ? "" : dropdown ? initialText : initialText.replace(/^https?:\/\//, "");
-  const [typed, setTyped] = useState(restored?.typed ?? initial);
+  const [typed, setTyped] = useState(restored?.typed ?? initialText);
   const [edited, setEdited] = useState(restored?.edited ?? false);
   const [suppressCompletion, setSuppressCompletion] = useState(true);
   const [selected, setSelected] = useState(restored?.selected ?? 0);
   const [scope, setScope] = useState<SearchScope | null>(restored?.scope ?? null);
   const scopeFrom = useRef("");
   const [pendingSelection, setPendingSelection] = useState<Selection | null>(
-    restored?.selection ?? (initial ? { start: 0, end: initial.length } : null),
+    restored?.selection ?? (initialText ? { start: 0, end: initialText.length } : null),
   );
   const selection = useRef<Selection>(restored?.selection ?? { start: 0, end: typed.length });
   // The selection before the latest change to it: RN reports the caret after an edit before the edit's text, so a

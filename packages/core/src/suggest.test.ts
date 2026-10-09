@@ -123,11 +123,22 @@ test("only a visited page completes: a bookmark or an open tab with no history r
 });
 
 test("open tabs are marked so the bar can switch to them, except the bar's own tab", () => {
-  const tabs = [{ id: "t1", url: "https://github.com/", title: "GitHub", favicon: null }];
-  const { items } = buildSuggestions("gith", { tabs, history }, { now });
+  // A page found by its title, not an address being typed: Enter goes to its tab.
+  const tabs = [{ id: "t1", url: "https://github.com/pulls", title: "Pull requests", favicon: null }];
+  const { items } = buildSuggestions("pull", { tabs, history }, { now });
   assert.equal(items[0]?.kind === "page" && items[0].tabId, "t1");
-  const own = buildSuggestions("gith", { tabs, history }, { now, currentTabId: "t1" });
-  assert.equal(own.items[0]?.kind === "page" && own.items[0].tabId, undefined);
+  const own = buildSuggestions("pull", { tabs, history }, { now, currentTabId: "t1" });
+  assert.ok(!own.items.some((i) => i.kind === "page" && i.tabId));
+});
+
+test("a typed or completed address opens, even when a tab has it open: the tab keeps a Switch to Tab row", () => {
+  const tabs = [{ id: "t1", url: "https://ugc.hekuto.dev/#grid", title: "UGC Radar", favicon: null }];
+  const hist = [{ url: "https://ugc.hekuto.dev/#grid", title: "UGC Radar", favicon: null, visits: 3, lastVisit: now - 1000 }];
+  for (const typed of ["ugc.hekuto.dev", "ugc.hek", "https://ugc.hekuto.dev/#grid"]) {
+    const r = rows(buildSuggestions(typed, { tabs, history: hist }, { now }).items);
+    assert.ok(r[0]!.startsWith("https://ugc.hekuto.dev/"), `${typed}: opens first, got ${r[0]}`);
+    assert.ok(r.includes("tab:https://ugc.hekuto.dev/#grid"), `${typed}: still a switch-to-tab row`);
+  }
 });
 
 test("frecency: frequent + recent beats old, and multi-word queries match words", () => {

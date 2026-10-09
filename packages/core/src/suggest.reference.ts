@@ -299,7 +299,7 @@ class TopList {
   }
 }
 
-const pageSuggestion = (c: Candidate, tabId = c.tabId): Suggestion => ({
+const pageSuggestion = (c: Candidate, tabId: string | null | undefined = c.tabId): Suggestion => ({
   kind: "page",
   url: c.url,
   title: c.title,
@@ -312,7 +312,7 @@ const pageSuggestion = (c: Candidate, tabId = c.tabId): Suggestion => ({
 export function suggestionKey(s: Suggestion): string {
   switch (s.kind) {
     case "page":
-      return `page:${pageKey(s.url)}`;
+      return `${s.tabId ? "tab" : "page"}:${pageKey(s.url)}`;
     case "search":
       return `search:${s.url}`;
     case "calc":
@@ -328,7 +328,9 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   const { limit = 8, now = Date.now(), engine = BUILT_IN_ENGINES[0]!, preference = "website", remote = [], actions = [], scope } = options;
   const query = raw.trim();
   if (!query) return { items: [], completion: "" };
-  const q = query.toLowerCase();
+  // Pages match by their shown address, which has no scheme: a typed one (the bar shows it while editing) is left out.
+  const bare = query.replace(/^https?:\/\/(?=\S)/i, "");
+  const q = bare.toLowerCase();
   const tokens = q.split(/\s+/).filter(Boolean);
 
   if (!scope && query.startsWith("?")) {
@@ -346,7 +348,8 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   const known = (url: string) => {
     const key = pageKey(url);
     const c = pool.byKey.get(key) ?? extra.find((x) => x.text.key === key);
-    return c && pageSuggestion(c, tabIds.get(key));
+    // What was typed opens here, as in Chrome: an open tab at the same address keeps its own Switch to Tab row.
+    return c && pageSuggestion(c, null);
   };
 
   const websiteFirst = preference === "website";
@@ -400,7 +403,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
 
   const best = ranked[0];
   const target = inline && inlineTarget(q, inline.c);
-  const completion = target ? target.text.slice(query.length) : "";
+  const completion = target ? target.text.slice(bare.length) : "";
 
   let first: Suggestion;
   if (creates.length && /^\S+\s+\S/.test(query)) first = createRow(creates[0]!);
