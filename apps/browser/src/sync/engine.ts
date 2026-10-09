@@ -16,6 +16,7 @@ import {
 } from "@arcadia/sync";
 import { create } from "zustand";
 import { useBrowser } from "../store/browser";
+import { fromLegacy } from "../legacy";
 import { isIncognitoProfile } from "../store/model";
 import { DEFAULT_PROFILE_ID } from "../store/settings";
 import type { Profile } from "../store/types";
@@ -246,11 +247,19 @@ export const deviceName = () => SyncNative?.deviceName() ?? "This Mac";
 
 // MARK: Adapters
 
+// What other Macs send in the app's former names (an older version's, or records saved then) applies in today's.
+// Only for records of URLs and settings: never passwords, whose text is the user's.
+const inTodaysNames = (adapter: Adapter): Adapter => ({
+  ...adapter,
+  apply: (visible, changed, base) =>
+    adapter.apply(new Map([...visible].map(([key, value]) => [key, fromLegacy(value)])), changed, (key) => fromLegacy(base(key))),
+});
+
 function appAdapters(retiring: boolean): Adapter[] {
   const id = doc.deviceId!;
   if (retiring) return [deviceAdapter(id, deviceName, true)];
   return [
-    ...(doc.types.settings ? [settingsAdapter] : []),
+    ...(doc.types.settings ? [inTodaysNames(settingsAdapter)] : []),
     profilesAdapter(() => Object.fromEntries(Object.entries(doc.profiles).filter(([, l]) => l.enabled))),
     deviceAdapter(id, deviceName),
   ];
@@ -265,10 +274,10 @@ function profileAdapters(profileId: string, retiring: boolean): Adapter[] {
   let passwords = passwordAdapters.get(profileId);
   if (!passwords) passwordAdapters.set(profileId, (passwords = passwordsAdapter(profileId, () => forcePasswords)));
   return [
-    ...(t.pinned ? [pinnedAdapter(profileId)] : []),
-    ...(t.bookmarks && ownsData ? [bookmarksAdapter(profileId)] : []),
-    ...(t.history && ownsData ? [historyAdapter(profileId)] : []),
-    deviceTabsAdapter(profileId, id, deviceName, !t.tabs),
+    ...(t.pinned ? [inTodaysNames(pinnedAdapter(profileId))] : []),
+    ...(t.bookmarks && ownsData ? [inTodaysNames(bookmarksAdapter(profileId))] : []),
+    ...(t.history && ownsData ? [inTodaysNames(historyAdapter(profileId))] : []),
+    inTodaysNames(deviceTabsAdapter(profileId, id, deviceName, !t.tabs)),
     ...(t.passwords && ownsData ? [passwords] : []),
   ];
 }

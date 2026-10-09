@@ -1,4 +1,5 @@
 import type { StateCreator } from "zustand";
+import { LEGACY_BOOKMARK_SEED } from "../legacy";
 import type { BrowserState } from "./browser";
 import { engineProfile, without } from "./model";
 import type { BookmarkFolder, BookmarkNode, Bookmarks } from "./types";
@@ -47,7 +48,7 @@ export const newBookmarkId = () => uuidFrom(Array.from({ length: 4 }, () => Math
  */
 export function bookmarkUuidFor(id: string): string {
   if (isBookmarkUuid(id)) return id;
-  const text = `arcadia-bookmark:${id}`;
+  const text = `${LEGACY_BOOKMARK_SEED}${id}`;
   let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
   for (let i = 0; i < text.length; i++) {
     const k = text.charCodeAt(i);
