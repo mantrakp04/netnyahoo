@@ -44,6 +44,8 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
     grep -q 'Netnyahoo: NNCore shows no toast' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
+    grep -q 'BrowserView, so no pinned tab toast' "$src/chrome/browser/ui/browser_commands.cc" &&
+    grep -q 'have no BrowserView element' "$src/chrome/browser/ui/webui/settings/settings_clear_browsing_data_handler.cc" &&
     grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc" &&
     grep -q 'g_netnyahoo_dnr_rule_matched(' "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" &&
     grep -q 'g_netnyahoo_dnr_rulesets_in_force(' "$src/extensions/browser/api/declarative_net_request/rules_monitor_service.cc" &&
@@ -227,6 +229,58 @@ bool ToastController::MaybeShowToast(ToastParams params) {
 assert s.count(old) == 1
 open(path, "w").write(s.replace(old, new))
 print("hooked ToastController::MaybeShowToast")
+PY
+
+# Closing a selection of pinned tabs (IDC_CLOSE_TAB, ⌘W as Chrome's command) asks for a confirmation
+# toast with the command's accelerator, and CHECKs the Browser's BrowserView for it. A viewless
+# Browser closes them as Chrome does without a ToastController.
+python3 - "$src/chrome/browser/ui/browser_commands.cc" <<'PY'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "so no pinned tab toast" in s:
+    sys.exit(0)
+old = """  ToastController* toast_controller = browser->GetFeatures().toast_controller();
+  if (!toast_controller) {"""
+new = """  ToastController* toast_controller = browser->GetFeatures().toast_controller();
+  // Netnyahoo: NNCore's Browsers have no BrowserView, so no pinned tab toast.
+  if (!toast_controller || (g_netnyahoo_viewless_browsers &&
+                            !BrowserView::GetBrowserViewForBrowser(browser))) {"""
+inc_old = '#include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_close_button_controller.h"\n#endif\n'
+inc_new = inc_old + ("\n// Netnyahoo: NNCore (engine/nncore); defined in toast_controller.cc.\n"
+                     "extern bool g_netnyahoo_viewless_browsers;\n")
+assert s.count(old) == 1 and s.count(inc_old) == 1
+open(path, "w").write(s.replace(old, new).replace(inc_old, inc_new))
+print("hooked CloseTab's pinned tab toast")
+PY
+
+# Clearing history in chrome://settings tells the BrowserView's element (user education) and
+# CHECKs it is there. A viewless Browser has no such element: nothing to tell.
+python3 - "$src/chrome/browser/ui/webui/settings/settings_clear_browsing_data_handler.cc" <<'PY'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "have no BrowserView element" in s:
+    sys.exit(0)
+old = """    CHECK(browser_element);
+    ui::ElementTracker::GetFrameworkDelegate()->NotifyCustomEvent(
+        browser_element,
+        browsing_data_important_sites_util::kClearBrowsingDataHistoryEventId);
+  }"""
+new = """    // Netnyahoo: NNCore's Browsers have no BrowserView element.
+    CHECK(browser_element || g_netnyahoo_viewless_browsers);
+    if (browser_element) {
+      ui::ElementTracker::GetFrameworkDelegate()->NotifyCustomEvent(
+          browser_element,
+          browsing_data_important_sites_util::kClearBrowsingDataHistoryEventId);
+    }
+  }"""
+inc_old = '#include "ui/base/text/bytes_formatting.h"\n'
+inc_new = inc_old + ("\n// Netnyahoo: NNCore (engine/nncore); defined in toast_controller.cc.\n"
+                     "extern bool g_netnyahoo_viewless_browsers;\n")
+assert s.count(old) == 1 and s.count(inc_old) == 1
+open(path, "w").write(s.replace(old, new).replace(inc_old, inc_new))
+print("hooked ClearBrowsingDataHandler")
 PY
 
 # A Browser Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools,
