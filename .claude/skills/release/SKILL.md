@@ -165,28 +165,19 @@ one ceiling by hand in `apps/browser/scripts/perf/ratchet.json` and say why in t
 the release made counts go down, run `ratchet.mjs lower <the run's report>` (`$TMPDIR/nn-ratchet/ratchet.json`), commit
 the lowered ceilings, and say which counts dropped. The wall-clock gate is a separate step: `docs/perf/README.md`.
 
-### 4c. Perf gate and the "Faster" table
+### 4c. Perf gate: the RC against the previous release
 
-The notes carry a table comparing the release with 0.2.17 (the last release before NNCore, the one people remember).
-One command, about 45 minutes, so start it as soon as the RC is built and write the notes meanwhile:
+Every release is timed against the previous one before it publishes, and ships only when every row is the same or
+better (`docs/perf/README.md` › Gating a release: native-bench with `--control dist/<previous>/export/Netnyahoo.app`,
+interleaved, launch x6+ and session x2, then js-bench alternating the two apps). It runs alone on a quiet Mac, holding
+the perflab lock, after the smoke test and the ratchet. Call a row a regression only when the ranges separate.
+Afterwards read `scripts/agent/cpu-cap`'s log (`cpu-cap.log`): a pause of the bench or its instances during the run
+invalidates it, so rerun. Put the numbers in `docs/perf/<previous>-to-<version>.md`.
 
-```bash
-scripts/release-compare-0.2.17.sh dist/<version>-rc/export/Netnyahoo.app /tmp/nn-compare/perf-gate/<version> > /tmp/nn-compare-<version>.log 2>&1 &   # run_in_background
-```
-
-It downloads 0.2.17's own release zip once (cached under `~/.cache/netnyahoo/perf-gate/0.2.17`; the folder name
-`perf-gate` keeps scripts/agent/cpu-cap from demoting these instances to background QoS), builds its bench bundle from
-its own tree (`apps/browser/scripts/perf/legacy-bundle.mjs`), then, holding the perflab lock, runs native-bench with both
-apps interleaved (8 launches, 2 session and 2 window runs), the first launch after an install (`--fresh-copy`), the new
-release's ⌘T and keystroke journeys and js-bench typing (0.2.17 has neither: its column shows "–"), and prints the
-Markdown table. Afterwards read `scripts/agent/cpu-cap`'s log (`cpu-cap.log`): a pause of the bench or its instances
-during the run invalidates it, so rerun. `table-detail.md` next to `table.md` has min–max and n per row; call a row a
-regression only when the ranges separate (`docs/perf/README.md`). The previous-release gate (RC against the last
-release, same or better on every row) is the separate run described there.
-
-Paste `table.md` under `## Faster` in `docs/release-notes/<version>.md` (the style guide is in `docs/release-notes/README.md`),
-with one sentence naming the biggest win. Rows where the new release is slower stay in the table; say so in the report.
-Check the page with `pnpm -C apps/site build` (the table renders as a box that scrolls sideways on a phone).
+The notes get a `## Faster` section only when the release is measurably faster: a short table of the rows that
+moved (old, new, change) and one sentence naming the biggest win. A release that's the same within noise has no
+Faster section. The 0.2.17 comparison (`scripts/release-compare-0.2.17.sh`) was a one-off for 0.2.28; run it only
+when the owner asks.
 
 ## 5. Publish
 

@@ -47,10 +47,10 @@ Body:
 - Each item is one bullet: a **bold lead sentence** that states the change from the user's side, then at
   most three plain sentences: what people saw before, what happens now, where to find it or who it
   affects. Items in Smaller are a single sentence without bold.
-- `## Faster` carries one table, made by `scripts/release-compare-0.2.17.sh` (see the release skill's "Perf gate":
-  columns old version, new version, change; plain-language row names; "–" where the old release can't be measured).
-  Paste the script's output as it is, then say in one sentence what moved most. The site renders it as a table that
-  scrolls inside its own box on a phone; GitHub and Sparkle render it as Markdown.
+- `## Faster` carries one table, only when the release is measurably faster than the previous one: the rows that
+  moved in the release's perf gate (columns old version, new version, change; plain-language row names), then one
+  sentence on what moved most. The site renders it as a table that scrolls inside its own box on a phone; GitHub and
+  Sparkle render it as Markdown.
 - Nothing else: no images, no other tables, no nested lists, no links unless the item is about a page. The site
   numbers the items and puts the section names in the margin.
 
