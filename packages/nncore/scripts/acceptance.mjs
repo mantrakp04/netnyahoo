@@ -3792,11 +3792,15 @@ try {
           else runs.push({ frames: [f], end: frames.indexOf(f) });
         }
         if (runs.length !== 2) throw new Error(`expected two transitions in the probe, got ${runs.length} (${frames.length} frames)`);
+        // A frame rendered in the one main-thread turn between the window's resize and the app's layout at its new size
+        // (ProbeFrame's relayout: the views still have the old size, shifted in the window's layer space) shows where
+        // the views aren't; it's counted apart, and a transition may have at most one.
         const tally = (r, want) => {
-          const kinds = r.frames.map(kind);
-          return { frames: kinds.length, bare: kinds.filter((k) => k === "bare").length, stale: kinds.filter((k) => k !== want && k !== "bare").length,
-            uncovered: r.frames.filter((f) => !f.cover).length, kinds: [...new Set(kinds)],
-            bareAtMs: r.frames.filter((f, i) => kinds[i] === "bare").map((f) => f.t - r.frames[0].t) };
+          const laid = r.frames.filter((f) => !f.relayout);
+          const kinds = laid.map(kind);
+          return { frames: kinds.length, relayout: r.frames.length - laid.length, bare: kinds.filter((k) => k === "bare").length,
+            stale: kinds.filter((k) => k !== want && k !== "bare").length, uncovered: laid.filter((f) => !f.cover).length,
+            kinds: [...new Set(kinds)], bareAtMs: laid.filter((f, i) => kinds[i] === "bare").map((f) => f.t - r.frames[0].t) };
         };
         // From the key (the probe starts just before it) to each transition's start, and from its end to the page
         // showing through again.
@@ -3813,7 +3817,7 @@ try {
       if (off.in.bare < off.in.frames * 0.9 || off.out.bare < off.out.frames * 0.9)
         throw new Error(`without the page's picture the probe didn't see the bare background: ${JSON.stringify(off)}`);
       for (const [dir, r] of Object.entries({ in: on.in, out: on.out }))
-        if (r.bare || r.stale || r.uncovered || r.frames < 10) throw new Error(`the way ${dir}: ${JSON.stringify(r)}; all ${JSON.stringify(on)}`);
+        if (r.bare || r.stale || r.uncovered || r.frames < 10 || r.relayout > 1) throw new Error(`the way ${dir}: ${JSON.stringify(r)}; all ${JSON.stringify(on)}`);
       // A split: on the way out both panes come back, and both lend the window their pictures.
       const other = await openTab(`${base}/fs-layout?pane`, "FS layout");
       let split;

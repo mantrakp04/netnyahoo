@@ -1677,8 +1677,9 @@ namespace {
 // What an in-process picture of the window (all AppKit shows of it through a full-screen transition: NNPageCover) has
 // in the page's place, now: {t (ms since the probe started), size (the window's), page ([x, y, w, h] from the
 // window's top-left), cover, transitioning, uniform (the share of the page's place in its most common colour: 1 is
-// a bare background), grid (8 × 6 mean colours "rrggbb", rows from the top)}.
-NSDictionary *ProbeFrame(NSWindow *window, NNWindowFullScreen *state, CFTimeInterval start) {
+// a bare background), grid (8 × 6 mean colours "rrggbb", rows from the top), relayout (the window was resized since
+// the frame before and the app's views aren't laid out at its new size yet)}.
+NSDictionary *ProbeFrame(NSWindow *window, NNWindowFullScreen *state, CFTimeInterval start, NSSize before) {
   NSView *content = window.contentView;
   CALayer *layer = content.layer;
   if (!layer) return nil;
@@ -1705,6 +1706,19 @@ NSDictionary *ProbeFrame(NSWindow *window, NNWindowFullScreen *state, CFTimeInte
     @"covers" : @(state.covers),
     @"transitioning" : @(state.transitioning),
   } mutableCopy];
+  // The window has just been resized and the app hasn't laid itself out at the new size yet (its views still have the
+  // old size, and in the window's bottom-up layer space they sit shifted by the difference): the one main-thread turn
+  // between AppKit resizing the window and the app's layout catching up, which the render can't speak for.
+  if (!NSEqualSizes(before, NSZeroSize) && !NSEqualSizes(before, size)) {
+    NSMutableArray<NSView *> *views = [NSMutableArray arrayWithArray:content.subviews];
+    for (NSUInteger i = 0; i < views.count && i < 64; i++) {
+      if (NSEqualSizes(views[i].frame.size, before)) {
+        frame[@"relayout"] = @YES;
+        break;
+      }
+      [views addObjectsFromArray:views[i].subviews];
+    }
+  }
   NSView *page = state.probedTab.view;
   if (!page.window || page.window != window) return frame;
   // The page's place in the picture's rows (top-down) and columns.
@@ -1788,7 +1802,9 @@ NSDictionary *ProbeFrame(NSWindow *window, NNWindowFullScreen *state, CFTimeInte
                                      block:^(NSTimer *t) {
                                        NSWindow *w = weakWindow;
                                        if (!w || CACurrentMediaTime() > until) return [t invalidate];
-                                       if (NSDictionary *frame = ProbeFrame(w, state, start)) [frames addObject:frame];
+                                       NSArray *last = [frames.lastObject objectForKey:@"size"];
+                                       const NSSize before = last ? NSMakeSize([last[0] doubleValue], [last[1] doubleValue]) : NSZeroSize;
+                                       if (NSDictionary *frame = ProbeFrame(w, state, start, before)) [frames addObject:frame];
                                      }];
     [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
     return @"started";

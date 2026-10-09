@@ -481,7 +481,18 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   NSMutableArray *steps = [NSMutableArray array];
   NSWindow *window = _window;
   NSRect start = window.frame;
-  NSRect visible = ScreenFor(start).visibleFrame;
+  // The window stashes only past an outer edge, one with no screen beyond it (edgeBeyond): with a display to the right
+  // (or left) of the window's, the right (left) steps run at the edge of the outermost screen at the window's height.
+  auto outermost = [=](BOOL right) {
+    NSScreen *pick = ScreenFor(start);
+    for (NSScreen *screen in NSScreen.screens) {
+      const NSRect f = screen.frame;
+      if (NSMidY(start) < NSMinY(f) || NSMidY(start) >= NSMaxY(f)) continue;
+      if (right ? NSMaxX(f) > NSMaxX(pick.frame) : NSMinX(f) < NSMinX(pick.frame)) pick = screen;
+    }
+    return pick.visibleFrame;
+  };
+  const NSRect visibleRight = outermost(YES), visibleLeft = outermost(NO);
   auto record = [=](NSString *name, BOOL pass, NSDictionary *extra) {
     NSMutableDictionary *step = [@{@"step" : name, @"pass" : @(pass), @"frame" : NSStringFromRect(window.frame)} mutableCopy];
     [step addEntriesFromDictionary:extra ?: @{}];
@@ -522,36 +533,36 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
       @"rim" : @(self.overlay.layer.borderWidth),
     });
     snapshot(@"rest");
-    dragTo(NSMaxX(visible) - NSWidth(window.frame) * 0.3);
+    dragTo(NSMaxX(visibleRight) - NSWidth(window.frame) * 0.3);
   });
   after(2.2, ^{
     record(@"drag past right edge stashes", self.stashedEdge == NNPiPEdgeRight &&
-                                                 fabs(NSMinX(window.frame) - (NSMaxX(visible) - kPeek)) < 0.5 &&
+                                                 fabs(NSMinX(window.frame) - (NSMaxX(visibleRight) - kPeek)) < 0.5 &&
                                                  !self.overlay.handle.hidden && self.overlay.handle.alphaValue > 0.99,
            @{@"handle" : NSStringFromRect(self.overlay.handle.frame)});
     snapshot(@"stashed-right");
-    [window setFrameOrigin:NSMakePoint(NSMaxX(visible) - NSWidth(window.frame) - 40, NSMinY(window.frame))];
+    [window setFrameOrigin:NSMakePoint(NSMaxX(visibleRight) - NSWidth(window.frame) - 40, NSMinY(window.frame))];
   });
   after(3.4, ^{
-    record(@"Chrome's move re-stashes", self.stashedEdge == NNPiPEdgeRight && fabs(NSMinX(window.frame) - (NSMaxX(visible) - kPeek)) < 0.5, nil);
+    record(@"Chrome's move re-stashes", self.stashedEdge == NNPiPEdgeRight && fabs(NSMinX(window.frame) - (NSMaxX(visibleRight) - kPeek)) < 0.5, nil);
     self.overlay.handle.onClick();
   });
   after(4.6, ^{
     record(@"handle click brings it back", self.stashedEdge == NNPiPEdgeNone && self.overlay.handle.hidden &&
-                                                fabs(NSMaxX(window.frame) - (NSMaxX(visible) - kReturnMargin)) < 0.5,
+                                                fabs(NSMaxX(window.frame) - (NSMaxX(visibleRight) - kReturnMargin)) < 0.5,
            nil);
-    dragTo(NSMinX(visible) - NSWidth(window.frame) * 0.7);
+    dragTo(NSMinX(visibleLeft) - NSWidth(window.frame) * 0.7);
   });
   after(5.8, ^{
     record(@"drag past left edge stashes", self.stashedEdge == NNPiPEdgeLeft &&
-                                                fabs(NSMaxX(window.frame) - (NSMinX(visible) + kPeek)) < 0.5 &&
+                                                fabs(NSMaxX(window.frame) - (NSMinX(visibleLeft) + kPeek)) < 0.5 &&
                                                 NSMinX(self.overlay.handle.frame) == NSWidth(self.overlay.bounds) - kPeek,
            @{@"handle" : NSStringFromRect(self.overlay.handle.frame)});
     snapshot(@"stashed-left");
-    dragTo(NSMinX(visible) + 100);
+    dragTo(NSMinX(visibleLeft) + 100);
   });
   after(7.0, ^{
-    record(@"drag out of the stash", self.stashedEdge == NNPiPEdgeNone && fabs(NSMinX(window.frame) - (NSMinX(visible) + 100)) < 0.5, nil);
+    record(@"drag out of the stash", self.stashedEdge == NNPiPEdgeNone && fabs(NSMinX(window.frame) - (NSMinX(visibleLeft) + 100)) < 0.5, nil);
     // Chrome saves where the window was left in its user data dir, in screen DIPs from the top left of the primary
     // display (chrome/browser/netnyahoo/pip in engine/chromium).
     NSArray *saved = [NSArray arrayWithContentsOfFile:[dir stringByAppendingPathComponent:@"Chromium/NetnyahooPictureInPicture.plist"]];
