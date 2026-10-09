@@ -2,8 +2,10 @@ import CryptoKit
 import Foundation
 
 public struct SyncKeys {
-  static let magic = Data("ACS1".utf8)
-  static let salt = Data("arcadia-sync/v1".utf8)
+  // The format's own constants since the first release: every Mac's files and keys depend on them, so they keep the
+  // app's former name (LegacyMigration.swift). Changing either makes every sync folder unreadable.
+  static let magic = Data(LegacyName.syncMagic.utf8)
+  static let salt = Data(LegacyName.syncSalt.utf8)
   static let padding = 1024
 
   let fileKey: SymmetricKey

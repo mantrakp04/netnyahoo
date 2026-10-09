@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/arcadia-sync-swiftpm\" && node --test \"src/**/*.test.ts\""
+    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/arcadia-sync-swiftpm\" && node --test \"src/**/*.test.ts\" && node scripts/legacy-migration-e2e.mjs"
   },
   "peerDependencies": {
     "expo": "*",
