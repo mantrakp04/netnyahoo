@@ -10,6 +10,11 @@ chrome="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Without the typefaces the page still renders, at the right size, in fallback type.
+fonts="$(sed -n 's/.*href="\(https:\/\/fonts\.googleapis\.com[^"]*\)".*/\1/p' "$here/background.html")"
+[ -n "$fonts" ] && curl -fsS --max-time 20 -o /dev/null "$fonts" \
+  || { echo "error: can't load the typefaces from Google Fonts" >&2; exit 1; }
+
 for scale in 1 2; do
   "$chrome" --headless=new --disable-gpu --hide-scrollbars \
     --window-size=660,460 --force-device-scale-factor="$scale" --virtual-time-budget=8000 \

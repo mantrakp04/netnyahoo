@@ -19,7 +19,7 @@
 # (prebuilt-engine.tsv), so the app builds without a Chromium tree (packages/nncore/scripts/fetch-engine.sh).
 #
 # A release needs the notes file, MARKETING_VERSION set to <version> (and CURRENT_PROJECT_VERSION bumped) and a
-# clean tree under apps/browser, packages and engine. A candidate needs none of those: it builds the working tree as
+# clean tree under apps/browser, packages, engine and scripts/dmg. A candidate needs none of those: it builds the working tree as
 # <version> with the next build number, and uses the notes file if there is one.
 #
 # NOTARY_PROFILE      notarytool keychain profile (default netnyahoo), unless scripts/.notary.env sets an API key
@@ -105,11 +105,11 @@ else
   die "no release notes: write docs/release-notes/$version.md first"
 fi
 
-# A release ships a commit: anything uncommitted in the app's sources would ship with it (another agent's work in
-# progress, say). A candidate builds the working tree and records what it included.
-dirty="$(git -C "$root" status --porcelain -- apps/browser packages engine | grep -v ' apps/browser/build' || true)"
+# A release ships a commit: anything uncommitted in the app's sources or the disk image's window would ship with it
+# (another agent's work in progress, say). A candidate builds the working tree and records what it included.
+dirty="$(git -C "$root" status --porcelain -- apps/browser packages engine scripts/dmg | grep -v ' apps/browser/build' || true)"
 if [ -n "$dirty" ]; then
-  [ "$rc" = 1 ] || { echo "$dirty" >&2; die "uncommitted changes under apps/browser, packages or engine (above)"; }
+  [ "$rc" = 1 ] || { echo "$dirty" >&2; die "uncommitted changes under apps/browser, packages, engine or scripts/dmg (above)"; }
   echo "warning: the candidate includes uncommitted changes:" >&2
   echo "$dirty" >&2
 fi
