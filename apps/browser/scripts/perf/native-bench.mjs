@@ -126,6 +126,7 @@ import { loadavg, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { appEnv } from "../../../../scripts/lib/instance.mjs";
 import { buildSeed } from "./seed.mjs";
 import { writeSwitches } from "./js-bench.mjs";
 import { frameRows, frameTable, framesLibrary, framesRun } from "./frames-phase.mjs";
@@ -456,9 +457,12 @@ class Instance {
     writeSwitches(this.dataDir, extra.find((e) => e.startsWith("ARCADIA_SWITCHES="))?.slice(19));
     const dyld = [markerLibrary(), ...(this.frames ? [framesLibrary(toolDir, here)] : []), ...opt.env.filter((e) => e.startsWith("DYLD_INSERT_LIBRARIES=")).map((e) => e.slice(22))].join(":");
     this.t0 = Date.now();
-    execFileSync("open", ["-g", "-n", "--env", "ARCADIA_BACKGROUND=1", "--env", `ARCADIA_DATA_DIR=${this.dataDir}`,
-      "--env", `ARCADIA_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `ARCADIA_UPDATE_FEED_URL=${this.feed}`,
-      "--env", `DYLD_INSERT_LIBRARIES=${dyld}`, ...extra.flatMap((e) => ["--env", e]), this.app,
+    const env = appEnv(this.app, {
+      ARCADIA_BACKGROUND: "1", ARCADIA_DATA_DIR: this.dataDir, ARCADIA_REMOTE_DEBUGGING_PORT: String(this.port),
+      ARCADIA_UPDATE_FEED_URL: this.feed, DYLD_INSERT_LIBRARIES: dyld,
+      ...Object.fromEntries(extra.map((e) => [e.slice(0, e.indexOf("=")), e.slice(e.indexOf("=") + 1)])),
+    });
+    execFileSync("open", ["-g", "-n", ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]), this.app,
       // App Nap would stretch the hidden instance's timers (a tab switch after a quiet minute took seconds).
       // BENCH_ALLOW_APP_NAP=1 leaves it on: the control for the App Nap check in the table. --mute-audio: builds
       // before b7899c26 (0.2.21, whose CEF takes its switches from the command line) aren't muted on their own.

@@ -9,19 +9,30 @@
 # bundle), and the copy must end up identical to the new build, sealed. What the test copies can't show, the real
 # identity (the bundle id, the designated requirement, the release key's signature of the zip), smoke.sh checks on
 # the real files. Never touches /Applications, and never launches either app.
+#
+# Across the rename (a previous build with another bundle id: 0.2.32 was com.netnyahoo.browser) the copies keep that
+# difference: the new copy gets a test id of its own, so its signature doesn't match the old copy's designated
+# requirement, as the real builds' don't, and Sparkle must accept it on the EdDSA signature. The installed copy keeps
+# the previous build's file name and the zip's folder is named as release.sh names it, so Sparkle has to find the
+# new app the way it will on people's Macs.
 set -euo pipefail
 
 old="${1:?usage: update-test.sh <previous app> <new app> <appcast.xml> <version>}"
 new="${2:?}" appcast="${3:?}" version="${4:?}"
 here="$(cd "$(dirname "$0")" && pwd)"
 test_id="com.arcadia.browser.updatetest"
+new_test_id="$test_id"
+[ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$old/Contents/Info.plist")" = \
+  "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$new/Contents/Info.plist")" ] || new_test_id="$test_id.renamed"
 port="${UPDATE_TEST_PORT:-8796}"
 work="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/ac-update-test.XXXXXX")" && pwd -P)"
 server=""
 cleanup() {
   [ -n "$server" ] && { kill "$server"; wait "$server"; } 2>/dev/null || true
-  defaults delete "$test_id" >/dev/null 2>&1 || true
-  rm -f "$HOME/Library/Preferences/$test_id.plist"
+  for id in "$test_id" "$new_test_id"; do
+    defaults delete "$id" >/dev/null 2>&1 || true
+    rm -f "$HOME/Library/Preferences/$id.plist"
+  done
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -34,25 +45,31 @@ public_key="$("$work/ed25519" generate "$work/key")"
 # and the host tool are signed with the team's Apple Development identity (the one Debug builds use).
 identity="$(security find-identity -v -p codesigning | awk '/"Apple Development/ { print $2; exit }')"
 [ -n "$identity" ] || { echo "error: no Apple Development identity to sign the test copies with" >&2; exit 1; }
-retag() { # app: the test bundle id and key, re-signed (without the entitlements; neither copy is launched)
-  plist -c "Set :CFBundleIdentifier $test_id" -c "Set :SUPublicEDKey $public_key" "$1/Contents/Info.plist"
+retag() { # app id: the test bundle id and key, re-signed (without the entitlements; neither copy is launched)
+  plist -c "Set :CFBundleIdentifier $2" -c "Set :SUPublicEDKey $public_key" "$1/Contents/Info.plist"
   codesign --force --deep --timestamp=none --sign "$identity" "$1" 2>/dev/null
 }
+# The installed copy has the previous build's file name; the zip's folder has the name release.sh gives it (the
+# pre-rename one, which Sparkle on copies from before the rename looks for).
+installed_name="$(basename "$old")"
+root="$(git -C "$here" rev-parse --show-toplevel)"
+zip_name="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyMigration.swift")"
+[[ "$zip_name" == *.app ]] || { echo "error: can't read the legacy app name from LegacyMigration.swift" >&2; exit 1; }
 mkdir -p "$work/installed" "$work/new" "$work/feed" "$work/home"
-ditto "$old" "$work/installed/Arcadia.app"
-ditto "$new" "$work/new/Arcadia.app"
-retag "$work/installed/Arcadia.app"
-retag "$work/new/Arcadia.app"
+ditto "$old" "$work/installed/$installed_name"
+ditto "$new" "$work/new/$zip_name"
+retag "$work/installed/$installed_name" "$test_id"
+retag "$work/new/$zip_name" "$new_test_id"
 # The Sparkle that runs the update is the one in the copy people have (built against the pod's headers, which the
 # exported framework doesn't carry).
 ditto "$old/Contents/Frameworks/Sparkle.framework" "$work/fw/Sparkle.framework"
-pods="$(git -C "$here" rev-parse --show-toplevel)/apps/browser/macos/Pods/Sparkle"
+pods="$root/apps/browser/macos/Pods/Sparkle"
 swiftc -O "$here/sparkle-host.swift" -F "$pods" -framework Sparkle -Xlinker -rpath -Xlinker "$work/fw" \
   -o "$work/sparkle-host" 2>"$work/swiftc.log" || { cat "$work/swiftc.log" >&2; exit 1; }
 codesign --force --timestamp=none --sign "$identity" "$work/sparkle-host" 2>/dev/null
 
 zip="$work/feed/Arcadia-$version.zip"
-ditto -c -k --keepParent "$work/new/Arcadia.app" "$zip"
+ditto -c -k --keepParent "$work/new/$zip_name" "$zip"
 signature="$("$work/ed25519" sign "$zip" "$work/key")"
 # The release appcast's item for this version, pointed at the local zip.
 python3 - "$appcast" "$version" "http://127.0.0.1:$port/$(basename "$zip")" "$(stat -f %z "$zip")" "$signature" > "$work/feed/appcast.xml" <<'PY'
@@ -77,16 +94,18 @@ python3 -m http.server "$port" --bind 127.0.0.1 --directory "$work/feed" >/dev/n
 server=$!
 sleep 1
 
-from="$(plist -c "Print :CFBundleShortVersionString" "$work/installed/Arcadia.app/Contents/Info.plist")"
-HOME="$work/home" CFFIXED_USER_HOME="$work/home" timeout 300 "$work/sparkle-host" "$work/installed/Arcadia.app" \
+installed="$work/installed/$installed_name"
+from="$(plist -c "Print :CFBundleShortVersionString" "$installed/Contents/Info.plist")"
+HOME="$work/home" CFFIXED_USER_HOME="$work/home" timeout 300 "$work/sparkle-host" "$installed" \
   "http://127.0.0.1:$port/appcast.xml" "$version" > "$work/sparkle.log" 2>&1 \
   || { sed 's/^/      /' "$work/sparkle.log"; fail "Sparkle didn't install it"; }
 sed 's/^/      /' "$work/sparkle.log"
-installed="$work/installed/Arcadia.app"
 codesign --verify --deep --strict "$installed" 2>/dev/null || fail "the installed bundle isn't sealed"
 # Every file, symlink and mode the new build has, and nothing else (the old bundle's CEF framework and helpers gone).
-mtree -c -k type,mode,link,size,sha256digest -p "$work/new/Arcadia.app" > "$work/new.mtree"
+mtree -c -k type,mode,link,size,sha256digest -p "$work/new/$zip_name" > "$work/new.mtree"
 differences="$(mtree -p "$installed" -f "$work/new.mtree" 2>&1 | head -5 || true)"
 [ -z "$differences" ] || fail "the installed bundle differs from the new build: $differences"
-ls "$work/installed" | grep -qv '^Arcadia.app$' && fail "left beside it: $(ls "$work/installed" | tr '\n' ' ')"
-echo "PASS  Sparkle on $from updates a copy in place to $version (feed, EdDSA, extraction, installer; the bundle is the new build's, sealed)"
+ls "$work/installed" | grep -qvxF "$installed_name" && fail "left beside it: $(ls "$work/installed" | tr '\n' ' ')"
+renamed=""
+[ "$new_test_id" = "$test_id" ] || renamed="; across the bundle id change, on the EdDSA signature"
+echo "PASS  Sparkle on $from updates a copy in place to $version (feed, EdDSA, extraction, installer; the bundle is the new build's, sealed$renamed)"

@@ -24,7 +24,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
 import { createServer as createNetServer } from "node:net";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -82,6 +82,14 @@ export const isAlive = (pid) => { try { process.kill(pid, 0); return true; } cat
 /** The app bundle's main executable. */
 export const binaryOf = (app) => join(app, "Contents/MacOS",
   execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", join(app, "Contents/Info.plist")]).toString().trim());
+/** Environment for `open --env`: builds from before the rename (0.2.32 and earlier, executable Netnyahoo) read every
+ * ARCADIA_ variable under its old NETNYAHOO_ name, so they get both. Without them such a build starts visible, on its
+ * real data folder. */
+export const appEnv = (app, env) => {
+  if (basename(binaryOf(app)) !== "Netnyahoo") return env;
+  const legacy = Object.fromEntries(Object.entries(env).filter(([k]) => k.startsWith("ARCADIA_")).map(([k, v]) => [`NETNYAHOO_${k.slice(8)}`, v]));
+  return { ...env, ...legacy };
+};
 /** The app's windows on screen (CoreGraphics' numbers, layer 0), for screencapture -l. */
 export const onScreenWindows = (pid) => JSON.parse(execFileSync("osascript", ["-l", "JavaScript", "-e",
   `ObjC.import("CoreGraphics"); JSON.stringify(ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)))
@@ -380,12 +388,12 @@ export async function launch(app, opts = {}) {
   }
   const location = jsMode === "pinned" ? `localhost:${js.port}` : jsMode === "live" ? `localhost:${metroPort}` : jsMode === "none" ? null : jsMode;
   const switches = [opts.switches].flat().filter(Boolean).join(" ");
-  const env = {
+  const env = appEnv(app, {
     ARCADIA_BACKGROUND: "1", ARCADIA_DATA_DIR: data, ARCADIA_REMOTE_DEBUGGING_PORT: String(port),
     ...(location ? { ARCADIA_JS_LOCATION: location } : {}),
     ...(switches ? { ARCADIA_CHROMIUM_SWITCHES: switches } : {}),
     ...opts.env,
-  };
+  });
   const log = resolve(opts.log ?? join(data, "app.out.log"));
   const before = binaryPids(binary);
   const launchedAt = Date.now();

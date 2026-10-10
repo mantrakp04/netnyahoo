@@ -9,7 +9,10 @@
 # - the engine is ArcadiaCore (Chrome's framework, no CEF);
 # - Sparkle on <previous> would install it in place: same bundle id, executable, feed and EdDSA key, it satisfies
 #   <previous>'s designated requirement (Sparkle's code-signing check, and what the keychain and TCC trust), a higher
-#   build number, and the appcast's signature of the zip verifies with that key;
+#   build number, and the appcast's signature of the zip verifies with that key. Across the rename (<previous> is
+#   still com.netnyahoo.browser) the bundle id and executable change on purpose: then the feed and EdDSA key must stay,
+#   the designated requirement must hold under the new id (same team and certificate), and Sparkle accepts the new
+#   identity on the unchanged key (update-test.sh shows it does);
 # - Gatekeeper accepts the app and the DMG as notarized and stapled;
 # - update-test.sh: <previous>'s Sparkle really updates a copy to this build (test copies, a local feed);
 # - carryover.sh: <previous>'s data, where an installed copy keeps it, opens in this build with nothing converted.
@@ -28,7 +31,9 @@ root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 here="$(cd "$(dirname "$0")" && pwd)"
 if [ "${3:-}" = --rc ]; then dist="$root/dist/$version-rc"; else dist="$root/dist/$version"; fi
 app="${SMOKE_APP:-$dist/export/Arcadia.app}"
-old="$root/dist/$previous/export/Arcadia.app"
+# <previous>'s export, whatever it was called (0.2.32 and earlier: Netnyahoo.app).
+old="$(ls -d "$root/dist/$previous/export"/*.app 2>/dev/null | head -1)"
+old="${old:-$root/dist/$previous/export/Arcadia.app}"
 port="${SMOKE_CDP_PORT:-9398}"
 pages_port="${SMOKE_PAGES_PORT:-8798}"
 [ -d "$app" ] || { echo "error: no $app (run scripts/release.sh $version first)" >&2; exit 1; }
@@ -63,14 +68,31 @@ fw="$app/Contents/Frameworks"
 check "the engine is ArcadiaCore (Chrome's framework, no CEF)" $ok \
   "$(plutil -extract CFBundleShortVersionString raw "$fw/Chromium Framework.framework/Resources/Info.plist" 2>/dev/null)"
 if [ -d "$old" ]; then
+  legacy_id="$(sed -n 's/^ *public static let bundleId = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyMigration.swift")"
+  old_id="$(info "$old" CFBundleIdentifier)" new_id="$(info "$app" CFBundleIdentifier)"
+  renamed=0
+  [ -n "$legacy_id" ] && [ "$old_id" = "$legacy_id" ] && [ "$new_id" != "$legacy_id" ] && renamed=1
+  if [ "$renamed" = 1 ]; then
+    echo "      renamed: $old_id → $new_id, $(info "$old" CFBundleExecutable) → $(info "$app" CFBundleExecutable)"
+    keys="SUFeedURL SUPublicEDKey" what="same feed and update key as $previous (the rename keeps them)"
+  else
+    keys="CFBundleIdentifier CFBundleExecutable SUFeedURL SUPublicEDKey" what="same bundle id, executable, feed and update key as $previous"
+  fi
   same=1
-  for key in CFBundleIdentifier CFBundleExecutable SUFeedURL SUPublicEDKey; do
+  for key in $keys; do
     [ "$(info "$app" $key)" = "$(info "$old" $key)" ] || { same=0; echo "      $key: $(info "$old" $key) → $(info "$app" $key)"; }
   done
-  check "same bundle id, executable, feed and update key as $previous" $same
+  check "$what" $same
   old_dr="$(codesign -d -r- "$old" 2>&1 | sed -n 's/^designated => //p')"
-  codesign --verify -R="$old_dr" "$app" 2>"$work/dr.log" && ok=1 || ok=0
-  check "satisfies $previous's designated requirement (Sparkle, the keychain and TCC trust it)" $ok "$(head -c 160 "$work/dr.log")"
+  if [ "$renamed" = 1 ]; then
+    # The keychain and TCC see a new app; what carries over is the team and certificate, under the new id.
+    old_dr="${old_dr//\"$old_id\"/\"$new_id\"}"
+    codesign --verify -R="$old_dr" "$app" 2>"$work/dr.log" && ok=1 || ok=0
+    check "satisfies $previous's designated requirement under the new bundle id (same team and certificate)" $ok "$(head -c 160 "$work/dr.log")"
+  else
+    codesign --verify -R="$old_dr" "$app" 2>"$work/dr.log" && ok=1 || ok=0
+    check "satisfies $previous's designated requirement (Sparkle, the keychain and TCC trust it)" $ok "$(head -c 160 "$work/dr.log")"
+  fi
   [ "$(info "$app" CFBundleVersion)" -gt "$(info "$old" CFBundleVersion)" ] && ok=1 || ok=0
   check "build number above $previous's" $ok "$(info "$old" CFBundleVersion) → $(info "$app" CFBundleVersion)"
 else

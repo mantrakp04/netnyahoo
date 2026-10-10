@@ -56,6 +56,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, stat
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { appEnv, binaryOf } from "../../../../scripts/lib/instance.mjs";
 import { writeSeed } from "./seed.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -263,17 +264,16 @@ export function writeSwitches(dataDir, text) {
 
 export async function launch(app, dataDir, port) {
   // realpath: ps shows the resolved path (/private/var/… for a clone under tmpdir()'s /var/…).
-  const binary = join(realpathSync(app), "Contents/MacOS/Arcadia");
+  const binary = binaryOf(realpathSync(app));
   writeSwitches(dataDir, process.env.ARCADIA_SWITCHES);
   if (pidsOf(binary).length) throw new Error(`an instance of ${app} is already running`);
   const launchedAt = Date.now();
-  execFileSync("open", [
-    "-g", "-n", "--env", "ARCADIA_BACKGROUND=1", "--env", `ARCADIA_DATA_DIR=${dataDir}`,
-    "--env", `ARCADIA_REMOTE_DEBUGGING_PORT=${port}`,
+  const env = appEnv(app, {
+    ARCADIA_BACKGROUND: "1", ARCADIA_DATA_DIR: dataDir, ARCADIA_REMOTE_DEBUGGING_PORT: String(port),
     // Kill switches for this run (docs/kill-switches.md): ARCADIA_SWITCHES=name=off node ratchet.mjs run …
-    ...(process.env.ARCADIA_SWITCHES ? ["--env", `ARCADIA_SWITCHES=${process.env.ARCADIA_SWITCHES}`] : []),
-    app,
-  ]);
+    ...(process.env.ARCADIA_SWITCHES ? { ARCADIA_SWITCHES: process.env.ARCADIA_SWITCHES } : {}),
+  });
+  execFileSync("open", ["-g", "-n", ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]), app]);
   for (let i = 0; i < 200; i++) {
     const [pid] = pidsOf(binary);
     if (pid) return { pid, launchedAt };
