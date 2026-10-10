@@ -442,7 +442,7 @@ Added lines are counted as `+` lines in the patch. "Fork" is what happens to eac
 | `cef-zz-quiet-uninstall` | +4 | 1 | Marker | Plumbing | Gone |
 | `chromium-zz-pip-dia-controls` | +484/-71 | 13 | Dia's PiP controls and motion | Our feature | **Stays**: move into new files |
 | `chromium-chrome-ui-hooks` | +86/-1 | 4 | Device chooser, Cast and side panel ask the client | Hooks | Becomes our seam implementation |
-| `chromium-neterror-mascot` | +71/-2 | 5 | The mascot offline page | Our feature | Stays |
+| `chromium-neterror-game` | +71/-2 | 5 | The offline game page | Our feature | Stays |
 | `chromium-webview-native-hosted` | +62/-1 | 4 | `views::WebView` must not attach our tabs | Fighting `BrowserView` | Gone (no `BrowserView`) |
 | `chromium-window-hosted` | +55 | 5 | RN root inside `BridgedContentView`; Browser survives with no tabs | Fighting CEF's window model | Gone |
 | `chromium-zz-extension-installed-bubble` | +44 | 3 | "Added" bubble without a toolbar | No toolbar | Our `ExtensionsContainer` |
