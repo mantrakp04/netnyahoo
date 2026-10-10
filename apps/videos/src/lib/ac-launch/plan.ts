@@ -52,7 +52,7 @@ export interface Shot {
   beats: number;
   type: TypeLayer[];
   window?: WindowLayer;
-  /** More placed things in the shot (the mascot, the app icon), each a Studio object with a box. */
+  /** More placed things in the shot (the painted mark, the sun, the app icon), each a Studio object with a box. */
   extra?: WindowLayer[];
   /** Beats of the shot's own timeline skipped (a teaser reuses a later part of a hero shot). */
   skip?: number;
@@ -85,16 +85,18 @@ const DOCK: Record<Aspect, Box> = { land: [80, 950, 1760, 72], port: [60, 470, 8
 // Beside the sidebar column (which carries the swipe), never over it.
 const PLATE: Record<Aspect, Box> = { land: [560, 40, 1100, 170], port: [60, 230, 880, 200] };
 const BIG_PLATE_BOX: Record<Aspect, Box> = { land: [700, 40, 1140, 170], port: [60, 230, 880, 200] };
-const MASCOT = (id: string, land: Box, port: Box): WindowLayer => ({ id, box: { land, port } });
+/** Arcadia's painted logo (hills and sun, Mark.tsx), placed: its box is fitted to the painting, standing on the floor. */
+const PLACED = (id: string, land: Box, port: Box): WindowLayer => ({ id, box: { land, port } });
 
 // ---------------------------------------------------------------------------------------------- the hero cut
 
 const nags: Shot = {
   id: "nags", kind: "nags", at: 0, beats: 8, window: win("nags-window", { land: [300, 270, 1320, 825], port: [40, 700, 1500, 938] }),
   extra: [
-    MASCOT("nags-mascot", [1300, 280, 640, 780], [240, 900, 600, 580]),
-    // He pops out from behind the window (right edge in 16:9, top edge in 9:16) to cheer the first NO.
-    MASCOT("nags-mascot-peek", [1270, 40, 340, 400], [580, 220, 360, 420]),
+    // The hills rise beside the pile on the roll, and shove it off on the drop (title).
+    PLACED("nags-mark", [1250, 560, 640, 483], [300, 1010, 560, 422]),
+    // The sun peeks up from behind the window's top edge and glints on the first NO.
+    PLACED("nags-sun", [1270, 40, 340, 400], [580, 220, 360, 420]),
   ],
   type: [
     // Bar 1: four stabs, one ask each, over a site really asking it in a Arcadia window (scenes/asks.js).
@@ -106,7 +108,7 @@ const nags: Shot = {
     T("nag-no-1", "NO.", 0.5, "stamp", 150, [690, 600, 540, 240], [300, 960, 480, 220], { out: 1, rotation: -8, color: P.red, portSize: 130 }),
     T("nag-no-2", "NO.", 1.5, "stamp", 150, [700, 470, 540, 240], [300, 960, 480, 220], { out: 2, rotation: 6, color: P.red, portSize: 130 }),
     T("nag-no-3", "NO.", 2.5, "stamp", 150, [690, 480, 540, 240], [300, 960, 480, 220], { out: 3, rotation: -4, color: P.red, portSize: 130 }),
-    // Bar 2: the snare roll. The asks stamp down on the browser, each still readable, until the mascot swats them off.
+    // Bar 2: the snare roll. The asks stamp down on the browser, each still readable, until the hills shove them off.
     T("nag-pile-1", "SIGN IN TO SYNC", 4, "stamp", 86, [180, 270, 760, 150], [60, 250, 820, 130], { out: 8, rotation: -6, portSize: 70 }),
     T("nag-pile-2", "MEET YOUR AI COPILOT", 5, "stamp", 86, [440, 380, 820, 150], [120, 420, 820, 130], { out: 8, rotation: 4, color: P.blue, portSize: 62 }),
     T("nag-pile-3", "ACCEPT ALL COOKIES", 6, "stamp", 86, [140, 590, 820, 150], [60, 590, 820, 130], { out: 8, rotation: -3, color: P.red, portSize: 64 }),
@@ -116,7 +118,7 @@ const nags: Shot = {
 
 const title: Shot = {
   id: "title", kind: "title", at: 8, beats: 4, window: win("title-window", { land: [360, 340, 1200, 750], port: [40, 760, 1500, 938] }),
-  extra: [MASCOT("title-mascot", [1300, 280, 640, 780], [240, 900, 600, 580])],
+  extra: [PLACED("title-mark", [1250, 560, 640, 483], [300, 1010, 560, 422])],
   type: [
     T("title-name", "ARCADIA", 0, "slam", 230, [80, 20, 1760, 215], [60, 230, 880, 300], { align: "center", portSize: 240 }),
     T("title-what", "THE SIDEBAR BROWSER FOR MAC", 1, "slam", 64, [80, 250, 1760, 70], [60, 540, 880, 150], { align: "center", color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
@@ -145,7 +147,8 @@ const swipe: Shot = {
 
 const split: Shot = {
   id: "split", kind: "split", at: 26, beats: 8, window: win("split-window"),
-  extra: [MASCOT("split-mascot", [1380, 650, 520, 520], [500, 1010, 480, 500])],
+  // The hills and sun peek up over the bottom edge for "NO COALITION TALKS.".
+  extra: [PLACED("split-mark", [1360, 770, 500, 400], [520, 1150, 420, 340])],
   type: [
     T("split-two", "TWO PAGES.", 0, "slam", 140, TOP.land, TOP.port, { out: 5, color: paper, fill: ink }),
     T("split-coalition", "NO COALITION TALKS.", 5, "slam", 140, TOP.land, TOP.port, { color: paper, fill: P.red, portText: "NO COALITION\nTALKS." }),
@@ -194,7 +197,7 @@ const icons: Shot = {
   id: "icons", kind: "icons", at: 64, beats: 4, window: win("icons-window", { land: [394, 120, 1132, 884], port: [40, 700, 1500, 1171] }),
   type: [
     T("icons-seven", "SEVEN APP ICONS.", 1, "slam", 140, [80, 860, 1760, 170], [60, 1190, 880, 280], { out: 2.5, color: paper, fill: ink, portText: "SEVEN\nAPP ICONS." }),
-    T("icons-one", "ONE FACE.", 2.5, "slam", 140, [80, 860, 1760, 170], [60, 1190, 880, 280], { color: paper, fill: P.red }),
+    T("icons-one", "ONE LANDSLIDE.", 2.5, "slam", 140, [80, 860, 1760, 170], [60, 1190, 880, 280], { color: paper, fill: P.red, portText: "ONE\nLANDSLIDE." }),
   ],
 };
 
@@ -210,11 +213,12 @@ const nos: Shot = {
 
 const typing: Shot = { id: "typing", kind: "typing", at: 72, beats: 8, window: win("typing-window"), type: [] };
 
-/** The end: "FULL IMMUNITY." on the hit, then the lockup (icon, name, download, URL, source) with the mascot dancing. */
+/** The end: "FULL IMMUNITY." on the hit as the sun rises over the hills, then the lockup (icon, name, download, URL,
+ * source) with the sun hopping on the march taps and leaping on the button. */
 const endShot = (at: number, beats: number, lockup: number, button: number): Shot => ({
   id: "end", kind: "end", at, beats, marks: { lockup, button },
   extra: [
-    MASCOT("end-mascot", [1240, 200, 640, 820], [110, 740, 860, 740]),
+    PLACED("end-mark", [1140, 280, 700, 528], [300, 990, 600, 452]),
     { id: "end-icon", box: { land: [80, 220, 180, 180], port: [60, 240, 150, 150] } },
   ],
   type: [

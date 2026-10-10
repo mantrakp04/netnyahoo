@@ -27,14 +27,16 @@ Two caveats for delivery:
 Every other browser asks for something. Four brass stabs carry "SIGN IN. / TRY AI. / ACCEPT ALL. / UPGRADE.",
 each over a site interrupting you in a real Arcadia window: a login wall sliding up, an AI copilot panel sliding
 in over an article, a cookie wall, an "upgrade to keep typing" modal, with a pointer heading for each button. Then
-the asks get stamped onto it on a snare roll. The mascot rises behind the
-pile and swats it off as "ARCADIA — THE SIDEBAR BROWSER FOR MAC" lands, then stamps "ASKS FOR NOTHING."
+the asks get stamped onto it on a snare roll. Arcadia's painted hills (the logo) rise beside the pile, lean back
+and shove it off on the drop, and the sun rises over them as "ARCADIA — THE SIDEBAR BROWSER FOR MAC" lands,
+glinting as "ASKS FOR NOTHING." is stamped. (The sun has already peeked over the window to cheer the first NO.)
 
 The product follows, live:
 - clicking down the tabs and scrolling a page;
 - the profile swipe (Personal → Work → Campaign → Side Project), each profile's name and colour switching on the
   frame its page changes;
-- split view with the divider dragged, the mascot popping up for "NO COALITION TALKS.";
+- split view with the divider dragged, the hills peeking up over the bottom edge and the sun springing up for
+  "NO COALITION TALKS.";
 - the built-in blocker switched off and on, its count climbing;
 - "IT'S ACTUALLY CHROMIUM.".
 
@@ -42,11 +44,11 @@ The window waits on the stock's colour, two fingers settle on a trackpad, the fi
 true silence, and the page change *is* drop B: five profiles in eight beats, each named on the frame it lands, the
 paper taking each profile's colour. Then:
 - "ANY CHROME EXTENSION." with "NO THANKS." stamped on Chrome's own prompt;
-- "SEVEN APP ICONS. ONE FACE.";
+- "SEVEN APP ICONS. ONE LANDSLIDE." (the seven painted icon variants, from Settings › Appearance);
 - four "NO" cards;
 - netnyahoo.com typed into the address bar, the camera diving into the site's "Full immunity.";
-- the end card: the icon, the name, DOWNLOAD FOR MAC / NETNYAHOO.COM and the GitHub address, with the mascot doing the
-  griddy and landing a flex on the last brass button.
+- the end card: the icon, the name, DOWNLOAD FOR MAC / NETNYAHOO.COM and the GitHub address, beside the painted mark:
+  the sun rises over the hills on the hit, hops on the three march taps and leaps on the last brass button, glowing.
 
 The film uses about 80 words on screen. The type is the site's poster system on warm stock: Archivo, Newsreader and
 Martian Mono, with the tie's blue and the stamp's red.
@@ -59,12 +61,12 @@ Martian Mono, with the tie's blue and the stamp's red.
   aspects. It has no imports. Portrait keeps everything that matters inside y 220–1480 and x 60–940, clear of
   Reels, TikTok and Shorts captions.
 - `shots.tsx` has one component per shot: camera moves and cuts, footage frame choice, swipes timed so each page
-  change lands on its beat, the pointer, and the mascot.
+  change lands on its beat, the pointer, and the logo's moves.
 - `kit.tsx` has the window (real footage, the macOS corner and shadow, a camera that can aim a window's corner at
   the frame, and motion blur used only on the dive), the pointer, the trackpad glyph, the type styles, the springs
   and the paper.
-- `Mascot3D.tsx` renders the site's rigged the mascot with three.js, pure in time. `remotion.config.ts` enables ANGLE
-  for WebGL.
+- `Mark.tsx` draws the logo (docs/brand/arcadia): the hills and the sun as two layers cut from the same painting, so
+  the sun can rise from behind the hills, hop and glow while the hills rise, lean and shove. Pure in time.
 - `Film.tsx` places the shots on the beat grid and plays the score. `footage.json` indexes the captured frames;
   `scripts/capture/composite.py` writes it.
 
@@ -82,11 +84,11 @@ declares that a document lacks. It keeps existing values, removals and operation
 
 ## Recreating the media (not in git)
 
-`public/footage`, `public/music`, `public/fonts`, `public/brand`, `public/models` and `.capture` are gitignored. To rebuild them:
+`public/footage`, `public/music`, `public/fonts`, `public/brand` and `.capture` are gitignored. To rebuild them:
 
 ```bash
 cd apps/videos
-scripts/prepare-assets.sh          # fonts, the mascot's model, the app icon, macOS pointers (AppKit)
+scripts/prepare-assets.sh          # fonts, the logo (app icon, mark, its sun and hills), macOS pointers (AppKit)
 python3 scripts/capture/sites/fetch-images.py   # CC0 / public-domain photos for the stand-in sites
 scripts/music/fetch-samples.sh     # the CC0 samples (public/music/samples)
 python3 scripts/music/score.py     # public/music/launch.wav, teaser.wav (numpy + scipy)
@@ -143,11 +145,12 @@ is captured in-process, frame by frame:
     repainted) are skipped.
   - The traffic lights are AppKit's own buttons, drawn offscreen as an active window (`lights.swift`). The
     pointer is AppKit's `NSCursor` artwork (`cursor.swift`).
-- **the mascot** is drawn as a printed illustration: three-tone toon shading over his own colours (the scan's texture
-  smoothed and flattened), a fine ink outline (three.js `OutlineEffect`) and a contact shadow. On the netnyahoo.com
-  frames the site's own glossy render is covered with this one, so the film shows one the mascot; the site itself is
-  untouched. The model is the site's rigged one (`apps/site/public/models/big-mascot.glb`, clips "Griddy" and "Default
-  Dance"), rendered in the film.
+- **The netnyahoo.com frames** were captured (2026-10-03) while the site still showed the old mascot. The film brings
+  them up to date in place (`SiteLogo` in `shots.tsx`): the hero figure becomes the painted logo with its "LANDSLIDE"
+  stamp and caption, laid out as `apps/site/src/components/Hero.astro` lays them out, and the header icon and the
+  tab's favicon become the painted app icon. Recapturing `typing` once the new site is live makes this unnecessary.
+- **The app icons** (`windows`, label "appearance", and the end card's cycle) were recaptured on 2026-10-10 from the
+  Debug build with the painted logo.
 - **Not captured:** the sidebar's translucency over the desktop. It needs a WindowServer capture.
 
 ## Music and sound
@@ -183,7 +186,7 @@ To recreate the audio:
 3. `python3 scripts/music/analyze.py` measures the result.
 
 Other assets: the fonts are Archivo, Newsreader and Martian Mono (SIL Open Font License, via apps/site's
-Fontsource packages). The mascot and the app icon are the project's own. The pages shown are public sites as they
+Fontsource packages). The logo and the app icon are the project's own. The pages shown are public sites as they
 appeared on 2026-10-03.
 
 ## Checking a render

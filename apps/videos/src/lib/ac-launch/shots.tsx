@@ -1,21 +1,17 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { AbsoluteFill, Img, interpolateColors, random, staticFile } from "remotion";
 import { useStudioObject } from "../studio-objects-v6";
 import {
-  type Cam, type CamKey, camAt, clamp, easeIn, easeInOut, Fingers, frameOf, Grain, kick, mix, Paper, pointerAt, REST, SCENES,
+  type Cam, type CamKey, camAt, clamp, easeIn, easeInOut, easeOut, Fingers, frameOf, Grain, kick, mix, Paper, pointerAt, REST, SCENES,
   seg, springAt, Supers, useAspect, useBeat, useShake, useShot, Window,
 } from "./kit";
 import { BEAT, CUTS, LAND, type ShotKind } from "./plan";
 import { color, font, swatch } from "./theme";
-import { type Clip, type Framing, Mascot3D } from "./Mascot3D";
+import { Mark, SunPeek } from "./Mark";
 
 /** A window shown whole: in portrait, centred under the type (inside the safe zone, y 220–1480). */
 const wideCam = (port: boolean, bump = 0): Cam =>
   port ? { ...REST, zoom: 0.62 * (1 + bump), fx: 0.5, fy: 0.5, aim: 1, ax: 0.5, ay: 0.56 } : { ...REST, zoom: 0.86 * (1 + bump), fx: 0.5, dy: 60 };
-
-// the mascot's poses, as times in his "Default Dance" clip (seconds): hands steepled at the chest (his opening and
-// resting pose), arms swept out (the swat), both arms up (the flex).
-const POSE = { steeple: 2.2, swept: 1.8, flex: 2.6 };
 
 function useCam(keys: CamKey[]): { cam: Cam; prev: Cam } {
   const b = useBeat();
@@ -111,44 +107,13 @@ const Shake = ({ hits, amount, children }: { hits: number[]; amount?: number; ch
 
 const SEC = BEAT / 30; // seconds in a beat
 
-// ---------------------------------------------------------------------------------------------- the mascot
-
-/**
- * The mascot in his Studio box, rendered from his rig at a time of one clip. `rise` (0–1) brings him up from below the
- * frame; `squash` (a decaying kick) squashes and stretches him on a landing.
- */
-function Mascot({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full", from, fade: fadeOn = true, lift = 0 }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number; framing?: Framing; from?: { x: number; y: number }; fade?: boolean; lift?: number }) {
-  const object = useStudioObject(id);
-  const port = useAspect() === "port";
-  // In portrait the frame's floor is the safe zone's (y 1480), with captions below: he pops up a short way and fades
-  // in there, instead of rising from below the frame.
-  const travel = port ? 0.18 : 1.1;
-  const h = object.number("height");
-  const geometry = object.geometry(
-    { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
-    // A spring may overshoot; the rise never lifts him above his box (that would show the canvas's cut edge).
-    // `from`: where he slides in from, in box sizes (e.g. from behind a window edge); default, up from below.
-    { offset: from ? { x: (1 - Math.min(1, rise)) * object.number("width") * from.x, y: (1 - Math.min(1, rise)) * h * from.y - lift } : { y: (1 - Math.min(1, rise)) * h * travel - lift } },
-  );
-  if (rise <= 0.001) return null;
-  // A head-and-shoulders render ends mid-torso: fade its lower part out, so it reads as rising from behind.
-  const fade = framing === "bust" && fadeOn ? { maskImage: "linear-gradient(to bottom, black 70%, transparent 96%)", WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 96%)" } : {};
-  return (
-    <div {...object.bind} {...geometry.bind} style={{ ...geometry.style, ...fade, opacity: port && !from ? Math.min(1, rise * 1.5) : 1 }}>
-      <div style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", transform: `scale(${1 + squash * 0.12}, ${1 - squash * 0.12})` }}>
-        <Mascot3D width={Math.round(object.number("width"))} height={Math.round(h)} clip={clip} time={Math.max(0, time)} yaw={yaw} framing={framing} />
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------------------------- the hook
 
 // Each stab cuts to a stand-in site interrupting you in a Arcadia window (scenes/asks.js, sites/*.example): the
 // interruption plays in on the stab, a frame of the page per film frame, and a pointer heads for its button.
 const ASK_NAMES = ["signin", "ai", "cookies", "upgrade"];
-// The first ask's framing differs by aspect: in 16:9 the window sits low enough for the mascot to pop up over its top
-// edge; in 9:16 the window's top edge stays at y ~617, under the stab plate, where he pops up beside it.
+// The first ask's framing differs by aspect: in 16:9 the window sits low enough for the sun to peek up over its top
+// edge; in 9:16 the window's top edge stays at y ~617, under the stab plate, where it peeks up beside it.
 const ASK_CAM_0: Record<"land" | "port", Cam> = {
   land: { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.5, ay: 0.8 },
   port: { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.46, ay: 0.62 },
@@ -194,25 +159,25 @@ function Nags() {
   const askCam = k === 0 ? ASK_CAM_0[port ? "port" : "land"] : ASK_CAMS[k];
   const cam: Cam = b >= 3.45 && b < 4.45 ? joke : b < 4 ? askCam : { ...REST, zoom: 1 + 0.015 * knock };
   const index = b < 4 ? askFrame(b) : framesOf("asks", "ask:upgrade").slice(-1)[0];
-  // the mascot rises beside the pile, hands steepled; on the last eighth he sweeps his arms out (the swat lands on the drop).
+  // The hills rise beside the pile on the pop (the sun still set behind them); on the whoosh they lean back, winding
+  // up, and the shove lands on the drop (Title).
   const rise = springAt(b, 7.1, { stiffness: 200, damping: 16 });
-  const swing = seg(b, 7.72, 0.28, easeIn);
+  const windup = seg(b, 7.72, 0.28, easeIn);
   return (
     <Paper>
       <Shake hits={[...stabs, ...piles]} amount={10}>
-        {/* He pops out from behind the window for the first stab (drawn behind it, so the window hides his body),
-            throws both arms up as the first NO. lands on its beat, and is gone before the cut. */}
+        {/* The sun peeks up from behind the window for the first stab (drawn behind it, so the window hides its lower
+            half), glints as the first NO. lands on its beat, and sinks back before the cut. */}
         {b < 1 ? (
-          <Mascot
-            id="nags-mascot-peek" clip="Default Dance" framing="bust" yaw={port ? 0.35 : -0.45}
-            from={{ x: 0, y: 0.8 }} fade={false}
-            time={mix(POSE.steeple, POSE.flex, seg(b, 0.28, 0.22, easeIn))}
-            rise={springAt(b, 0.02, { stiffness: 300, damping: 20 }) * (1 - seg(b, 0.55, 0.28, easeIn))}
+          <SunPeek
+            id={extraId("sun")}
+            up={springAt(b, 0.02, { stiffness: 300, damping: 20 }) * (1 - seg(b, 0.55, 0.28, easeIn))}
             squash={kick(b, 0.5, 0.2)}
+            glow={0.7 * seg(b, 0.45, 0.08) * (1 - seg(b, 0.6, 0.3))}
           />
         ) : null}
         <Window id={windowId()} scene="asks" index={index} cam={cam} pointer={askPointer(b)} />
-        <Mascot id={extraId("mascot")} clip="Default Dance" time={mix(POSE.steeple, 1.85, swing)} rise={rise} yaw={-0.25} />
+        <Mark id={extraId("mark")} pose={{ rise, sun: 0, dx: 36 * windup, lean: 5 * windup, squash: 0.3 * windup }} />
         <Supers />
       </Shake>
     </Paper>
@@ -221,12 +186,12 @@ function Nags() {
 
 const NAG_PILE = ["nag-pile-1", "nag-pile-2", "nag-pile-3", "nag-pile-4"];
 
-/** One of the hook's stamps, swatted off the window on the drop: thrown outward, spinning, falling. */
-function Swatted({ id, k }: { id: string; k: number }) {
+/** One of the hook's stamps, shoved off the window on the drop: thrown outward, spinning, falling. */
+function Shoved({ id, k }: { id: string; k: number }) {
   const b = useBeat();
   const t = Math.max(0, b * SEC); // seconds since the drop
   const object = useStudioObject(id);
-  // Swept off to the left, away from him: he stands on the right of the frame.
+  // Shoved off to the left, away from the hills: they stand on the right of the frame.
   // Fast, to the left and down: clear of the wordmark (top) within a quarter second.
   const vx = -(2600 + random(`vx${id}`) * 1200);
   const vy = 200 + random(`vy${id}`) * 500;
@@ -255,29 +220,47 @@ function Swatted({ id, k }: { id: string; k: number }) {
   );
 }
 
-/** The swat finishing (arms out), back to steepled, then both arms up as he stamps on beat 2. */
-function titlePose(b: number) {
-  if (b < 0.3) return mix(1.85, POSE.swept, seg(b, 0, 0.3));
-  if (b < 1.6) return mix(POSE.swept, POSE.steeple, seg(b, 0.3, 1.1, easeInOut));
-  return mix(POSE.steeple, POSE.flex, seg(b, 1.6, 0.4, easeIn));
+/**
+ * The shove, from the hook's wind-up (36 px back, leaning 5°): on the drop the hills lunge left into the pile, leaning
+ * in and stretched, then spring back to their place. Returns the pose's dx, lean and squash.
+ */
+function shove(b: number, reach: number) {
+  const lunge = seg(b, 0, 0.14, easeOut);
+  const back = springAt(b, 0.14, { stiffness: 170, damping: 13 });
+  return {
+    dx: mix(mix(36, -reach, lunge), 0, back),
+    lean: mix(mix(5, -8, lunge), 0, back),
+    squash: mix(mix(0.3, -0.35, lunge), 0, back),
+  };
 }
 
 function Title() {
   const b = useBeat();
   const shot = useShot();
+  const port = useAspect() === "port";
   // The window carries on from the hook, dropping to its title place as the name slams in.
   const settle = springAt(b, 0, { stiffness: 260, damping: 18 });
   const cam: Cam = { ...REST, dy: mix(-120, 0, settle), zoom: 1 + 0.02 * kick(b, 0, 0.3) + 0.03 * seg(b, 3, 1, easeInOut) };
-  // the mascot: on from the hook, slams the stamp on 2, ducks out at the end of the shot.
+  // The hills: on from the hook, they shove the pile off on the drop; the sun rises over them as the name lands, glints
+  // with the stamp on 2, and both sink out at the end of the shot.
   const out = seg(b, shot.beats - 0.7, 0.7, easeIn);
+  const mark = useStudioObject(extraId("mark"));
+  const push = shove(b, mark.number("width") * (port ? 0.35 : 0.45));
+  const sun = springAt(b, 0.2, { stiffness: 90, damping: 12 });
   return (
     <Paper>
       <Shake hits={[0, 2]} amount={14}>
         <Window id={windowId()} scene="tabs" index={tab(1)} cam={cam} />
         {NAG_PILE.map((id, k) => (
-          <Swatted key={id} id={id} k={k} />
+          <Shoved key={id} id={id} k={k} />
         ))}
-        <Mascot id={extraId("mascot")} clip="Default Dance" time={titlePose(b)} rise={1 - out} squash={kick(b, 2, 0.2)} yaw={-0.25} />
+        <Mark
+          id={extraId("mark")}
+          pose={{
+            rise: 1 - out, sun, dx: push.dx, lean: push.lean, squash: push.squash + kick(b, 2, 0.2) * 0.25,
+            sunSquash: kick(b, 2, 0.2), glow: 0.5 * seg(b, 0.6, 1) + 0.6 * Math.max(0, kick(b, 2, 0.45)),
+          }}
+        />
         <Supers />
       </Shake>
     </Paper>
@@ -366,11 +349,18 @@ function Split() {
   const pointer = b > DIVIDER.start - 0.4 && b < DIVIDER.end + 0.3
     ? { x: paneLeft + (1 - paneLeft) * share, y: 0.5, kind: "arrow" as const, press: b > DIVIDER.start && b < DIVIDER.end ? 1 : 0 }
     : null;
-  const mascotOn = springAt(b, 5, { stiffness: 230, damping: 14 }) * (1 - seg(b, 7.4, 0.6, easeIn));
+  // The hills peek up over the bottom edge on the pop, and the sun springs up over them for "NO COALITION TALKS.".
+  const markOn = springAt(b, 5, { stiffness: 230, damping: 14 }) * (1 - seg(b, 7.4, 0.6, easeIn));
   return (
     <Paper>
       <Window id={windowId()} scene="split" index={index} cam={cam} pointer={pointer} />
-      <Mascot id={extraId("mascot")} clip="Default Dance" time={mix(POSE.steeple, POSE.flex, seg(b, 5.2, 0.5))} rise={mascotOn} squash={kick(b, 5.3, 0.2)} yaw={-0.35} framing="bust" />
+      <Mark
+        id={extraId("mark")}
+        pose={{
+          rise: markOn, sun: springAt(b, 5.05, { stiffness: 240, damping: 15 }), sunSquash: kick(b, 5.3, 0.2),
+          glow: 0.55 * seg(b, 5.2, 0.4), squash: kick(b, 5.3, 0.2) * 0.2, fade: port,
+        }}
+      />
       <Shake hits={[0, 5]} amount={8}>
         <Supers />
       </Shake>
@@ -575,25 +565,55 @@ function Nos() {
   );
 }
 
-// netnyahoo.com's hero shows the old glossy render of the mascot. The film's the mascot is inked, so on the site frames
-// he is drawn over that spot (on the page's own paper), the site itself unchanged. Page fractions → window fractions.
-const PAGE = { x: 190, y: 47, w: 1243, h: 846 };
-const wx = (f: number) => ((PAGE.x + f * PAGE.w) / 1440) * 100;
-const wy = (f: number) => ((PAGE.y + f * PAGE.h) / 900) * 100;
-function SiteMascot({ width }: { width: number }) {
-  const rect = (x0: number, y0: number, x1: number, y1: number) => ({
-    position: "absolute" as const, left: `${wx(x0)}%`, top: `${wy(y0)}%`, width: `${wx(x1) - wx(x0)}%`, height: `${wy(y1) - wy(y0)}%`,
-  });
-  const box = { x0: 0.6, y0: 0.14, x1: 0.96, y1: 0.76 };
-  const pw = Math.round((((box.x1 - box.x0) * PAGE.w) / 1440) * width);
-  const ph = Math.round((pw * (box.y1 - box.y0) * PAGE.h) / ((box.x1 - box.x0) * PAGE.w));
+// The netnyahoo.com frames were captured before the site traded its mascot for the painted logo (apps/site Hero.astro).
+// They are brought up to date in place, on the page's own paper: the hero figure becomes the painting with its
+// "LANDSLIDE" stamp and caption, laid out as the site lays them out at this width, and the header icon and the tab's
+// favicon become the painted app icon. Everything is placed in window points (1440 × 900) and scaled to the window.
+const SITE_PAPER = "rgb(240,235,229)";
+function SiteLogo({ width }: { width: number }) {
+  const s = width / 1440;
+  const at = (x: number, y: number, w: number, h: number): CSSProperties => ({ position: "absolute", left: x * s, top: y * s, width: w * s, height: h * s });
+  const label: CSSProperties = {
+    fontFamily: font.mono, fontWeight: 460, fontStretch: "87.5%", letterSpacing: "0.06em", textTransform: "uppercase",
+    fontSize: 11.04 * s, lineHeight: 1.5, margin: 0, whiteSpace: "nowrap",
+  };
+  // The site's app icon is Apple's template (an 824 px tile in 1024): sized so its tile fills the old icon's square.
+  const icon = (x: number, y: number, tile: number) => {
+    const box = tile / (824 / 1024);
+    return <Img src={staticFile("brand/app-icon.png")} style={at(x - (box - tile) / 2, y - (box - tile) / 2, box, box)} />;
+  };
   return (
     <>
-      <div style={{ ...rect(0.64, 0.17, 0.98, 0.31), backgroundColor: "rgb(240,235,229)" }} />
-      <div style={{ ...rect(0.64, 0.3, 0.935, 0.74), backgroundColor: "rgb(240,235,229)" }} />
-      <div style={rect(box.x0, box.y0, box.x1, box.y1)}>
-        <Mascot3D width={pw} height={ph} clip="Default Dance" time={POSE.steeple} yaw={-0.3} />
+      {/* The old figure and its caption, cleared (the rule between them stays: the site still draws it). */}
+      <div style={{ ...at(924, 216, 476, 474), backgroundColor: SITE_PAPER }} />
+      <div style={{ ...at(924, 702, 476, 40), backgroundColor: SITE_PAPER }} />
+      {/* The painting: the figure's width less 2% a side, standing 14 px above the caption's rule. */}
+      <Img src={staticFile("brand/mark.png")} style={{ ...at(941, 346, 443, 334), filter: `drop-shadow(0 ${18 * s}px ${22 * s}px rgba(32,63,50,0.16))` }} />
+      {/* The stamp, pinned by its top-right corner to the figure's, turned -9° about it. */}
+      <div
+        style={{
+          position: "absolute", right: (1440 - 1393) * s, top: 287 * s, transform: "rotate(-9deg)", transformOrigin: "100% 0",
+          color: color.stamp, border: `${2.5 * s}px solid currentColor`, padding: 3 * s, borderRadius: 4 * s,
+          mixBlendMode: "multiply", opacity: 0.9, whiteSpace: "nowrap",
+        }}
+      >
+        <span
+          style={{
+            display: "block", border: `${1 * s}px solid currentColor`, padding: `${5 * s}px ${12 * s}px ${4 * s}px`, borderRadius: 2 * s,
+            fontFamily: font.poster, fontWeight: 850, fontStretch: "75%", textTransform: "uppercase", letterSpacing: "0.07em",
+            fontSize: 17.4 * s, lineHeight: 1.2,
+          }}
+        >
+          Landslide
+        </span>
       </div>
+      <p style={{ ...label, ...at(932, 703, 300, 20), height: "auto", color: color.ink2 }}>Fig. 1 — the logo, oil on canvas</p>
+      <p style={{ ...label, ...at(1093, 703, 300, 20), height: "auto", color: "#6E685F", textAlign: "right" }}>Two hills, one sun</p>
+      {/* The header's icon, on the page's paper; the tab's favicon, on the selected row. */}
+      <div style={{ ...at(229, 61, 32, 32), backgroundColor: SITE_PAPER }} />
+      {icon(231.5, 63, 27)}
+      <div style={{ ...at(14, 284, 18, 18), backgroundColor: "rgb(255,249,251)" }} />
+      {icon(15.5, 285.5, 15)}
     </>
   );
 }
@@ -619,7 +639,7 @@ function Typing() {
   const prev: Cam = { ...live, zoom: cam.zoom + prevDive * (port ? 9 : 6.5) };
   return (
     <Paper>
-      <Window id={windowId()} scene="typing" index={index} cam={live} prev={prev} blur={dive > 0} overlay={onSite ? <SiteMascot width={winWidth} /> : null} />
+      <Window id={windowId()} scene="typing" index={index} cam={live} prev={prev} blur={dive > 0} overlay={onSite ? <SiteLogo width={winWidth} /> : null} />
     </Paper>
   );
 }
@@ -642,9 +662,13 @@ function AppIcon({ id, at, cycle }: { id: string; at: number; cycle?: [number, n
     const k = Math.floor(((b - cycle[0]) / (cycle[1] - cycle[0])) * 7);
     if (k > 0) src = staticFile(`footage/icons/${k}.png`);
   }
+  // The captured icons are bare tiles; the default is Apple's template (an 824 px tile in 1024), so they are inset to
+  // the same tile.
+  const tile = src.includes("footage/") ? 824 / 1024 : 1;
+  const inset = `${((1 - tile) / 2) * 100}%`;
   return (
     <div {...object.bind} {...geometry.bind} style={geometry.style}>
-      <Img src={src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      <Img src={src} style={{ position: "absolute", left: inset, top: inset, width: `${tile * 100}%`, height: `${tile * 100}%`, objectFit: "contain" }} />
     </div>
   );
 }
@@ -665,18 +689,17 @@ function Underline({ id, at }: { id: string; at: number }) {
   );
 }
 
-/** The hop on the button: a crouch just before it, the jump with the underline drawing, and a landing. In px.
- * (In 9:16 he stays on the ground and only squashes and stretches: a jump would put his head into the GitHub line.) */
-function hopAt(b: number, at: number, height: number) {
-  const t = (b - at) / 0.6;
+/** A hop that lands at `land` after `dur` beats in the air, `height` px at its top. */
+function hopAt(b: number, land: number, dur: number, height: number) {
+  const t = (b - (land - dur)) / dur;
   return t > 0 && t < 1 ? Math.sin(Math.PI * t) * height : 0;
 }
-/** Squash (+) and stretch (−) for that hop: anticipation, stretch in the air, a squash on landing that settles. */
-function hopSquash(b: number, at: number) {
+/** Squash (+) and stretch (−) for the leap on the button: a crouch into it, stretched in the air, a squash on landing. */
+function leapSquash(b: number, at: number, dur: number) {
   if (b < at - 0.2) return 0;
   if (b < at) return 0.9 * Math.sin((Math.PI / 2) * ((b - (at - 0.2)) / 0.2));
-  if (b < at + 0.6) return -0.7 * Math.sin(Math.PI * ((b - at) / 0.6));
-  return kick(b, at + 0.6, 0.25) * 1.1;
+  if (b < at + dur) return -0.7 * Math.sin(Math.PI * ((b - at) / dur));
+  return kick(b, at + dur, 0.25) * 1.1;
 }
 
 function End() {
@@ -685,17 +708,33 @@ function End() {
   const shot = useShot();
   const lockup = shot.marks?.lockup ?? 4;
   const button = shot.marks?.button ?? 11;
-  // The griddy until the beat before the button; then his flex lands on the button and holds.
-  const flexFrom = button - 1;
-  const clip: Clip = b < flexFrom ? "Griddy" : "Default Dance";
-  // After the flex lands he keeps breathing: the arms ease a little in and out of the flex and he sways.
-  const hold = Math.max(0, b - flexFrom - 1);
-  const time = b < flexFrom ? (b * SEC) % 6.1 : Math.min(2.67, 2.2 + (b - flexFrom) * SEC) - (hold > 0 ? 0.05 * (1 - Math.cos(hold * Math.PI * 0.5)) : 0);
+  // The score's march taps: the three beats before the button, when the end runs three bars or more
+  // (scripts/music/score.py end_marks); the teaser's two-bar end has the button alone.
+  const taps = shot.beats >= 12 ? [button - 3, button - 2, button - 1] : [];
+  // The hills come up on the hit and the sun rises over them through the ringing chord, floating a little.
   const rise = springAt(b, 0, { stiffness: 200, damping: 15 });
+  const sun = seg(b, 0.3, 1.6, easeOut);
+  const float = 0.012 * Math.sin((Math.PI * Math.max(0, b - 1.9)) / 2);
+  // The sun hops on each tap, landing on its beat, then leaps on the button and settles, glowing.
+  const leap = 0.6;
+  const tapHop = taps.reduce((s, t) => s + hopAt(b, t, 0.45, port ? 18 : 46), 0);
+  const tapLand = taps.reduce((s, t) => s + kick(b, t, 0.18), 0);
+  const mark = useStudioObject(extraId("mark"));
+  const sunLift = float * mark.number("height") + tapHop + hopAt(b, button + leap, leap, port ? 34 : 140);
+  const burst = b >= button ? Math.exp(-(b - button) / 0.9) : 0;
+  const hold = Math.max(0, b - button - leap);
   return (
     <Paper>
       <Shake hits={[0, lockup, button]} amount={14}>
-        <Mascot id={extraId("mascot")} clip={clip} time={time} rise={rise} lift={hopAt(b, button, port ? 0 : 125)} squash={kick(b, 0.4, 0.2) + hopSquash(b, button) * (port ? 0.5 : 1) + (hold > 0.6 ? 0.08 * Math.sin(hold * Math.PI) : 0)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4)) + 0.06 * Math.sin(hold * Math.PI * 0.5)} />
+        <Mark
+          id={extraId("mark")}
+          pose={{
+            rise, sun, sunLift,
+            sunSquash: 0.8 * tapLand + leapSquash(b, button, leap) + (hold > 0.6 ? 0.06 * Math.sin(hold * Math.PI) : 0),
+            squash: kick(b, 0.4, 0.2) + 0.15 * tapLand + 0.35 * kick(b, button, 0.25),
+            glow: 0.55 * sun + 0.9 * burst + (hold > 0 ? 0.08 * Math.sin(hold * Math.PI * 0.5) : 0),
+          }}
+        />
         <AppIcon id={extraId("icon")} at={lockup} cycle={[button - 3, button]} />
         <Underline id="end-url" at={button} />
         <Supers />

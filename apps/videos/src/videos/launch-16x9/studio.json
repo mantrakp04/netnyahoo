@@ -172,22 +172,22 @@
       }
     },
     {
-      "id": "nags-mascot",
+      "id": "nags-mark",
       "definition": "window",
-      "label": "nags · mascot",
+      "label": "nags · mark",
       "parentId": null,
       "values": {
-        "x": 1300,
-        "y": 280,
+        "x": 1250,
+        "y": 560,
         "width": 640,
-        "height": 780,
+        "height": 483,
         "rotation": 0
       }
     },
     {
-      "id": "nags-mascot-peek",
+      "id": "nags-sun",
       "definition": "window",
-      "label": "nags · mascot-peek",
+      "label": "nags · sun",
       "parentId": null,
       "values": {
         "x": 1270,
@@ -398,15 +398,15 @@
       }
     },
     {
-      "id": "title-mascot",
+      "id": "title-mark",
       "definition": "window",
-      "label": "title · mascot",
+      "label": "title · mark",
       "parentId": null,
       "values": {
-        "x": 1300,
-        "y": 280,
+        "x": 1250,
+        "y": 560,
         "width": 640,
-        "height": 780,
+        "height": 483,
         "rotation": 0
       }
     },
@@ -603,15 +603,15 @@
       }
     },
     {
-      "id": "split-mascot",
+      "id": "split-mark",
       "definition": "window",
-      "label": "split · mascot",
+      "label": "split · mark",
       "parentId": null,
       "values": {
-        "x": 1380,
-        "y": 650,
-        "width": 520,
-        "height": 520,
+        "x": 1360,
+        "y": 770,
+        "width": 500,
+        "height": 400,
         "rotation": 0
       }
     },
@@ -887,10 +887,10 @@
     {
       "id": "icons-one",
       "definition": "type",
-      "label": "icons · ONE FACE.",
+      "label": "icons · ONE LANDSLIDE.",
       "parentId": null,
       "values": {
-        "text": "ONE FACE.",
+        "text": "ONE LANDSLIDE.",
         "size": 140,
         "color": "#F1ECE2",
         "fill": "#C3371F",
@@ -983,15 +983,15 @@
       }
     },
     {
-      "id": "end-mascot",
+      "id": "end-mark",
       "definition": "window",
-      "label": "end · mascot",
+      "label": "end · mark",
       "parentId": null,
       "values": {
-        "x": 1240,
-        "y": 200,
-        "width": 640,
-        "height": 820,
+        "x": 1140,
+        "y": 280,
+        "width": 700,
+        "height": 528,
         "rotation": 0
       }
     },
