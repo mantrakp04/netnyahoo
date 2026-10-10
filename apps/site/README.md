@@ -24,11 +24,15 @@ Pages without a custom domain).
   `src/content.config.ts`), newest first, each at `/release-notes#<version>`. The app opens that anchor after it
   updates, so rebuild and redeploy the site when a release ships (`docs/releasing.md`).
 - **Screenshots:** `src/assets/shots/*.webp` are real window captures of Arcadia (2×, transparent outside
-  the window). `office.webp`, `address-*.webp` and `profile-*.webp` are 0.2.9 captures on macOS 26+, with the
-  Liquid Glass pinned tiles and address field (`screencapture -l <windowID> -o` of a hidden test instance drawn
-  as the active window), and `split`, `extensions` and
-  `privacy` from 0.1.0 (`privacy.webp` is the app's own offscreen render of that Settings pane, no window
-  frame). `pip.webp` is 0.2.13 (the export, re-signed to inject the draw-active dylib): the window on Wikipedia with
+  the window). `address-*.webp`, `profile-*.webp`, `split.webp` and `extensions.webp` are captures of the
+  renamed Arcadia (a Debug build before 0.2.33, with the painted-hills New Tab page and glyph): `screencapture -l
+  <windowID> -o` of a hidden test instance drawn as the active window by `scripts/draw-active.m` (how to build and
+  inject it is in its header), set up from a `session()` fixture (`scripts/lib/instance.mjs`) at 1440 × 900 pt
+  (`address-*` 1360 × 860), light appearance except `split` and `extensions` (dark, sidebar 232 pt). The PNGs'
+  Display P3 values go into the WebP as they are (`cwebp -q 85 -m 6 -alpha_q 100`), no colour conversion, like
+  the older shots. The profiles are Personal (plum), Work (blue) and Side project (orange). `office.webp` is a 0.2.9
+  capture with the Liquid Glass pinned tiles and `privacy.webp` is from 0.1.0 (the app's own offscreen render of
+  that Settings pane, no window frame). `pip.webp` is 0.2.13 (the export, re-signed to inject the draw-active dylib): the window on Wikipedia with
   the Picture in Picture window where Chrome opened it (window-relative 1085, 692 pt), its real shadow from
   `screencapture -l`; `pip-loop.{mp4,webm}` is that rectangle over 7 s of SCK captures of the PiP window, laid
   over the still by `Shot.astro` (`loop` in `data/pledges.ts`; `scripts/loops.ts` plays it, never with reduced

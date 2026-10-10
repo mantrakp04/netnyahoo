@@ -5,7 +5,7 @@ import addressSidebar from "../assets/shots/address-sidebar.webp";
 import split from "../assets/shots/split.webp";
 import personal from "../assets/shots/profile-personal.webp";
 import work from "../assets/shots/profile-work.webp";
-import campaign from "../assets/shots/profile-campaign.webp";
+import sideProject from "../assets/shots/profile-side-project.webp";
 import extensions from "../assets/shots/extensions.webp";
 import privacy from "../assets/shots/privacy.webp";
 import pip from "../assets/shots/pip.webp";
@@ -66,8 +66,8 @@ export const pledges: Pledge[] = [
     id: "profiles",
     title: "Separate profiles for separate lives.",
     body: "Each its own window. Swipe between them. Plausible deniability comes standard.",
-    shots: [campaign, work, personal],
-    alt: "Three Arcadia windows, one per profile, each tinted in its colour with its name next to the window buttons: Campaign in orange, Work in blue, Personal in plum.",
+    shots: [sideProject, work, personal],
+    alt: "Three Arcadia windows, one per profile, each tinted in its colour with its name next to the window buttons: Side project in orange, Work in blue, Personal in plum.",
     caption: "Three profiles",
     focus: { x: 0, y: 0, zoom: 2.4, ratio: 0.8 },
   },
