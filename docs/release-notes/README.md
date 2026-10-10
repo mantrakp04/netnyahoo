@@ -59,17 +59,22 @@ Body:
 The notes are plain and useful. The wit goes in the headline only.
 
 **Headline.** One sentence, 30 to 60 characters, ending with a full stop. It's about the release's most
-noticeable change, told as if the incumbent's office were announcing it: elections, office, cabinet,
-decrees, the press, "no plans to leave". Deadpan, never a pun on the change and never an exclamation mark.
-The fact under the joke must be true.
+noticeable change, said flatly, as if nothing much had happened. Arcadia is Arc plus Dia, named after the
+old pastoral idyll, and using it should feel like touching grass. So the wit is dry and calm. A light
+open-country touch (a lamb, a field, a quiet week) is welcome where it fits; most headlines won't need one,
+and none should be bent to make room for it. Deadpan, never a pun on the change, never an exclamation mark.
+The fact under it must be true.
 
-- 0.1.0 "Sworn in on Chromium 154. No plans to leave." (first release)
-- 0.1.1 "The ad blocker returns to work. The mascot goes into hiding." (ad blocking fixed; the offline game)
-- 0.1.2 "Menus no longer bring down the government." (menu commands crashed the app)
+- 0.1.0 "The first build runs Chromium 154 and asks for no account." (first release)
+- 0.1.1 "The ad blocker goes back to work while a lamb goes missing." (ad blocking fixed; the offline game)
+- 0.1.2 "The menu bar can be used without consequences." (menu commands crashed the app)
 - 0.1.3 "Autofill starts counting clicks again." (autofill suggestions ignored clicks)
 - 0.1.4 "Chrome makes no further unscheduled appearances." (Chrome's bubbles over the page)
+- 0.2.9 "Nothing you can see has changed, on purpose." (tidied source, the same app)
+- 0.2.19 "Arcadia now does less while you do nothing." (less battery while idle)
 
-Keep titles short, calm and dry, with one outdoor phrase at most. No jokes at the user's expense.
+Keep headlines short, calm and dry, with one outdoor phrase at most. No politics, and no jokes at the
+user's expense.
 
 **Items.**
 

@@ -45,8 +45,9 @@ affect the app.
 ## 2. Write the notes
 
 Create `docs/release-notes/<version>.md` following `docs/release-notes/README.md`: frontmatter `date`
-(today, `YYYY-MM-DD`) and `headline` (30–60 chars, the only witty line: the incumbent's office announcing
-the most noticeable change — deadpan, true, political theatre only), then `## New` / `## Faster` (the
+(today, `YYYY-MM-DD`) and `headline` (30–60 chars, one sentence, the only witty line: the most noticeable
+change said dry and calm, true, no pun and no politics, with an open-country touch only where it fits, per
+the README's Voice section), then `## New` / `## Faster` (the
 perf-gate table, step 4c) / `## Fixed` / `## Smaller` bullets written from the user's side.
 
 Source material: `git log --format='%h %s%n%b' v<previous>..HEAD -- apps/browser packages`. The commit
