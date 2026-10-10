@@ -20,6 +20,7 @@ final class ACDockTilePlugIn: NSObject, NSDockTilePlugIn {
     guard dockTile != nil, let app, let bundleId = app.bundleIdentifier else { return }
 
     if let artwork = app.image(forResource: "AppIcon") { AppIcons.base = artwork }
+    if let mark = app.image(forResource: "AppIconMark") { AppIcons.mark = mark }
     observer = DistributedNotificationCenter.default().addObserver(
       forName: AppIcons.changedNotification(bundleId: bundleId), object: nil, queue: .main
     ) { [weak self] note in

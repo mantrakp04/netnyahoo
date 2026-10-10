@@ -137,7 +137,7 @@ function hostInitial(url: string): string {
   return Array.from(shown)[0]?.toLocaleUpperCase() ?? "";
 }
 
-const NEW_TAB_MARK = require("../../assets/new-tab-mascot.png");
+const NEW_TAB_MARK = require("../../assets/new-tab-mark.png");
 
 export function NewTabIcon({ size = 16 }: { size?: number }) {
   const theme = useTheme();

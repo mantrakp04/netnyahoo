@@ -52,11 +52,17 @@ enum AppIcons {
     didSet { cache.removeAll() }
   }
 
+  // The painted hills without their parchment tile: what the coloured plates carry.
+  static var mark: NSImage = NSImage(named: "AppIconMark") ?? base {
+    didSet { cache.removeAll() }
+  }
+
   static func image(_ id: String, size: CGFloat) -> NSImage? {
     let key = "\(id)@\(size)"
     if let hit = cache[key] { return hit }
     guard let variant = variants.first(where: { $0.id == id }) else { return nil }
-    let artwork = variant.mono ? monochrome(base) : base
+    let source = variant.plate == nil ? base : mark
+    let artwork = variant.mono ? monochrome(source) : source
     let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
       guard let plate = variant.plate else {
         artwork.draw(in: rect)

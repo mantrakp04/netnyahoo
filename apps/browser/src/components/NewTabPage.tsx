@@ -9,12 +9,12 @@ import { Omnibox } from "./Omnibox";
 
 const REBRAND = true;
 const BAR_HEIGHT = 112;
-const MASCOT = require("../../assets/ntp-mascot.png");
-const MASCOT_SIZE = 100;
-const MASCOT_ABOVE_BAR = 84.1;
-const MASCOT_HIDDEN = 86;
-const MASCOT_SPRING = springParams(0.34, 0.7);
-const MASCOT_DELAY_MS = 80;
+const MARK = require("../../assets/ntp-mark.png");
+const MARK_SIZE = 100;
+const MARK_ABOVE_BAR = 84.1;
+const MARK_HIDDEN = 86;
+const MARK_SPRING = springParams(0.34, 0.7);
+const MARK_DELAY_MS = 80;
 const DIA_OFFSET = 1;
 const NEGATE_ANGLE = true;
 
@@ -61,13 +61,13 @@ export function NewTabPage({ tabId, toolbar = true }: { tabId: string; toolbar?:
   };
   const [panelHeight, setPanelHeight] = useState(BAR_HEIGHT);
   const [playIntro] = useState(() => !introPlayed.has(tabId));
-  const [rise] = useState(() => new Animated.Value(playIntro && !reduceMotion ? MASCOT_HIDDEN : 0));
+  const [rise] = useState(() => new Animated.Value(playIntro && !reduceMotion ? MARK_HIDDEN : 0));
   useEffect(() => {
     introPlayed.add(tabId);
   }, [tabId]);
   useEffect(() => {
     if (!playIntro || reduceMotion) return;
-    const timer = setTimeout(() => Animated.spring(rise, { toValue: 0, ...MASCOT_SPRING, useNativeDriver: true }).start(), MASCOT_DELAY_MS);
+    const timer = setTimeout(() => Animated.spring(rise, { toValue: 0, ...MARK_SPRING, useNativeDriver: true }).start(), MARK_DELAY_MS);
     return () => clearTimeout(timer);
   }, [playIntro, rise]);
 
@@ -117,23 +117,23 @@ export function NewTabPage({ tabId, toolbar = true }: { tabId: string; toolbar?:
         pointerEvents="none"
         style={{
           position: "absolute",
-          left: size.width / 2 + DIA_OFFSET - MASCOT_SIZE / 2,
-          top: top - MASCOT_ABOVE_BAR,
-          width: MASCOT_SIZE,
-          height: MASCOT_ABOVE_BAR,
+          left: size.width / 2 + DIA_OFFSET - MARK_SIZE / 2,
+          top: top - MARK_ABOVE_BAR,
+          width: MARK_SIZE,
+          height: MARK_ABOVE_BAR,
           overflow: "hidden",
         }}
       >
         <Animated.Image
-          source={MASCOT}
+          source={MARK}
           style={{
-            width: MASCOT_SIZE,
-            height: MASCOT_SIZE,
+            width: MARK_SIZE,
+            height: MARK_SIZE,
             transform: [
               { translateY: rise },
-              { translateY: MASCOT_SIZE / 2 },
-              { rotate: rise.interpolate({ inputRange: [-4, 0, MASCOT_HIDDEN], outputRange: ["-3deg", "0deg", "0deg"], extrapolate: "clamp" }) },
-              { translateY: -MASCOT_SIZE / 2 },
+              { translateY: MARK_SIZE / 2 },
+              { rotate: rise.interpolate({ inputRange: [-4, 0, MARK_HIDDEN], outputRange: ["-3deg", "0deg", "0deg"], extrapolate: "clamp" }) },
+              { translateY: -MARK_SIZE / 2 },
             ],
           }}
         />
