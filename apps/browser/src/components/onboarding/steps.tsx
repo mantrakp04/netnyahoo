@@ -488,7 +488,7 @@ function Postcard() {
       <View style={{ flex: 1, justifyContent: "space-between", paddingRight: 14 }}>
         <Text style={{ fontSize: 20, fontWeight: "300", fontStyle: "italic", color: colors.title }}>Hello!</Text>
         <Text style={{ fontSize: 12, lineHeight: 17, color: colors.subtitle }}>
-          {"Glad you're here. Make yourself at home — your tabs, bookmarks and pins are ready."}
+          {"Glad you're here. Make yourself at home. Your tabs, bookmarks and pins are ready."}
         </Text>
       </View>
       <View style={{ width: StyleSheet.hairlineWidth * 2, backgroundColor: colors.separator }} />
