@@ -24,7 +24,7 @@
 #
 # NOTARY_PROFILE      notarytool keychain profile (default arcadia), unless scripts/.notary.env sets an API key
 # ALLOW_UNNOTARIZED=1 build anyway without notarizing
-# SPARKLE_ACCOUNT     keychain account of the Sparkle key (default arcadia)
+# SPARKLE_ACCOUNT     keychain account of the Sparkle key (default arcadia, else the old app's name: the key predates the rename)
 # ARCADIACORE_FRAMEWORK    another Chromium Framework.framework than out/Release_GN_arm64's
 # RELEASE_BUILD_DIR   the derived data folder (default apps/browser/build-release)
 set -euo pipefail
@@ -62,8 +62,22 @@ if [ -n "${NOTARY_KEY:-}" ]; then
 else
   notary_auth=(--keychain-profile "$notary_profile")
 fi
-sparkle_account="${SPARKLE_ACCOUNT:-arcadia}"
 sparkle="$macos/Pods/Sparkle/bin"
+# The key was made before the rename, under the old app's name in lower case (LegacyName.appName, read from the legacy
+# file); a Mac set up since keeps it under arcadia. Checked now, not after the hour of archiving and notarizing.
+if [ -n "${SPARKLE_ACCOUNT:-}" ]; then
+  sparkle_account="$SPARKLE_ACCOUNT"
+else
+  legacy_account="$(sed -n 's/^ *public static let appName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyMigration.swift" | tr '[:upper:]' '[:lower:]')"
+  sparkle_account=arcadia
+  for account in arcadia $legacy_account; do
+    if "$sparkle/generate_keys" --account "$account" -p >/dev/null 2>&1; then sparkle_account="$account"; break; fi
+  done
+fi
+"$sparkle/generate_keys" --account "$sparkle_account" -p >/dev/null 2>&1 || {
+  echo "error: no Sparkle EdDSA key in the login keychain under account $sparkle_account (SPARKLE_ACCOUNT; docs/releasing.md)" >&2
+  exit 1
+}
 if [ "$rc" = 1 ]; then dist="$root/dist/$version-rc"; else dist="$root/dist/$version"; fi
 # A candidate can go elsewhere (RC_DIST=dist/final-<version>-rc; keep the -rc ending, unregister-builds keeps those registered) while a copy of the last one is still open from its folder.
 [ "$rc" = 1 ] && [ -n "${RC_DIST:-}" ] && dist="$(cd "$root" && mkdir -p "$RC_DIST" && cd "$RC_DIST" && pwd)"

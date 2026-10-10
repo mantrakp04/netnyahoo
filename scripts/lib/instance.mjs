@@ -364,7 +364,11 @@ class Instance {
  */
 export async function launch(app, opts = {}) {
   app = resolve(app);
-  if (app.startsWith("/Applications/")) throw new Error("never an installed app: pass a build (apps/browser/build-*)");
+  // Installed apps sit at the top of /Applications; a test copy may sit in a folder of its own there (whether macOS
+  // lets the app rename itself in /Applications: legacy-migration-app-check.sh's APPS_DIR).
+  const installed = (path) => /^\/Applications\/[^/]+\.app(\/|$)/.test(path);
+  if (installed(app) || (opts.runsFrom && installed(resolve(opts.runsFrom))))
+    throw new Error("never an installed app: pass a build (apps/browser/build-*)");
   const data = resolve(opts.data ?? join(process.env.TMPDIR ?? "/tmp", `ac-instance-${process.pid}-${Date.now()}`));
   if (opts.fresh) rmSync(data, { recursive: true, force: true });
   mkdirSync(data, { recursive: true });

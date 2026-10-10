@@ -27,9 +27,10 @@ deployed with the new entry by the time the update reaches people.
   signed in to the team: the export fetches the Developer ID provisioning profile
   (`-allowProvisioningUpdates`) that the keychain-group entitlements need.
 - The **Sparkle EdDSA key**, a login keychain item (service `https://sparkle-project.org`, account
-  `arcadia`). Its public half is `SUPublicEDKey` in `apps/browser/macos/Arcadia-macOS/Info.plist`.
-  Every update must be signed with it, so keep a backup:
-  `apps/browser/macos/Pods/Sparkle/bin/generate_keys --account arcadia -x <file>` exports it, and `-f <file>`
+  `arcadia`, or the app's old name in lower case on the Mac that made it before the rename: `LegacyName.appName`;
+  release.sh finds either, `SPARKLE_ACCOUNT` overrides). Its public half is `SUPublicEDKey` in
+  `apps/browser/macos/Arcadia-macOS/Info.plist`. Every update must be signed with it, so keep a backup:
+  `apps/browser/macos/Pods/Sparkle/bin/generate_keys --account <account> -x <file>` exports it, and `-f <file>`
   imports it on another machine.
 - For notarization, an App Store Connect API key (Team Keys, Developer role). Keep `AuthKey_<id>.p8`
   outside the repo (e.g. `~/.private_keys/`, mode 600) and point `scripts/.notary.env` (untracked) at it:

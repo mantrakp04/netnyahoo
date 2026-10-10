@@ -6,9 +6,15 @@
 # shortcuts, the bookmark and a site's cookie must come across, with the offer to be the default browser again left
 # unasked (a test instance never asks). Then a copy beside an existing Arcadia.app must stay under its old name and work.
 #
-#   packages/sync/scripts/legacy-migration-app-check.sh <Debug Arcadia.app> [scratch dir under /tmp]
+#   packages/sync/scripts/legacy-migration-app-check.sh <Arcadia.app> [scratch dir under /tmp]
 #
-# Hidden instances only (scripts/agent/ac): no real Library, keychain or profile is read. Quits what it launched.
+# A Debug build runs on Metro; a Release build (a signed RC: dist/<version>-rc/export/Arcadia.app) on its own bundle,
+# with the dev harness a perf-probe file turns on. APPS_DIR=<folder> puts the old-named copy there instead of the
+# scratch dir (a folder of its own under /Applications: whether macOS lets the app rename itself there); it must not
+# exist yet, and is removed afterwards.
+#
+# Hidden instances only (scripts/agent/ac): no real Library, keychain or profile is read. Quits what it launched, and
+# takes every copy it launched out of LaunchServices, so links never open in a test copy.
 set -euo pipefail
 app="${1:?usage: legacy-migration-app-check.sh <Arcadia.app> [scratch dir]}"
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -20,15 +26,30 @@ rm -rf "$scratch" && mkdir -p "$scratch"
 # As LaunchServices and the kernel spell it (/private/tmp): the paths a launch reports.
 scratch="$(cd "$scratch" && pwd -P)"
 made="$scratch/made" migrated="$scratch/migrated" home="$scratch/home" clash="$scratch/clash"
+apps="${APPS_DIR:-$scratch/apps}"
+if [ -n "${APPS_DIR:-}" ]; then
+  [ ! -e "$apps" ] || { echo "APPS_DIR $apps exists already; pick a new folder" >&2; exit 1; }
+  mkdir -p "$apps" && apps="$(cd "$apps" && pwd -P)"
+fi
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 cleanup() {
   for data in "$made" "$migrated" "$clash/data"; do "$ac" quit "$data" --kill >/dev/null 2>&1 || true; done
+  for copy in "$apps"/*.app "$clash/apps"/*.app; do [ -d "$copy" ] && "$lsregister" -u "$copy" 2>/dev/null || true; done
+  [ -n "${APPS_DIR:-}" ] && rm -rf "$apps"
+  true
 }
 trap cleanup EXIT
 fail=0
 check() { if [ "$2" = 1 ]; then echo "ok   $1"; else echo "FAIL $1${3:+: $3}"; fail=1; fi; }
+# A Release build has its JS inside; its dev harness runs in an isolated instance with a perf-probe file.
+release=()
+if [ -f "$app/Contents/Resources/main.jsbundle" ]; then
+  release=(--js none)
+  for data in "$made" "$migrated" "$clash/data"; do mkdir -p "$data" && : > "$data/perf-probe"; done
+fi
 
 echo "==> today's build makes data"
-"$ac" launch "$app" --data "$made" --onboarded >/dev/null
+"$ac" launch "$app" --data "$made" --onboarded ${release[@]+"${release[@]}"} >/dev/null
 "$ac" eval "$made" '
   const s = ac.store.getState();
   const w = Object.keys(s.windows)[0];
@@ -51,17 +72,18 @@ legacy_app="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$rep
 [[ "$legacy_app" == *.app ]] || { echo "can't read the legacy app name from LegacyMigration.swift" >&2; exit 1; }
 binary="$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")"
 # APFS clones: the copies cost no time or space.
-mkdir -p "$scratch/apps" && cp -Rc "$app" "$scratch/apps/$legacy_app"
-launched="$("$ac" launch "$scratch/apps/$legacy_app" --runs-from "$scratch/apps/Arcadia.app" --data "$migrated" --onboarded \
+mkdir -p "$apps" && { cp -Rc "$app" "$apps/$legacy_app" 2>/dev/null || ditto "$app" "$apps/$legacy_app"; }
+echo "    (from $apps)"
+launched="$("$ac" launch "$apps/$legacy_app" --runs-from "$apps/Arcadia.app" --data "$migrated" --onboarded ${release[@]+"${release[@]}"} \
   --env "ARCADIA_LEGACY_SOURCE=$home")"
 pid="$(sed -n 's/^pid \([0-9]*\) .*/\1/p' <<<"$launched")"
-check "it renamed itself to Arcadia.app" "$([ -d "$scratch/apps/Arcadia.app" ] && [ ! -e "$scratch/apps/$legacy_app" ] && echo 1 || echo 0)" "$(ls "$scratch/apps")"
+check "it renamed itself to Arcadia.app" "$([ -d "$apps/Arcadia.app" ] && [ ! -e "$apps/$legacy_app" ] && echo 1 || echo 0)" "$(ls "$apps")"
 command="$(ps -ww -o command= -p "$pid" 2>/dev/null || true)"
-check "it runs from Arcadia.app" "$([ "$command" = "$scratch/apps/Arcadia.app/Contents/MacOS/$binary" ] && echo 1 || echo 0)" "$command"
-helpers="$(ps -ww -ax -o ppid= -o command= | awk -v p="$pid" '$1 == p' | grep -c "$scratch/apps/Arcadia.app/Contents/Frameworks/" || true)"
+check "it runs from Arcadia.app" "$([ "$command" = "$apps/Arcadia.app/Contents/MacOS/$binary" ] && echo 1 || echo 0)" "$command"
+helpers="$(ps -ww -ax -o ppid= -o command= | awk -v p="$pid" '$1 == p' | grep -c "$apps/Arcadia.app/Contents/Frameworks/" || true)"
 # LaunchServices knows the process by its new place (Sparkle's installer finds the running app by bundle id and path).
 lsinfo="$(lsappinfo info -app "$pid" 2>/dev/null || true)"
-check "LaunchServices has it at Arcadia.app" "$([[ "$lsinfo" == *"bundle path=\"$scratch/apps/Arcadia.app\""* ]] && echo 1 || echo 0)" "$(grep "bundle path" <<<"$lsinfo")"
+check "LaunchServices has it at Arcadia.app" "$([[ "$lsinfo" == *"bundle path=\"$apps/Arcadia.app\""* ]] && echo 1 || echo 0)" "$(grep "bundle path" <<<"$lsinfo")"
 check "its helpers start from Arcadia.app" "$([ "${helpers:-0}" -gt 0 ] && echo 1 || echo 0)" "$helpers"
 loads() { # data dir: a page loads over DevTools in that instance
   "$ac" eval "$1" 'ac.actions.openUrls(["data:text/html,<title>engine-ok</title>"]); return true' >/dev/null
@@ -102,7 +124,7 @@ check "still hidden after the exec" "$([[ "$lsinfo" == *'type="BackgroundOnly"'*
 
 echo "==> a copy beside an existing Arcadia.app stays where it is"
 mkdir -p "$clash/apps" && cp -Rc "$app" "$clash/apps/$legacy_app" && cp -Rc "$app" "$clash/apps/Arcadia.app"
-launched="$("$ac" launch "$clash/apps/$legacy_app" --data "$clash/data" --onboarded)"
+launched="$("$ac" launch "$clash/apps/$legacy_app" --data "$clash/data" --onboarded ${release[@]+"${release[@]}"})"
 pid="$(sed -n 's/^pid \([0-9]*\) .*/\1/p' <<<"$launched")"
 command="$(ps -ww -o command= -p "$pid" 2>/dev/null || true)"
 check "it runs under its old name" "$([ "$command" = "$clash/apps/$legacy_app/Contents/MacOS/$binary" ] && [ -d "$clash/apps/$legacy_app" ] && echo 1 || echo 0)" "$command"
