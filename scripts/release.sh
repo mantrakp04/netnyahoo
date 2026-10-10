@@ -329,6 +329,9 @@ staging="$dist/dmg"
 mkdir -p "$staging"
 ditto "$app" "$staging/Netnyahoo.app"
 ln -s /Applications "$staging/Applications"
+# The window's picture and layout (scripts/dmg): Finder finds the picture by the volume's name and this path.
+cp "$root/scripts/dmg/background.tiff" "$staging/.background.tiff"
+cp "$root/scripts/dmg/DS_Store" "$staging/.DS_Store"
 hdiutil create -volname Netnyahoo -srcfolder "$staging" -format ULFO -ov "$dmg" >/dev/null
 rm -rf "$staging"
 sign "$dmg"

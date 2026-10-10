@@ -2,7 +2,8 @@
 
 Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Each has three assets, four when the engine changed:
 
-- `Netnyahoo-<version>.dmg`: what people download (the app and an `/Applications` link).
+- `Netnyahoo-<version>.dmg`: what people download (the app and an `/Applications` link, in a window with the
+  site's poster behind them: `scripts/dmg`, where `render.sh` redraws the picture and `layout.sh` the layout).
 - `Netnyahoo-<version>.zip`: the archive Sparkle installs updates from.
 - `appcast.xml`: the Sparkle feed. The latest release's appcast is the feed. Builds after 0.2.13 poll
   `https://netnyahoo.com/appcast.xml` (`SUFeedURL`), which counts the check by version and day (and whether
