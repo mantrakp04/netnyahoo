@@ -7,6 +7,8 @@ enum AppIcons {
     let name: String
     let plate: (top: NSColor, bottom: NSColor)?
     let mono: Bool
+    // The hills' colour on the plate: AppIconMark-<tint> (docs/brand/arcadia/build.py); nil keeps the green painting.
+    var tint: String? = nil
   }
 
   static let defaultsKey = "ACAppIcon"
@@ -14,10 +16,10 @@ enum AppIcons {
 
   static let variants: [Variant] = [
     Variant(id: "default", name: "Default", plate: nil, mono: false),
-    Variant(id: "midnight", name: "Midnight", plate: (NSColor(srgbRed: 0.20, green: 0.19, blue: 0.22, alpha: 1), NSColor(srgbRed: 0.07, green: 0.07, blue: 0.08, alpha: 1)), mono: false),
-    Variant(id: "daylight", name: "Daylight", plate: (NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1), NSColor(srgbRed: 0.90, green: 0.90, blue: 0.91, alpha: 1)), mono: false),
-    Variant(id: "plum", name: "Plum", plate: (NSColor(srgbRed: 0.83, green: 0.56, blue: 0.68, alpha: 1), NSColor(srgbRed: 0.52, green: 0.28, blue: 0.40, alpha: 1)), mono: false),
-    Variant(id: "ocean", name: "Ocean", plate: (NSColor(srgbRed: 0.45, green: 0.70, blue: 0.93, alpha: 1), NSColor(srgbRed: 0.16, green: 0.36, blue: 0.70, alpha: 1)), mono: false),
+    Variant(id: "midnight", name: "Midnight", plate: (NSColor(srgbRed: 0.20, green: 0.19, blue: 0.22, alpha: 1), NSColor(srgbRed: 0.07, green: 0.07, blue: 0.08, alpha: 1)), mono: false, tint: "neutral"),
+    Variant(id: "daylight", name: "Daylight", plate: (NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1), NSColor(srgbRed: 0.90, green: 0.90, blue: 0.91, alpha: 1)), mono: false, tint: "neutral"),
+    Variant(id: "plum", name: "Plum", plate: (NSColor(srgbRed: 0.83, green: 0.56, blue: 0.68, alpha: 1), NSColor(srgbRed: 0.52, green: 0.28, blue: 0.40, alpha: 1)), mono: false, tint: "plum"),
+    Variant(id: "ocean", name: "Ocean", plate: (NSColor(srgbRed: 0.45, green: 0.70, blue: 0.93, alpha: 1), NSColor(srgbRed: 0.16, green: 0.36, blue: 0.70, alpha: 1)), mono: false, tint: "blue"),
     Variant(id: "mono", name: "Mono", plate: nil, mono: true),
     Variant(id: "noir", name: "Noir", plate: (NSColor(srgbRed: 0.16, green: 0.16, blue: 0.16, alpha: 1), NSColor(srgbRed: 0.03, green: 0.03, blue: 0.03, alpha: 1)), mono: true),
   ]
@@ -52,16 +54,21 @@ enum AppIcons {
     didSet { cache.removeAll() }
   }
 
-  // The painted hills without their parchment tile: what the coloured plates carry.
-  static var mark: NSImage = NSImage(named: "AppIconMark") ?? base {
+  // Loads the painted hills without their parchment tile (AppIconMark, AppIconMark-<tint>): what the plates carry.
+  // The Dock tile plug-in reads them from the app's bundle instead of its own.
+  static var markNamed: (String) -> NSImage? = { NSImage(named: $0) } {
     didSet { cache.removeAll() }
+  }
+
+  private static func mark(_ variant: Variant) -> NSImage {
+    variant.tint.flatMap { markNamed("AppIconMark-\($0)") } ?? markNamed("AppIconMark") ?? base
   }
 
   static func image(_ id: String, size: CGFloat) -> NSImage? {
     let key = "\(id)@\(size)"
     if let hit = cache[key] { return hit }
     guard let variant = variants.first(where: { $0.id == id }) else { return nil }
-    let source = variant.plate == nil ? base : mark
+    let source = variant.plate == nil ? base : mark(variant)
     let artwork = variant.mono ? monochrome(source) : source
     let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
       guard let plate = variant.plate else {

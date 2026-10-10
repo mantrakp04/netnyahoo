@@ -125,7 +125,7 @@ PROFILE_SWATCHES = {"plum": "#C07A98", "blue": "#4691C3", "purple": "#7873AF", "
 SUNS = {"orange": "#FFD873", "yellow": "#FFF1CF"}
 
 
-def tinted_marks(base):
+def tinted_marks(base, names=PROFILE_SWATCHES):
     a = np.array(base.convert("RGBA")).astype(np.float32) / 255
     rgb, al = a[..., :3], a[..., 3]
     h, s, v = np.moveaxis(hsvlib.rgb_to_hsv(rgb), -1, 0)
@@ -154,8 +154,8 @@ def tinted_marks(base):
         return out
 
     sun_lum = np.percentile(lum[sun > 0.9], 70)
-    for name, swatch in PROFILE_SWATCHES.items():
-        color = hsvlib.to_rgb(swatch)
+    for name in names:
+        color = hsvlib.to_rgb(PROFILE_SWATCHES[name])
         if name == "neutral":
             color = np.full(3, color @ np.array([0.2126, 0.7152, 0.0722]))
         sun_rgb = rgb if name not in SUNS else np.clip(hsvlib.to_rgb(SUNS[name]) * (lum / sun_lum)[..., None], 0, 1)
@@ -168,3 +168,20 @@ for scale in (1, 2, 3):
     for name, im in tinted_marks(Image.open(OUT / f"ntp-mark{suffix}.png")):
         im.save(OUT / f"ntp-mark-{name}{suffix}.png", optimize=True)
 print("tinted marks")
+
+# Coloured app-icon plates (packages/shell/ios/AppIcon.swift `tint`): the hills in the plate's colour family, the
+# same recolour as the New Tab page's (midnight and daylight take neutral), installed as AppIconMark-<colour>.
+import shutil  # noqa: E402
+
+XCASSETS = Path("apps/browser/macos/Arcadia-macOS/Assets.xcassets")
+IMAGESET = '{\n  "images" : [\n    {\n      "filename" : "mark.png",\n      "idiom" : "universal"\n    }\n  ],\n  "info" : {\n    "author" : "xcode",\n    "version" : 1\n  }\n}\n'
+slots = {"AppIconMark": OUT / "plate-mark-1024.png"}
+for name, im in tinted_marks(Image.open(slots["AppIconMark"]), ("plum", "blue", "neutral")):
+    im.save(OUT / f"plate-mark-{name}-1024.png", optimize=True)
+    slots[f"AppIconMark-{name}"] = OUT / f"plate-mark-{name}-1024.png"
+for slot, path in slots.items():
+    folder = XCASSETS / f"{slot}.imageset"
+    folder.mkdir(exist_ok=True)
+    shutil.copyfile(path, folder / "mark.png")
+    (folder / "Contents.json").write_text(IMAGESET)
+print("plate marks")
