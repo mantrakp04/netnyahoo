@@ -10,7 +10,9 @@ import Security
 public enum LegacyName {
   public static let bundleId = "com.netnyahoo.browser"
   /// The installed app's file name. Sparkle finds the new app in an update archive only under the installed bundle's
-  /// name (Sparkle 2.9.6 SUInstaller.m), so the update archive's top folder keeps it; scripts/release.sh reads this line.
+  /// name (Sparkle 2.9.6 SUInstaller.m), so the update archive's top folder keeps it (scripts/release.sh reads this
+  /// line) and Sparkle installs it there under that name; at its first launch the app renames itself to Arcadia.app
+  /// (LegacyMigration.moveToNewName).
   public static let appFileName = "Netnyahoo.app"
   public static let appName = "Netnyahoo"
 
@@ -309,6 +311,8 @@ struct LegacyMigrator {
     var accessGroups: [(old: String, new: String)] = []
     var groupMover: AccessGroupMover? = nil
     var oldAppRunning: () -> Bool
+    /// The old app was the default browser: the bundle id changed, so macOS no longer counts this one as it.
+    var oldAppWasDefaultBrowser: () -> Bool = { false }
     var ask: Ask
     /// Test hook: stop as if the process died right after this step.
     var crashAfter: String? = nil
@@ -332,12 +336,19 @@ struct LegacyMigrator {
     /// ones or a move failed (each launch tries again until it's done).
     var groups: String?
     var groupAttempts: Int?
+    /// Whether the old app was the default browser when this install first ran under the new id: "offered" (the app
+    /// asks once to be the default again) or "no". Missing from journals written before it was asked: such an install
+    /// answers it at its next launch.
+    var defaultBrowser: String?
     var finishedAt: Date?
 
-    var isDone: Bool { phase == "done" && groups != "pending" }
+    var isDone: Bool { phase == "done" && groups != "pending" && defaultBrowser != nil }
   }
 
   static let journalName = ".legacy-migration.json"
+  /// Left for the app (apps/browser/src/lib/defaultBrowserOffer.ts) when the old app was the default browser: it asks
+  /// once to be the default again, and records when in the same document.
+  static let defaultBrowserOfferName = "default-browser-offer.json"
   static let stagingName = ".legacy-migration-staging"
   static let lockName = ".legacy-migration.lock"
   static let asideName = ".legacy-migration-replaced"
@@ -391,6 +402,10 @@ struct LegacyMigrator {
   private func runLocked() -> Outcome {
     let journal = readJournal()
     if var done = journal, done.phase == "done" {
+      if done.defaultBrowser == nil, let answer = checkDefaultBrowser() {
+        done.defaultBrowser = answer
+        if done.groups != "pending", !writeJournal(done) { log("couldn't record the default browser offer") }
+      }
       if done.groups == "pending" {
         done.groupAttempts = (done.groupAttempts ?? 1) + 1
         done.groups = moveAccessGroups()
@@ -683,11 +698,26 @@ struct LegacyMigrator {
       copyExtras()
       journal.groups = moveAccessGroups()
     }
+    journal.defaultBrowser = checkDefaultBrowser()
     journal.phase = "done"
     journal.finishedAt = Date()
     if !writeJournal(journal) { log("couldn't record the migration as done") }
     log("done: \(journal.outcome ?? "?")\(journal.files.map { ", \($0) files" } ?? "")")
     return .proceed
+  }
+
+  /// Leaves the offer when the old app was the default browser. Once: an offer already there (a run resumed after a
+  /// crash, or one the app has answered) stays as it is. nil when it couldn't be written: the next launch tries again.
+  func checkDefaultBrowser() -> String? {
+    guard context.oldAppWasDefaultBrowser() else { return "no" }
+    let url = context.newData.appendingPathComponent(Self.defaultBrowserOfferName)
+    guard !exists(url) else { return "offered" }
+    let offer = try? JSONSerialization.data(withJSONObject: ["version": 1, "askedAt": NSNull()], options: [.sortedKeys])
+    guard MigrationFiles.writeDurably(offer, to: url, mode: 0o644) else {
+      log("couldn't record the default browser offer")
+      return nil
+    }
+    return "offered"
   }
 
   // MARK: Helpers
@@ -916,8 +946,18 @@ public enum LegacyMigration {
       newSecrets: LoginKeychain(),
       accessGroups: KeychainAccessGroups.suffixes.map { ("\(team).\(LegacyName.bundleId).\($0)", "\(team).\(bundleId).\($0)") },
       groupMover: KeychainAccessGroups(),
+      // Never this process: LaunchServices may still know its launch by the id the bundle had before the update.
       oldAppRunning: {
-        NSRunningApplication.runningApplications(withBundleIdentifier: LegacyName.bundleId).contains { !$0.isTerminated }
+        NSRunningApplication.runningApplications(withBundleIdentifier: LegacyName.bundleId).contains {
+          !$0.isTerminated && $0.processIdentifier != getpid()
+        }
+      },
+      oldAppWasDefaultBrowser: {
+        let stored = CFPreferencesCopyValue("LSHandlers" as CFString, launchServicesDomain as CFString, kCFPreferencesCurrentUser,
+                                            kCFPreferencesAnyHost) as? [[String: Any]]
+        return ["http", "https"].contains {
+          isOldApp(defaultFor: $0, live: LSCopyDefaultHandlerForURLScheme($0 as CFString)?.takeRetainedValue() as String?, stored: stored)
+        }
       },
       ask: alert)
     #endif
@@ -943,7 +983,8 @@ public enum LegacyMigration {
     let library = home.appendingPathComponent("Library")
     let oldData = library.appendingPathComponent("Application Support/\(LegacyName.bundleId)", isDirectory: true)
     // Nothing it reads may lead out of the fake home (a link into the real Library, say).
-    for input in [library, oldData, library.appendingPathComponent("Preferences"), home.appendingPathComponent("keychain.json")]
+    let handlers = library.appendingPathComponent("Preferences/\(launchServicesDomain).plist")
+    for input in [library, oldData, library.appendingPathComponent("Preferences"), handlers, home.appendingPathComponent("keychain.json")]
     where FileManager.default.fileExists(atPath: input.path) && !inside(resolved(input), resolved(home)) {
       NSLog("Arcadia: \(input.path) leads out of ARCADIA_LEGACY_SOURCE; ignored")
       return nil
@@ -956,9 +997,28 @@ public enum LegacyMigration {
       oldSecrets: SecretFile(url: home.appendingPathComponent("keychain.json")),
       newSecrets: IsolatedSecretStores(dataDirectory: data),
       oldAppRunning: { singletonOwnerAlive(oldData.appendingPathComponent("Chromium/SingletonLock")) },
+      oldAppWasDefaultBrowser: {
+        let plist = (try? Data(contentsOf: handlers)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) }
+        let stored = (plist as? [String: Any])?["LSHandlers"] as? [[String: Any]]
+        return ["http", "https"].contains { isOldApp(defaultFor: $0, live: nil, stored: stored) }
+      },
       // A hidden instance can't ask: whatever would need asking stops it.
       ask: { _, _, _ in nil },
       crashAfter: crashAfter)
+  }
+
+  /// Where LaunchServices keeps the user's choices of default apps (Library/Preferences/<this>.plist).
+  static let launchServicesDomain = "com.apple.LaunchServices/com.apple.launchservices.secure"
+
+  /// The old bundle id handles `scheme`. LaunchServices' answer (LSCopyDefaultHandlerForURLScheme) is nil once no
+  /// installed app has that id, as after the update replaced the old app (checked on macOS 27: a scheme whose handler
+  /// was uninstalled answers nil), so then the user's stored choice tells.
+  static func isOldApp(defaultFor scheme: String, live: String?, stored handlers: [[String: Any]]?) -> Bool {
+    if let live { return live.lowercased() == LegacyName.bundleId }
+    return (handlers ?? []).contains { handler in
+      guard (handler["LSHandlerURLScheme"] as? String)?.lowercased() == scheme else { return false }
+      return ["LSHandlerRoleAll", "LSHandlerRoleViewer"].contains { (handler[$0] as? String)?.lowercased() == LegacyName.bundleId }
+    }
   }
 
   /// Chrome's SingletonLock is a symlink to "<host>-<pid>": is that process still running (and not us)?
@@ -997,6 +1057,79 @@ public enum LegacyMigration {
   }
 }
 
+// MARK: - The app's file name
+
+extension LegacyMigration {
+  /// An install updated from before the rename is still at <folder>/<old name>.app: Sparkle installs an update into the
+  /// installed bundle's own path. Before anything resolves a path through the bundle (Chromium finds its framework and
+  /// helpers by path), this renames it to <folder>/Arcadia.app, registers that with LaunchServices and starts this
+  /// process over from there (execv: the same pid, arguments and environment, a hidden test instance's included).
+  ///
+  /// Returns when it stays where it is: it isn't the old name, it's translocated (Gatekeeper runs a quarantined copy
+  /// from a read-only mirror), Arcadia.app is already beside it, or the folder can't be written (logged). Then it runs
+  /// under the old name, as before.
+  ///
+  /// `launched` is the executable's path when the process started (its paths are those from then on); `running` says
+  /// where it is now (the kernel's path follows renames). Only that decides: it renames the old name only while its
+  /// executable is in it (not a folder that replaced it), and a launch of the same bundle that another one moved a
+  /// moment ago follows it there. A rename is never undone: another launch may be running from the new place.
+  public static func moveToNewName(launched: String? = launchedExecutable(), running: @escaping () -> String? = runningExecutable) {
+    guard let launched else { return }
+    // Not standardized: that drops /private from /private/tmp, and the exec must keep the folder as launched.
+    let executable = URL(fileURLWithPath: launched)
+    let macOS = executable.deletingLastPathComponent(), contents = macOS.deletingLastPathComponent()
+    let old = contents.deletingLastPathComponent(), name = executable.lastPathComponent
+    guard macOS.lastPathComponent == "MacOS", contents.lastPathComponent == "Contents", old.lastPathComponent == LegacyName.appFileName,
+      !old.path.contains("/AppTranslocation/"), "\(name).app" != old.lastPathComponent,
+      let folder = realpath(old.deletingLastPathComponent().path, nil) else { return }
+    let resolvedFolder = String(cString: folder)
+    free(folder)
+    let new = old.deletingLastPathComponent().appendingPathComponent("\(name).app")
+    let log = { (message: String) in NSLog("Arcadia: renaming \(old.path): \(message)") }
+    // The bundle itself, never a link to it. RENAME_EXCL: never over anything already called Arcadia.app.
+    var info = stat()
+    let isIn = { (bundle: URL) in (running() ?? "").hasPrefix("\(resolvedFolder)/\(bundle.lastPathComponent)/") }
+    let isBundle = lstat(old.path, &info) == 0 && info.st_mode & S_IFMT == S_IFDIR && isIn(old)
+    let moved = isBundle && renamex_np(old.path, new.path, UInt32(RENAME_EXCL)) == 0
+    let error = String(cString: strerror(errno))
+    guard isIn(new) else {
+      if moved {
+        log("renamed it, but this app isn't in it (it was replaced a moment ago); runs as it is")
+      } else if isBundle {
+        log("stays: \(error)")
+      }
+      return
+    }
+    if moved { LSRegisterURL(new as CFURL, true) }
+    let path = new.appendingPathComponent("Contents/MacOS").appendingPathComponent(name).path
+    var argv = (0..<Int(CommandLine.argc)).map { CommandLine.unsafeArgv[$0] }
+    if argv.isEmpty { argv.append(nil) }
+    argv[0] = strdup(path)
+    argv.append(nil)
+    execv(path, argv)
+    // Never moved back: another launch may be running from the new place by now. This process can't run on from a
+    // bundle that has moved (its paths are the old ones); the next launch starts from Arcadia.app.
+    log("couldn't start from \(new.lastPathComponent): \(String(cString: strerror(errno))); quitting")
+    exit(EXIT_FAILURE)
+  }
+
+  /// The path this process's executable was started from (dyld's; what Bundle.main and Chromium go by).
+  public static func launchedExecutable() -> String? {
+    var size: UInt32 = 0
+    _NSGetExecutablePath(nil, &size)
+    var buffer = [CChar](repeating: 0, count: Int(size) + 1)
+    guard _NSGetExecutablePath(&buffer, &size) == 0 else { return nil }
+    return String(cString: buffer)
+  }
+
+  /// This process's executable where it is now (the kernel's path: links resolved, renames followed).
+  public static func runningExecutable() -> String? {
+    var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+    guard proc_pidpath(getpid(), &buffer, UInt32(buffer.count)) > 0 else { return nil }
+    return String(cString: buffer)
+  }
+}
+
 extension LegacyMigration {
   /// The old → new tables as JSON, for scripts that build an old install to migrate (scripts/legacy-migration-e2e.mjs):
   /// they read the old names here instead of spelling them.
@@ -1025,6 +1158,6 @@ extension LegacyMigrator.Context {
   static func isDone(_ newData: URL) -> Bool {
     guard let data = try? Data(contentsOf: newData.appendingPathComponent(LegacyMigrator.journalName)),
       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-    return json["phase"] as? String == "done" && json["groups"] as? String != "pending"
+    return json["phase"] as? String == "done" && json["groups"] as? String != "pending" && json["defaultBrowser"] is String
   }
 }

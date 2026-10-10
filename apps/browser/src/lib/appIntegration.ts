@@ -2,12 +2,16 @@ import * as cef from "@arcadia/arcadiacore";
 import {
   confirm,
   copyText,
+  isDefaultBrowser,
   onCommand,
   onNotificationResponse,
   onScriptCommand,
   openExternalURL,
+  readDocument,
   replyToScript,
   revealFile,
+  saveDocument,
+  setAsDefaultBrowser,
   setScriptState,
   setWindowActivity,
   systemInfo,
@@ -17,11 +21,14 @@ import {
   type ScriptState,
 } from "@arcadia/shell";
 import { maybeStartOnboarding, openVideoTour, startOnboarding, startToolTour } from "../components/onboarding";
+import { onboardingCompletedAt, useOnboarding } from "../components/onboarding/state";
 import { trackAppVersion } from "../components/ntp/releaseNotes";
 import { openTaskManager } from "../components/taskManager/window";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { activeTabId, resolveWindowId, viewTabIds, windowTitle } from "../store/model";
 import { focus, openUrls, openWindow, switchProfile, switchToTab } from "./actions";
+import { afterFirstWindow } from "./afterFirstWindow";
+import { offerDefaultBrowserAgain } from "./defaultBrowserOffer";
 import { openReleaseNotesAfterUpdate, openReleaseNotesPage } from "./releaseNotesPage";
 import { webviews } from "./webviews";
 import { handleWebNotificationResponse } from "./webNotifications";
@@ -40,6 +47,17 @@ export function startAppIntegration() {
   const updated = trackAppVersion();
   maybeStartOnboarding();
   if (updated) openReleaseNotesAfterUpdate();
+  // After the rename, once the first window is up: be the default browser again, if the old app was (asked once).
+  afterFirstWindow(() => {
+    void offerDefaultBrowserAgain({
+      read: readDocument,
+      save: saveDocument,
+      testInstance: systemInfo().isolatedInstance !== false,
+      onboarding: !onboardingCompletedAt() || useOnboarding.getState().windowId !== null,
+      isDefault: isDefaultBrowser,
+      setDefault: setAsDefaultBrowser,
+    }).catch((error) => console.warn("[defaultBrowserOffer]", error));
+  });
 }
 
 function runAppCommand({ command, windowId }: CommandEvent) {

@@ -8,6 +8,11 @@ import ArcadiaSync
 // user's first launch of the new version (docs/perf/launch-critical-path.md).
 if getenv("ARCADIA_PREWARM") != nil { exit(0) }
 
+// An install updated from before the rename is still in a bundle with the old file name (Sparkle installs into the
+// installed path): it renames itself to Arcadia.app and starts again from there, so the migration below runs once, in
+// the final process, and Chromium resolves its helpers in the bundle's final place. Doesn't return when it moved.
+LegacyMigration.moveToNewName()
+
 // An install of the app under its former name: its data folder, preferences and keychain items come across once,
 // before anything reads them (packages/sync/ios/Core/LegacyMigration.swift). False: the user chose to quit.
 if !LegacyMigration.runAtLaunch() { exit(0) }

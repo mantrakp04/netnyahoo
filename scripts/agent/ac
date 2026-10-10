@@ -2,7 +2,7 @@
 // Hidden test instances from the shell (scripts/lib/instance.mjs): launch one, run JS in the app or a page, quit it.
 //
 //   scripts/agent/ac launch <app> [--data DIR] [--port N] [--js pinned|live|none|host:port] [--env K=V]…
-//                               [--switch S]… [--session FILE.json] [--onboarded] [--no-wait]
+//                               [--switch S]… [--session FILE.json] [--onboarded] [--no-wait] [--runs-from APP]
 //   scripts/agent/ac eval   <data dir> '<body>' [--timeout MS]   the dev harness: `return …` (a promise is awaited)
 //   scripts/agent/ac page   <data dir> <url part> '<expression>'  a page's DevTools Runtime.evaluate (awaited, by value)
 //   scripts/agent/ac quit   <data dir> [--kill]                   the app's quit, then SIGTERM, then SIGKILL
@@ -57,6 +57,7 @@ try {
     const app = await launch(positional[0], {
       data: flags.data, port: flags.port, js: flags.js, env, switches: flags.switch, onboarded: flags.onboarded,
       session: flags.session ? JSON.parse(readFileSync(flags.session, "utf8")) : undefined, ready: !flags["no-wait"],
+      runsFrom: flags["runs-from"],
     });
     console.log(`pid ${app.pid} port ${app.port} data ${app.data} log ${app.log}`);
     process.exit(0);

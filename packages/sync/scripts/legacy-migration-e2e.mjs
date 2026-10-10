@@ -8,14 +8,18 @@
 //     Safe Storage key, preferences, a fake keychain), runs the migration as a test instance runs it, crashes it at
 //     each step and resumes, and checks what came across: the key (it decrypts the password and the cookie), tabs,
 //     pins, settings, shortcuts, bookmarks, renamed files, preferences, keychain items; and that the old install is
-//     untouched and a second run does nothing.
+//     untouched and a second run does nothing. The old app was the default browser (the fake home's LaunchServices
+//     choices), so the migration leaves the offer to be the default again; without that choice it leaves none.
+//     Then the app's rename of its own bundle (`legacy-migration move`) on fake bundles: an old-named bundle becomes
+//     Arcadia.app and the process starts over from it with the same arguments and environment; a clash, a link, another
+//     name, a translocated copy and a read-only folder all stay where they are.
 //
 //   node packages/sync/scripts/legacy-migration-e2e.mjs --seed-from <instance data dir> <fake home>
 //     Turns a quit test instance's data dir (made by today's build) into an old install at <fake home>, for the
 //     hidden-instance check: launch the app with ARCADIA_DATA_DIR=<new dir> ARCADIA_LEGACY_SOURCE=<fake home>.
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createCipheriv, createDecipheriv, createHash, pbkdf2Sync, randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,6 +72,13 @@ function writePlist(path, object) {
   execFileSync("plutil", ["-convert", "binary1", "-o", path, path + ".json"]);
   rmSync(path + ".json");
 }
+
+// The user's default apps as LaunchServices keeps them, in a fake home: the old app handles http and https.
+const LAUNCH_SERVICES = "Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist";
+const writeOldDefaultBrowser = (home) => writePlist(join(home, LAUNCH_SERVICES), {
+  LSHandlers: ["http", "https"].map((scheme) => ({ LSHandlerURLScheme: scheme, LSHandlerRoleAll: names.bundleId })),
+});
+const OFFER = "default-browser-offer.json";
 
 const snapshot = (dir) => {
   const out = {};
@@ -135,6 +146,7 @@ function seedFrom(instance, home) {
     [safeStorage.oldService]: { [safeStorage.oldAccount]: Buffer.from("mock_password").toString("base64") },
     [oldService("Arcadia Connected Accounts")]: { github: Buffer.from("e2e-token").toString("base64") },
   }));
+  writeOldDefaultBrowser(home);
   console.log(`old install at ${home} (from ${instance})`);
 }
 
@@ -187,6 +199,7 @@ function seedSynthetic(home, secret) {
     [oldService("Arcadia Connected Accounts")]: { github: Buffer.from("gh-e2e").toString("base64") },
     [oldService("Arcadia Sync Key")]: { "device-e2e": randomBytes(32).toString("base64") },
   }));
+  writeOldDefaultBrowser(home);
   return oldData;
 }
 
@@ -221,8 +234,10 @@ function verify(label, data, secret) {
   check(`${label}: sync key`, existsSync(join(data, "sync-key-device-e2e")) && statSync(join(data, "sync-key-device-e2e")).size === 32);
   const prefs = domainJSON(join(data, "Preferences", `${NEW_ID}.plist`));
   check(`${label}: preferences`, prefs.ACAppIcon === "ocean" && prefs["NSWindow Frame ArcadiaSettings"] === "1 2 3 4" && prefs.SUAutomaticallyUpdate === false, JSON.stringify(prefs));
+  const offer = existsSync(join(data, OFFER)) ? JSON.parse(readFileSync(join(data, OFFER), "utf8")) : null;
+  check(`${label}: the offer to be the default browser again`, offer?.version === 1 && offer.askedAt === null, JSON.stringify(offer));
   const journal = JSON.parse(readFileSync(join(data, ".legacy-migration.json"), "utf8"));
-  check(`${label}: journal done`, journal.phase === "done" && journal.outcome === "migrated", JSON.stringify(journal));
+  check(`${label}: journal done`, journal.phase === "done" && journal.outcome === "migrated" && journal.defaultBrowser === "offered", JSON.stringify(journal));
 }
 
 if (process.argv[2] === "--seed-from") {
@@ -251,6 +266,137 @@ for (const crashAfter of [null, "staged", "secrets", "journal", "published", "de
   const after = snapshot(data);
   check(`${label}: a second run changes nothing`, run(home, data) === 0 && JSON.stringify(snapshot(data)) === JSON.stringify(after));
 }
+{
+  const dir = join(root, "not-default");
+  rmSync(dir, { recursive: true, force: true });
+  const home = join(dir, "home"), data = join(dir, "data");
+  seedSynthetic(home, secret);
+  rmSync(join(home, LAUNCH_SERVICES));
+  check("another default browser: the run goes on", run(home, data) === 0);
+  check("another default browser: no offer", !existsSync(join(data, OFFER)));
+  check("another default browser: the journal says so", JSON.parse(readFileSync(join(data, ".legacy-migration.json"), "utf8")).defaultBrowser === "no");
+}
+{
+  // An install migrated by a build from before the offer: its next launch answers it, once.
+  const dir = join(root, "before-the-offer");
+  rmSync(dir, { recursive: true, force: true });
+  const home = join(dir, "home"), data = join(dir, "data");
+  seedSynthetic(home, secret);
+  run(home, data);
+  const journalFile = join(data, ".legacy-migration.json");
+  const { defaultBrowser, ...older } = JSON.parse(readFileSync(journalFile, "utf8"));
+  writeFileSync(journalFile, JSON.stringify(older));
+  rmSync(join(data, OFFER));
+  check("before the offer: the next launch goes on", run(home, data) === 0);
+  check("before the offer: it leaves the offer", JSON.parse(readFileSync(join(data, OFFER), "utf8")).askedAt === null);
+  check("before the offer: the journal says it did", JSON.parse(readFileSync(journalFile, "utf8")).defaultBrowser === "offered");
+  // The app has asked: that stays as it is.
+  writeFileSync(join(data, OFFER), JSON.stringify({ version: 1, askedAt: 1 }));
+  writeFileSync(journalFile, JSON.stringify(older));
+  run(home, data);
+  check("before the offer: an offer already answered stays answered", JSON.parse(readFileSync(join(data, OFFER), "utf8")).askedAt === 1);
+}
+
+// MARK: The app's rename of its own bundle
+
+// A bundle whose executable is this tool: `move` runs the rename as the app does, from inside it.
+const NEW_APP = "Arcadia.app";
+function fakeBundle(folder, name = names.appFileName) {
+  const bundle = join(folder, name);
+  mkdirSync(join(bundle, "Contents/MacOS"), { recursive: true });
+  cpSync(bin, join(bundle, "Contents/MacOS/Arcadia"));
+  return bundle;
+}
+const exe = (bundle) => join(bundle, "Contents/MacOS/Arcadia");
+const moveArgs = (wait) => ["move", ...(wait ? ["--wait", wait] : [])];
+const move = (bundle) => spawnSync(exe(bundle), moveArgs(), { env: { ...process.env, MOVE_MARK: "kept" }, encoding: "utf8" }).stdout.trim();
+// What it prints once it stays: the path the process last started from (an exec's, after a move).
+const ranFrom = (bundle, wait) => `at ${exe(bundle)}|kept|${moveArgs(wait).join(" ")}`;
+const moves = join(root, "move");
+rmSync(moves, { recursive: true, force: true });
+{
+  const folder = join(moves, "plain");
+  const bundle = fakeBundle(folder);
+  const out = move(bundle);
+  check("move: the old name becomes Arcadia.app", !existsSync(bundle) && existsSync(join(folder, NEW_APP)), readdirSync(folder).join(", "));
+  check("move: it starts over from there, with its arguments and environment", out === ranFrom(join(folder, NEW_APP)), out);
+}
+{
+  // Two launches of the same bundle: one is held up after it started while the other renames the bundle; it must go
+  // where its bundle went, not run on from a path that no longer exists.
+  const folder = join(moves, "race");
+  const bundle = fakeBundle(folder);
+  const go = join(moves, "race-go");
+  const held = spawn(exe(bundle), moveArgs(go), { env: { ...process.env, MOVE_MARK: "kept" } });
+  let heldOut = "";
+  held.stdout.on("data", (d) => (heldOut += d));
+  const heldExit = new Promise((r) => held.on("exit", r));
+  await new Promise((r) => setTimeout(r, 300));
+  const out = move(bundle);
+  writeFileSync(go, "");
+  await Promise.race([heldExit, new Promise((r) => setTimeout(r, 10000))]);
+  held.kill();
+  check("move: the first launch moves it", out === ranFrom(join(folder, NEW_APP)), out);
+  check("move: the held-up launch follows its bundle there", heldOut.trim() === ranFrom(join(folder, NEW_APP), go), heldOut.trim());
+}
+{
+  // A launch whose bundle was moved away and replaced by another folder under the old name before it got to rename:
+  // it must neither rename that folder nor start what's inside it.
+  const folder = join(moves, "replaced");
+  const bundle = fakeBundle(folder);
+  const go = join(moves, "replaced-go");
+  const held = spawn(exe(bundle), moveArgs(go), { env: { ...process.env, MOVE_MARK: "kept" } });
+  let heldOut = "";
+  held.stdout.on("data", (d) => (heldOut += d));
+  const heldExit = new Promise((r) => held.on("exit", r));
+  await new Promise((r) => setTimeout(r, 300));
+  renameSync(bundle, join(folder, "Elsewhere.app"));
+  fakeBundle(folder);
+  writeFileSync(go, "");
+  await Promise.race([heldExit, new Promise((r) => setTimeout(r, 10000))]);
+  held.kill();
+  check("move: a folder that replaced the bundle is left under the old name, and not started",
+    heldOut.trim() === ranFrom(bundle, go) && readdirSync(folder).sort().join(", ") === `Elsewhere.app, ${names.appFileName}`,
+    `${heldOut.trim()}; ${readdirSync(folder).join(", ")}`);
+}
+const stays = (label, folder, bundle) => {
+  const before = readdirSync(folder).sort().join(", ");
+  const out = move(bundle);
+  check(`move: ${label} stays`, out === ranFrom(bundle) && readdirSync(folder).sort().join(", ") === before, `${out}; ${readdirSync(folder).join(", ")}`);
+};
+{
+  const folder = join(moves, "clash");
+  const bundle = fakeBundle(folder);
+  fakeBundle(folder, NEW_APP);
+  stays("beside an Arcadia.app", folder, bundle);
+}
+{
+  const folder = join(moves, "link");
+  const target = fakeBundle(join(moves, "elsewhere"), "Real.app");
+  mkdirSync(folder, { recursive: true });
+  symlinkSync(target, join(folder, names.appFileName));
+  stays("a link", folder, join(folder, names.appFileName));
+  check("move: the link and its target are untouched", lstatSync(join(folder, names.appFileName)).isSymbolicLink() && existsSync(target));
+}
+{
+  const folder = join(moves, "other");
+  stays("another name", folder, fakeBundle(folder, "Arcadia Beta.app"));
+}
+{
+  const folder = join(moves, "AppTranslocation/ABCD/d");
+  stays("a translocated copy", folder, fakeBundle(folder));
+}
+{
+  const folder = join(moves, "readonly");
+  const bundle = fakeBundle(folder);
+  chmodSync(folder, 0o555);
+  try {
+    stays("a folder it can't write", folder, bundle);
+  } finally {
+    chmodSync(folder, 0o755);
+  }
+}
+
 console.log(failures ? `${failures} failed (scratch: ${root})` : `all passed (scratch: ${root})`);
 if (!failures && !process.argv[2]) rmSync(root, { recursive: true, force: true });
 process.exit(failures ? 1 : 0);

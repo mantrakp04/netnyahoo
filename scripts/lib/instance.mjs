@@ -359,6 +359,8 @@ class Instance {
  *   port      the DevTools port (default a free one); `log` the app's stdout and stderr (default <data>/app.out.log)
  *   ready     wait for the dev harness (default true; a body returning truthy to wait for more, or { test, timeout });
  *             an app that never gets ready is quit before the error is thrown
+ *   runsFrom  the bundle the app runs from once it has moved itself at launch (a copy under the app's former name
+ *             renames itself: LegacyMigration.moveToNewName); default `app`
  */
 export async function launch(app, opts = {}) {
   app = resolve(app);
@@ -374,7 +376,8 @@ export async function launch(app, opts = {}) {
   if (opts.onboarded) writeFileSync(join(data, "onboarding.json"), JSON.stringify({ version: 1, completedAt: 1 }));
   if (opts.probe) writeFileSync(join(data, "perf-probe"), "");
   for (const [name, text] of Object.entries(opts.files ?? {})) writeFileSync(join(data, name), typeof text === "string" ? text : JSON.stringify(text));
-  const binary = binaryOf(app);
+  const runsFrom = opts.runsFrom ? resolve(opts.runsFrom) : app;
+  const binary = join(runsFrom, "Contents/MacOS", basename(binaryOf(app)));
   const port = opts.port ? parsePort(opts.port) : await freePort();
   const busy = listenerPids(port);
   if (busy.length) throw new Error(`DevTools port ${port} is already in use by pid ${busy.join(", ")}`);
@@ -407,7 +410,7 @@ export async function launch(app, opts = {}) {
     if (pid && info) owned = { pid, started: info.started };
   }
   if (!owned) throw new Error(`the app didn't listen on DevTools port ${port} within ${(opts.startTimeout ?? 60000) / 1000} s (log: ${log})`);
-  const instance = new Instance({ app, binary, data, port, log, launchedAt, js, ...owned, meta: opts.meta ?? {} }).save();
+  const instance = new Instance({ app: runsFrom, binary, data, port, log, launchedAt, js, ...owned, meta: opts.meta ?? {} }).save();
   if (opts.ready !== false)
     try {
       await instance.ready(typeof opts.ready === "string" ? { test: opts.ready } : typeof opts.ready === "object" ? opts.ready : {});
