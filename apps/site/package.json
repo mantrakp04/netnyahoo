@@ -15,16 +15,10 @@
     "@fontsource-variable/newsreader": "^5.3.0",
     "@rrweb/record": "2.1.6",
     "astro": "^7.3.4",
-    "three": "^0.186.0",
     "web-vitals": "6.2.2"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@gltf-transform/core": "^4.5.0",
-    "@gltf-transform/extensions": "^4.5.0",
-    "@gltf-transform/functions": "^4.5.0",
-    "@types/three": "^0.186.0",
-    "meshoptimizer": "^1.2.0",
     "sharp": "^0.35.4",
     "subset-font": "^2.9.0",
     "typescript": "^5.9.3"

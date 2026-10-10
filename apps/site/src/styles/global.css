@@ -119,6 +119,20 @@ h3 {
   padding-inline: var(--gutter);
 }
 
+/* The painted logo (Hero, Closing): leans toward the mouse by --tx and --ty (scripts/tilt.ts). */
+[data-tilt] picture {
+  display: block;
+  width: 100%;
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  [data-tilt] picture {
+    transform: perspective(1400px) rotateY(calc(var(--tx, 0) * 7deg)) rotateX(calc(var(--ty, 0) * -5deg))
+      translate3d(calc(var(--tx, 0) * 6px), calc(var(--ty, 0) * 4px), 0);
+    transform-origin: 50% 100%;
+    transition: transform 900ms var(--ease-out);
+  }
+}
+
 /* Poster headline: condensed, black, tight. */
 .poster {
   font-family: var(--poster);

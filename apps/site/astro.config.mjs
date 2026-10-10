@@ -1,23 +1,13 @@
 import { defineConfig } from "astro/config";
-import { createHash } from "node:crypto";
-import { copyFileSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { constants, gzipSync } from "node:zlib";
 
-// the mascot's model stays at public/models/big-mascot.glb (pages from before a deploy ask for that path). A build
-// also writes it as big-mascot.<content hash>.glb, the name the page asks for (scripts/stage.ts) and the only one
-// nginx caches for good (infra/site/nginx.conf). `astro dev` serves public/ as it is, so there the page asks for
-// the plain name.
-const modelSource = new URL("./public/models/big-mascot.glb", import.meta.url);
-const modelHash = createHash("sha256").update(readFileSync(modelSource)).digest("hex").slice(0, 10);
-const hashedModel = `big-mascot.${modelHash}.glb`;
-
-/** The model under its hashed name, and a gzip at the highest level next to every text file and the model,
- * served as-is by nginx's gzip_static (infra/site/nginx.conf), so no request waits on compression and none
- * gets a quick, larger one. */
+/** A gzip at the highest level next to every text file, served as-is by nginx's gzip_static
+ * (infra/site/nginx.conf), so no request waits on compression and none gets a quick, larger one. */
 function dist() {
-  const compressible = /\.(html|css|js|mjs|json|svg|xml|txt|glb)$/;
+  const compressible = /\.(html|css|js|mjs|json|svg|xml|txt)$/;
   const walk = (dir) =>
     readdirSync(dir).flatMap((name) => {
       const path = join(dir, name);
@@ -26,12 +16,7 @@ function dist() {
   return {
     name: "arcadia:dist",
     hooks: {
-      "astro:config:setup": ({ command, updateConfig }) => {
-        const model = command === "build" ? hashedModel : "big-mascot.glb";
-        updateConfig({ vite: { define: { __MASCOT_MODEL__: JSON.stringify(model) } } });
-      },
       "astro:build:done": ({ dir, logger }) => {
-        copyFileSync(modelSource, new URL(`models/${hashedModel}`, dir));
         let files = 0;
         for (const path of walk(fileURLToPath(dir)).filter((p) => compressible.test(p))) {
           const raw = readFileSync(path);

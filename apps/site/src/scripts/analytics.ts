@@ -13,7 +13,7 @@
 //   section_viewed { section }                   a [data-shot] section scrolled into view
 //   support_opened { location }                  the footer's support chat (scripts/support.ts)
 //   release_notes_viewed { version, latest, trigger }   pages/release-notes.astro
-//   mascot_found { seconds, misses }, mascot_danced { stage, dance }, mascot_spun { stage }   the game and the mascot
+//   mascot_found { seconds, misses }             the game (components/Game.astro)
 // Experiment: flag "download-band", Macs only (components/InOffice.astro, docs/growth.md).
 import { track, type Props } from "./track";
 import "./support";

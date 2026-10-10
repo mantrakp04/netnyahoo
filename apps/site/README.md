@@ -37,12 +37,10 @@ Pages without a custom domain).
   `Game.astro`. Replace a file with a new capture of the same name; Astro makes the AVIF/WebP sizes. On phones
   a shot shows only its `focus` region (see `Shot.astro` and `data/pledges.ts`), so check the crop after
   replacing one.
-- **the mascot:** `public/models/big-mascot.glb` is a drop-in slot. Any rigged GLB with clips named `Griddy` and
-  `Default Dance` works; the page frames him from his bounding box. `node scripts/build-model.mjs` rebuilds it
-  from the brand sources in the main checkout's `output/` (simplify, WebP textures, meshopt). The hero's
-  poster (`src/assets/mascot-poster.webp`, shown until WebGL is ready or when it isn't available) is a render of
-  the same scene: in `pnpm dev`, `__mascot.snapshot()` in the console returns it as a PNG data URL. A build
-  also writes it as `big-mascot.<content hash>.glb`, the name the page asks for and nginx caches for a year.
+- **the logo:** `src/assets/arcadia-mark.png` is the painted hills and sun (the brand's `mark-trim.png`, from
+  `output/brand/arcadia/final/` in the main checkout), shown in the hero and the closing section; Astro makes the
+  AVIF/WebP sizes. `app-icon.png` (the header) is the macOS icon cropped close to its tile; `public/favicon.png` is
+  the tile, rounded, at 64 px; `public/og.png` is the share card.
 - **Fonts:** Fontsource's variable faces, with each Latin file split into the characters the site sets
   (preloaded) and the rest (`src/styles/fonts.css` and `src/assets/fonts/`, both from
   `node scripts/build-fonts.mjs`). Rerun it when new copy or a release note brings in a Latin character the

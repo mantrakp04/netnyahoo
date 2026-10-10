@@ -1,6 +1,6 @@
 ---
-import { Image } from "astro:assets";
-import poster from "../assets/mascot-poster.webp";
+import { Picture } from "astro:assets";
+import mark from "../assets/arcadia-mark.png";
 import DownloadButton from "./DownloadButton.astro";
 import MacOnlyNote from "./MacOnlyNote.astro";
 import SendToMac from "./SendToMac.astro";
@@ -44,21 +44,23 @@ import { STARS } from "../data/github";
     </div>
 
     <figure class="hero-figure">
-      <div class="stage" data-stage="hero">
-        <Image
-          class="stage-poster"
-          src={poster}
-          alt="The Arcadia mascot."
-          widths={[400, 600, 800, 1120]}
-          sizes="(max-width: 820px) 92vw, 560px"
+      <div class="stage" data-tilt>
+        <Picture
+          class="stage-art"
+          src={mark}
+          alt="The Arcadia logo: two rolling green hills under a yellow sun, painted in thick oils."
+          formats={["avif"]}
+          fallbackFormat="webp"
+          widths={[360, 560, 760, mark.width]}
+          sizes="(max-width: 820px) 86vw, 560px"
           loading="eager"
           fetchpriority="high"
         />
-        <p class="stamp" aria-hidden="true"><span>Incumbent</span></p>
+        <p class="stamp" aria-hidden="true"><span>Landslide</span></p>
       </div>
       <figcaption class="label stage-caption">
-        <span>Fig. 1 — the mascot, candidate</span>
-        <span class="hint">Drag to turn · click to dance</span>
+        <span>Fig. 1 — the logo, oil on canvas</span>
+        <span class="hint">Two hills, one sun</span>
       </figcaption>
     </figure>
   </div>
@@ -70,7 +72,7 @@ import { STARS } from "../data/github";
     padding-top: clamp(24px, 5vh, 72px);
     padding-bottom: clamp(48px, 8vh, 96px);
   }
-  /* One text block (headline, lede, download, fine print) bottom-aligned with the mascot's caption,
+  /* One text block (headline, lede, download, fine print) bottom-aligned with the painting's caption,
      so the headline sits on the lede like a poster instead of floating above an empty row. */
   .hero-grid {
     display: grid;
@@ -172,47 +174,27 @@ import { STARS } from "../data/github";
     z-index: 2;
     width: min(100%, 560px);
   }
+  /* The painted logo, standing on the caption's rule. Room above it for the stamp. */
   .stage {
     position: relative;
-    aspect-ratio: 56 / 66;
-    max-height: max(400px, 66svh);
-    width: 100%;
-    cursor: grab;
-    touch-action: pan-y;
-    -webkit-user-select: none;
-    user-select: none;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: clamp(56px, 9vh, 104px) 2% 14px;
   }
-  .stage:active {
-    cursor: grabbing;
-  }
-  .stage-poster {
-    position: absolute;
-    inset: 0;
+  .stage-art {
+    display: block;
     width: 100%;
-    height: 100%;
+    height: auto;
+    max-height: max(300px, 52svh);
     object-fit: contain;
     object-position: 50% 100%;
-    transition: opacity 400ms var(--ease-out) 100ms;
-    pointer-events: none;
-  }
-  .stage[data-live] .stage-poster {
-    opacity: 0;
-  }
-  .stage :global(.mascot-canvas) {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    transition: opacity 400ms var(--ease-out);
-  }
-  .stage[data-live] :global(.mascot-canvas) {
-    opacity: 1;
+    filter: drop-shadow(0 18px 22px rgb(32 63 50 / 0.16));
   }
   .stamp {
     position: absolute;
-    right: 2%;
-    top: 16%;
+    right: 0;
+    top: clamp(8px, 2vh, 24px);
     margin: 0;
     transform: rotate(-9deg);
     pointer-events: none;
@@ -253,7 +235,7 @@ import { STARS } from "../data/github";
     }
   }
 
-  /* Phones and small tablets: the text block first, set as big as the width allows, then him. */
+  /* Phones and small tablets: the text block first, set as big as the width allows, then the painting. */
   @media (max-width: 820px) {
     .hero {
       padding-top: 20px;
@@ -294,12 +276,13 @@ import { STARS } from "../data/github";
       margin-top: 8px;
     }
     .stage {
-      aspect-ratio: 1 / 0.86;
-      max-height: 62svh;
+      padding: 52px 7% 12px;
+    }
+    .stage-art {
+      max-height: 46svh;
     }
     .stamp {
-      right: 0;
-      top: 10%;
+      top: 6px;
     }
     .hint {
       display: none;

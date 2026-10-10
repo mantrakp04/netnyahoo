@@ -23,7 +23,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 // Versioned by content: X and others cache a card image by its URL for days.
 const ogVersion = createHash("sha256").update(readFileSync(`${process.cwd()}/public/og.png`)).digest("hex").slice(0, 10);
 const og = new URL(`${base}/og.png?v=${ogVersion}`, Astro.site);
-const OG_ALT = "Full immunity. The mascot, the Arcadia mascot, next to the words; arcadia, a Chromium browser for the Mac.";
+const OG_ALT =
+  "Full immunity. The Arcadia logo, two painted green hills under a yellow sun stamped “Landslide”, next to the words; arcadia, a free Chromium browser for the Mac.";
 ---
 
 <!doctype html>
