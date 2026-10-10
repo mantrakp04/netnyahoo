@@ -123,7 +123,7 @@ and a session whose window was left on its second profile, and checks, over CDP 
   in the Work context;
 - a passkey dialog comes in front, directly over the visible window it belongs to, and closes when the
   page navigates (the 0.1.2–0.1.4 regressions);
-- the autofill dropdown accepts a suggestion (0.1.3), the offline page is Where's the mascot?, chrome://version;
+- the autofill dropdown accepts a suggestion (0.1.3), the offline page is Where's the lamb?, chrome://version;
 - right-click shows the native context menu (0.1.5);
 - with Chrome's last-used profile left at Work (as quitting with Work's window in front does), Personal's pages
   still run in Personal's profile (0.2.19 and earlier ran them in Work's);
@@ -285,8 +285,8 @@ app (listed in `apps/site/README.md` › Screenshots):
   An in-process snapshot is not a substitute: it drops glass and Metal views.
 - **Replace in place:** save the new capture over the file with the same name, since Astro makes the sizes.
   Update the shot's `alt` text if what it shows changed, and check its phone crop (`focus` in `data/pledges.ts`).
-- **Don't touch the rest:** leave the mascot poster (`mascot-poster.webp`) and the 3D model alone unless the
-  brand changed.
+- **Don't touch the rest:** leave the painted logo (`arcadia-mark.png`, from `docs/brand/arcadia`) alone unless
+  the brand changed.
 
 Keep to the site's bar: few words, witty over wordy (see the existing lines). Build with `pnpm -C apps/site build`
 and check the changed sections and shots render, on a phone width too (the "site" launch config, port 4321).

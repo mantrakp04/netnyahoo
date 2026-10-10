@@ -3,7 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
-  const MANIFEST = window.MASCOT_MANIFEST;
+  const MANIFEST = window.GAME_MANIFEST;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const theme = params.get("theme");
@@ -22,9 +22,9 @@
     document.title = failedHost ? `${failedHost} · No internet` : "No internet";
   } else {
     document.body.classList.add("standalone");
-    document.title = "Where's the mascot?";
-    $("offline-title").textContent = "Where's the mascot?";
-    $("offline-sub").textContent = "One man, one crowd, a great deal of money. Find him before the clock runs out.";
+    document.title = "Where's the lamb?";
+    $("offline-title").textContent = "Where's the lamb?";
+    $("offline-sub").textContent = "One lamb, one yellow bell, a hillside of look-alikes. Find her before the sun goes down.";
   }
 
   function retry() {
@@ -42,7 +42,7 @@
   addEventListener("online", () => { if (errorCode || failedUrl) $("online").hidden = false; });
   addEventListener("offline", () => { $("online").hidden = true; });
 
-  const BEST_KEY = "arcadia.mascot.best";
+  const BEST_KEY = "arcadia.lamb.best";
   function loadBest() {
     try { return Math.max(0, parseInt(localStorage.getItem(BEST_KEY) || "0", 10) || 0); } catch (_) { return 0; }
   }
@@ -92,34 +92,33 @@
   }
 
   const CAPTIONS = [
-    "Found him. Now try finding the donor list.",
-    "Hiding in a crowd of lobbyists. Bold camouflage.",
-    "He blends right in. That's rather the problem.",
-    "The name tags are blank. The cheques never are.",
-    "Found. The lobbyists, sadly, are still everywhere.",
-    "Ah yes, a completely spontaneous gathering of major donors.",
-    "Transparency achieved, for about four seconds.",
-    "He's not hiding. He's “unavailable for comment.”",
-    "No internet, yet somehow the money still gets through.",
-    "Access costs extra. Finding him was free.",
-    "Every hand in this room is shaking another hand's wallet.",
-    "Spotted between two concerned citizens with seven-figure concerns.",
-    "Caught mid-photo-op. The fundraiser runs until the vote.",
-    "Policy is made by those who show up. And those who pay for the room.",
+    "Found her. The flock didn't even look up.",
+    "Lost and found, in that order.",
+    "Back with the flock. Your Wi‑Fi, sadly, is still out.",
+    "The bell was a clue. You're welcome.",
+    "She wasn't lost. Everyone else was in the wrong field.",
+    "Found. The goats are claiming they helped.",
+    "The sheepdog would like partial credit.",
+    "No signal up here, and you found her anyway.",
+    "You counted every sheep and stayed awake. Impressive.",
+    "Somewhere, a shepherd exhales.",
+    "She heard you were offline and came to keep you company.",
+    "One lamb, accounted for. Ninety-nine sheep, unbothered.",
+    "Spotted between two ewes who saw nothing.",
+    "Pasture: green. Signal: none. Lamb: found.",
   ];
   const TIMEOUT_LINES = [
-    "Time's up. He's already at the next fundraiser.",
-    "Gone. Left through the side door with the gift bags.",
-    "Too slow. The press conference has been cancelled.",
+    "Sundown. She found her own way home.",
+    "Time's up. The dog found her first.",
+    "Too slow. She's three fields over by now.",
   ];
   const MISS = {
     crowd: [
-      "Just a lobbyist.", "That's a donor.", "Wrong suit.", "Nope, a “concerned citizen.”",
-      "That's the treasurer.", "A consultant. Bills by the hour.", "Not him. Same donors, though.",
-      "An ethics advisor. Allegedly.",
+      "Not her.", "Wrong woolly.", "That's someone else's sheep.", "Same field, wrong animal.",
+      "Nice fleece. Wrong one.", "Just the flock.", "No bell on that one.", "Keep looking. She jingles.",
     ],
-    hair: ["Right hair, wrong politician.", "Silver hair, different wallet."],
-    tie: ["Blue tie, wrong guy.", "Same tie. Different sponsor."],
+    lamb: ["Right lamb, no yellow bell.", "A lamb, just not the lost one.", "Close. Look for the yellow bell."],
+    bell: ["Right bell, wrong animal.", "Yellow bell, not a lamb.", "Somebody borrowed her bell."],
   };
   function makeBag(list) {
     let bag = [];
@@ -130,14 +129,14 @@
   }
   const nextCaption = makeBag(CAPTIONS);
   const nextTimeout = makeBag(TIMEOUT_LINES);
-  const nextMiss = { crowd: makeBag(MISS.crowd), hair: makeBag(MISS.hair), tie: makeBag(MISS.tie) };
+  const nextMiss = { crowd: makeBag(MISS.crowd), lamb: makeBag(MISS.lamb), bell: makeBag(MISS.bell) };
 
-  const sprites = { crowd: [], decoy: [], mascot: [] };
+  const sprites = { crowd: [], decoy: [], lamb: [] };
   const backgrounds = [];
   function parseMask(rows) {
     return Uint32Array.from(rows, (h) => parseInt(h, 16) >>> 0);
   }
-  const INLINED = window.MASCOT_ASSETS || {};
+  const INLINED = window.GAME_ASSETS || {};
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -222,7 +221,8 @@
       y += h * rowK;
     }
 
-    const decoyPool = sprites.decoy.filter((s) => n >= 3 || s.trait === "tie");
+    // Levels 1–2: only lambs without her bell, so the yellow pops; after that, other animals wear it too.
+    const decoyPool = sprites.decoy.filter((s) => n >= 3 || s.trait === "lamb");
     const decoyCount = Math.round(lerp(2, 16, t));
     const nextDecoy = makeBag(decoyPool.length ? decoyPool : sprites.decoy);
     for (const p of shuffle(people).slice(0, decoyCount)) {
@@ -234,30 +234,30 @@
 
     const minVis = lerp(0.95, 0.55, t);
     const wantOccluded = n >= 3;
-    const pose = pick(sprites.mascot);
+    const pose = pick(sprites.lamb);
     const candidates = people.filter((p) => {
       const top = p.y - p.h;
       return p.x > W * 0.07 && p.x < W * 0.93 && top > H * 0.03 && p.y - p.h * 0.45 < H * 0.95 &&
         (t < 0.15 || p.depth < lerp(1, 0.7, t));
     });
     for (const p of candidates) p.rot *= 0.5;
-    let mascot = null;
+    let lamb = null;
     let fallback = null;
     for (let i = 0; i < 80 && candidates.length; i++) {
       const p = pick(candidates);
       const prev = { sprite: p.sprite, kind: p.kind };
-      p.sprite = pose; p.kind = "mascot";
+      p.sprite = pose; p.kind = "target";
       const vis = visibility(p, people);
-      if (vis >= minVis && (!wantOccluded || i > 50 || vis <= 0.9)) { mascot = p; break; }
+      if (vis >= minVis && (!wantOccluded || i > 50 || vis <= 0.9)) { lamb = p; break; }
       if (!fallback || vis > fallback.vis) fallback = { p, vis };
       p.sprite = prev.sprite; p.kind = prev.kind;
     }
-    if (!mascot) {
-      mascot = fallback ? fallback.p : pick(people);
-      mascot.sprite = pose; mascot.kind = "mascot";
-      for (let guard = 0; guard < 24 && visibility(mascot, people) < minVis; guard++) {
-        const idx = people.indexOf(mascot);
-        const blocker = people.slice(idx + 1).find((q) => blocksFace(mascot, q));
+    if (!lamb) {
+      lamb = fallback ? fallback.p : pick(people);
+      lamb.sprite = pose; lamb.kind = "target";
+      for (let guard = 0; guard < 24 && visibility(lamb, people) < minVis; guard++) {
+        const idx = people.indexOf(lamb);
+        const blocker = people.slice(idx + 1).find((q) => blocksFace(lamb, q));
         if (!blocker) break;
         people.splice(people.indexOf(blocker), 1);
       }
@@ -265,15 +265,15 @@
 
     if (n >= 4) {
       const near = people
-        .filter((p) => p !== mascot && p.kind === "crowd" && Math.abs(p.y - mascot.y) < mascot.h * 0.6)
-        .sort((a, b) => Math.abs(a.x - mascot.x) - Math.abs(b.x - mascot.x))
+        .filter((p) => p !== lamb && p.kind === "crowd" && Math.abs(p.y - lamb.y) < lamb.h * 0.6)
+        .sort((a, b) => Math.abs(a.x - lamb.x) - Math.abs(b.x - lamb.x))
         .slice(0, n >= 7 ? 2 : 1);
       const saved = near.map((p) => ({ p, sprite: p.sprite, kind: p.kind }));
       for (const p of near) { p.sprite = nextDecoy(); p.kind = p.sprite.trait; }
-      if (visibility(mascot, people) < minVis) for (const r of saved) { r.p.sprite = r.sprite; r.p.kind = r.kind; }
+      if (visibility(lamb, people) < minVis) for (const r of saved) { r.p.sprite = r.sprite; r.p.kind = r.kind; }
     }
 
-    return { n, t, bg, W, H, people, mascot, time: Math.max(35, 60 - (n - 1) * 2.5) };
+    return { n, t, bg, W, H, people, lamb, time: Math.max(35, 60 - (n - 1) * 2.5) };
   }
 
   function faceSamples(p) {
@@ -401,7 +401,7 @@
     const view = { x0: -cam.x / cam.k, y0: -cam.y / cam.k, x1: (vw - cam.x) / cam.k, y1: (vh - cam.y) / cam.k };
     const revealing = reveal && state !== "over";
     for (const p of L.people) {
-      if (revealing && p === L.mascot) continue;
+      if (revealing && p === L.lamb) continue;
       const r = p.h * 0.8;
       if (p.x + r < view.x0 || p.x - r > view.x1 || p.y - p.h > view.y1 || p.y < view.y0) continue;
       drawPerson(p);
@@ -416,13 +416,13 @@
       ctx.beginPath();
       ctx.rect(0, 0, vw, vh);
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2, true);
-      ctx.fillStyle = `rgba(10, 8, 9, ${0.62 * Math.min(1, k * 3)})`;
+      ctx.fillStyle = `rgba(16, 30, 24, ${0.62 * Math.min(1, k * 3)})`;
       ctx.fill("evenodd");
       const pulse = 0.5 + 0.5 * Math.sin(now / 180);
       ctx.beginPath();
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
       ctx.lineWidth = 3;
-      ctx.strokeStyle = `rgba(255, 214, 120, ${0.65 + 0.35 * pulse})`;
+      ctx.strokeStyle = `rgba(230, 188, 98, ${0.7 + 0.3 * pulse})`;
       ctx.stroke();
     }
 
@@ -434,7 +434,7 @@
       ctx.beginPath();
       ctx.arc(s.x, s.y, 10 + 26 * ease.outCubic(k), 0, Math.PI * 2);
       ctx.lineWidth = 3 * (1 - k) + 1;
-      ctx.strokeStyle = `rgba(225, 72, 80, ${1 - k})`;
+      ctx.strokeStyle = `rgba(196, 92, 58, ${1 - k})`;
       ctx.stroke();
       const x = 7 * (1 - k);
       ctx.beginPath();
@@ -445,17 +445,17 @@
 
     if (reveal) {
       const t = (now - reveal.start) / 1000;
-      const Y = L.mascot;
+      const Y = L.lamb;
       if (state === "found") {
-        ctx.fillStyle = `rgba(10, 8, 9, ${0.55 * Math.min(1, t * 3)})`;
+        ctx.fillStyle = `rgba(16, 30, 24, ${0.55 * Math.min(1, t * 3)})`;
         ctx.fillRect(0, 0, vw, vh);
         const pop = reduceMotion ? 1 : ease.outElastic(clamp(t / 1.1, 0, 1));
         const scale = 1 + 0.32 * pop;
         const lift = Y.h * 0.1 * pop;
         const hc = toScreen(Y.x, Y.y - Y.h * 0.5);
         const glow = ctx.createRadialGradient(hc.x, hc.y, 0, hc.x, hc.y, Y.h * cam.k * 0.9);
-        glow.addColorStop(0, `rgba(255, 220, 140, ${0.45 * pop})`);
-        glow.addColorStop(1, "rgba(255, 220, 140, 0)");
+        glow.addColorStop(0, `rgba(230, 188, 98, ${0.5 * pop})`);
+        glow.addColorStop(1, "rgba(230, 188, 98, 0)");
         ctx.fillStyle = glow;
         ctx.fillRect(0, 0, vw, vh);
         const rot = Y.rot;
@@ -469,12 +469,12 @@
         ctx.beginPath();
         ctx.rect(0, 0, vw, vh);
         ctx.arc(c.x, c.y, Y.h * cam.k * 0.62, 0, Math.PI * 2, true);
-        ctx.fillStyle = "rgba(10, 8, 9, 0.55)";
+        ctx.fillStyle = "rgba(16, 30, 24, 0.55)";
         ctx.fill("evenodd");
         ctx.beginPath();
         ctx.arc(c.x, c.y, Y.h * cam.k * 0.62, 0, Math.PI * 2);
         ctx.lineWidth = 3;
-        ctx.strokeStyle = `rgba(225, 72, 80, ${0.6 + 0.4 * pulse})`;
+        ctx.strokeStyle = `rgba(230, 188, 98, ${0.6 + 0.4 * pulse})`;
         ctx.stroke();
       }
     }
@@ -490,19 +490,24 @@
         ctx.rotate(c.r);
         ctx.scale(1, Math.cos(c.r * 2.3));
         ctx.globalAlpha = Math.min(1, c.life * 2);
+        // A petal: a fat ellipse with a darker spine, like a dab of paint.
         ctx.fillStyle = c.color;
-        ctx.fillRect(-11, -5.5, 22, 11);
-        ctx.strokeStyle = "rgba(0,0,0,0.18)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-8, -3, 16, 6);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 10, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(32, 63, 50, 0.22)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-7, 0); ctx.lineTo(7, 0);
+        ctx.stroke();
         ctx.restore();
       }
     }
   }
 
-  function burstConfetti(sx, sy) {
+  function burstPetals(sx, sy) {
     if (reduceMotion) return;
-    const colors = ["#7fb77e", "#a9d18e", "#5e9c68", "#cfe3b4"];
+    const colors = ["#E6BC62", "#F2F0DF", "#D3DEB5", "#71955A", "#E6BC62"];
     for (let i = 0; i < 38; i++) {
       const a = -Math.PI / 2 + (rng() - 0.5) * 2.2;
       const v = 260 + rng() * 360;
@@ -569,7 +574,7 @@
     }
     hud.score.textContent = String(score);
     hud.best.textContent = String(best);
-    hud.level.textContent = level ? `Level ${level.n} · ${level.people.length} suspects` : "Level 1";
+    hud.level.textContent = level ? `Level ${level.n} · ${level.people.length} in the flock` : "Level 1";
     hud.hint.disabled = state !== "playing" || hintsUsed >= 3;
     hud.pause.disabled = !(state === "playing" || state === "paused");
   }
@@ -595,14 +600,14 @@
     stage.classList.remove("paused");
     last = performance.now();
     updateHud();
-    toast(n === 1 ? "Find the mascot. Click him." : `Level ${n}: ${level.people.length} suspects`);
+    toast(n === 1 ? "Find the lamb with the yellow bell." : `Level ${n}: ${level.people.length} in the flock`);
   }
 
   function pause() {
     if (state !== "playing") return;
     state = "paused";
     stage.classList.add("paused");
-    showCard({ title: "Paused", body: "The crowd will wait. The donors won't.", action: "Resume" });
+    showCard({ title: "Paused", body: "The flock will wait. The sun won't.", action: "Resume" });
     updateHud();
   }
   function resume() {
@@ -618,7 +623,7 @@
     if (state !== "playing" || hintsUsed >= 3) return;
     hintsUsed++;
     timeLeft -= 8;
-    const Y = level.mascot;
+    const Y = level.lamb;
     const hc = headCenter(Y);
     const r1 = Y.h * [2.4, 1.4, 0.75][hintsUsed - 1];
     const off = r1 * (hintsUsed === 3 ? 0.15 : 0.5) * Math.sqrt(rng());
@@ -636,7 +641,7 @@
 
   function found() {
     state = "found";
-    const Y = level.mascot;
+    const Y = level.lamb;
     const bonus = misses === 0 ? 150 : 0;
     const points = 100 * level.n + Math.round(Math.max(0, timeLeft) * 10) + bonus;
     score += points;
@@ -647,13 +652,13 @@
     tweenCam(camToShow(hc.x, hc.y + Y.h * 0.3, 0.46, Y.h), 650);
     setTimeout(() => {
       const s = toScreen(hc.x, hc.y - Y.h * 0.55);
-      burstConfetti(s.x, s.y);
+      burstPetals(s.x, s.y);
     }, reduceMotion ? 0 : 520);
     const secs = (level.time - timeLeft).toFixed(1);
     const bits = [`Found in ${secs}s`, `+${points}`];
     if (bonus) bits.push("clean sweep +150");
     showCard({
-      title: "Found him!",
+      title: "Found her!",
       body: bits.join(" · "),
       quote: nextCaption(),
       action: `Next level`,
@@ -669,7 +674,7 @@
     timeLeft = 0;
     reveal = { start: performance.now() };
     hint = null;
-    const Y = level.mascot;
+    const Y = level.lamb;
     const hc = headCenter(Y);
     tweenCam(camToShow(hc.x, hc.y, 0.42, Y.h), 700);
     const newBest = score > 0 && score >= best;
@@ -702,11 +707,11 @@
       const p = L.people[i];
       if (Math.abs(p.x - w.x) > p.h || w.y > p.y || w.y < p.y - p.h * 1.2) continue;
       if (!hits(p, w.x, w.y)) continue;
-      if (p === L.mascot) return found();
+      if (p === L.lamb) return found();
       misses++;
       timeLeft -= 5;
       effects.push({ wx: w.x, wy: w.y, start: performance.now(), ms: 600 });
-      toast(`−5s · ${nextMiss[p.kind === "hair" || p.kind === "tie" ? p.kind : "crowd"]()}`, true);
+      toast(`−5s · ${nextMiss[p.kind === "lamb" || p.kind === "bell" ? p.kind : "crowd"]()}`, true);
       return;
     }
     effects.push({ wx: w.x, wy: w.y, start: performance.now(), ms: 400 });
@@ -852,11 +857,11 @@
     try {
       await loadAssets();
     } catch (err) {
-      $("loading").textContent = "The crowd didn't show up. (Assets failed to load.)";
+      $("loading").textContent = "The flock didn't show up. (Assets failed to load.)";
       console.error(err);
       return;
     }
-    const face = sprites.mascot[0];
+    const face = sprites.lamb[0];
     if (face) {
       $("wanted").src = face.img.src;
       card.portrait.src = face.img.src;
@@ -868,8 +873,8 @@
     state = "title";
     $("loading").classList.add("done");
     showCard({
-      title: "Where's the mascot?",
-      body: "He's hiding in a crowd of donors, lobbyists and very generous friends. Click him before the clock runs out. Wrong guesses cost 5 seconds.",
+      title: "Where's the lamb?",
+      body: "She's wandered into a flock of sheep, goats and very helpful dogs. Look for the yellow bell. Wrong guesses cost 5 seconds.",
       action: "Start",
     });
     updateHud();
@@ -877,18 +882,18 @@
   }
 
   if (params.get("debug") === "1") {
-    window.__mascot = {
+    window.__game = {
       get state() { return state; },
       get level() { return level; },
       get score() { return score; },
       get timeLeft() { return timeLeft; },
       set timeLeft(v) { timeLeft = v; },
-      mascotScreen() {
-        const c = headCenter(level.mascot);
+      lambScreen() {
+        const c = headCenter(level.lamb);
         return toScreen(c.x, c.y);
       },
-      mascotVisiblePage() {
-        const Y = level.mascot;
+      lambVisiblePage() {
+        const Y = level.lamb;
         const r = canvas.getBoundingClientRect();
         const ps = level.people;
         const pts = faceSamples(Y).sort((a, b) => Math.hypot(a.x - Y.x, a.y - Y.y + Y.h * 0.64) - Math.hypot(b.x - Y.x, b.y - Y.y + Y.h * 0.64));
@@ -906,7 +911,7 @@
         const ps = level.people;
         for (let i = ps.length - 1; i >= 0; i--) {
           const p = ps[i];
-          if (p === level.mascot || (kind && p.kind !== kind)) continue;
+          if (p === level.lamb || (kind && p.kind !== kind)) continue;
           const c = headCenter(p);
           const top = ps.slice().reverse().find((q) => hits(q, c.x, c.y));
           const s = toScreen(c.x, c.y);
@@ -914,7 +919,7 @@
         }
         return null;
       },
-      visibility: () => visibility(level.mascot, level.people),
+      visibility: () => visibility(level.lamb, level.people),
       renderCost(frames = 60) {
         const t0 = performance.now();
         for (let i = 0; i < frames; i++) render(performance.now());

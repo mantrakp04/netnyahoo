@@ -1,71 +1,34 @@
-/* Where's the mascot? — Arcadia's offline page. Tokens mirror apps/browser/src/lib/theme.ts. */
+/* Where's the lamb? — Arcadia's offline page, in the logo's palette:
+   forest #203F32, parchment #F2F0DF, sage #71955A, meadow #D3DEB5, sun #E6BC62, night #182D24.
+   Light or dark follows the system; ?theme=light|dark (data-theme) pins one. */
 :root {
-  --bg: #f6f5f6;
-  --card: #ffffff;
-  --card-2: #f2eef0;
-  --text: #000000;
-  --text-2: #00000080;
-  --text-3: #00000059;
-  --border: rgba(0, 0, 0, 0.1);
-  --divider: rgba(0, 0, 0, 0.08);
-  --accent: #6395fc;
-  --primary: #0f182c;
-  --primary-hover: #1b2640;
-  --primary-press: #26314a;
-  --primary-text: #ffffff;
-  --quiet: rgba(0, 0, 0, 0.05);
-  --quiet-hover: rgba(0, 0, 0, 0.09);
-  --plum: #b5556b;
-  --good: #3eb489;
-  --bad: #c1575c;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 28px rgba(0, 0, 0, 0.08);
-  --scrim: rgba(246, 245, 246, 0.72);
-  color-scheme: light;
+  color-scheme: light dark;
+  --bg: light-dark(#f2f0df, #182d24);
+  --card: light-dark(#f9f6e8, #1e3529);
+  --card-2: light-dark(#e7e8cf, #233d30);
+  --text: light-dark(#182d24, #f2f0df);
+  --text-2: light-dark(rgba(24, 45, 36, 0.68), rgba(242, 240, 223, 0.68));
+  --text-3: light-dark(rgba(24, 45, 36, 0.46), rgba(242, 240, 223, 0.45));
+  --border: light-dark(rgba(32, 63, 50, 0.14), rgba(242, 240, 223, 0.12));
+  --divider: light-dark(rgba(32, 63, 50, 0.1), rgba(242, 240, 223, 0.08));
+  --accent: light-dark(#71955a, #9dbb7e);
+  --primary: light-dark(#203f32, #d3deb5);
+  --primary-hover: light-dark(#2a4d3e, #dfe8c6);
+  --primary-press: light-dark(#183226, #c4d1a2);
+  --primary-text: light-dark(#f2f0df, #182d24);
+  --quiet: light-dark(rgba(32, 63, 50, 0.06), rgba(242, 240, 223, 0.07));
+  --quiet-hover: light-dark(rgba(32, 63, 50, 0.1), rgba(242, 240, 223, 0.12));
+  --sun: #e6bc62;
+  --good: #71955a;
+  --bad: light-dark(#b4533a, #d9785c);
+  --shadow-near: light-dark(rgba(24, 45, 36, 0.08), rgba(0, 0, 0, 0.35));
+  --shadow-far: light-dark(rgba(24, 45, 36, 0.1), rgba(0, 0, 0, 0.3));
+  --shadow: 0 1px 2px var(--shadow-near), 0 8px 28px var(--shadow-far);
+  --scrim: light-dark(rgba(242, 240, 223, 0.72), rgba(24, 45, 36, 0.7));
+  --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #121212;
-    --card: #1c1a1b;
-    --card-2: #242123;
-    --text: #ffffff;
-    --text-2: #ffffff80;
-    --text-3: #ffffff59;
-    --border: rgba(255, 255, 255, 0.1);
-    --divider: rgba(255, 255, 255, 0.08);
-    --accent: #4a77d4;
-    --primary: #dccbd8;
-    --primary-hover: #e6d8e2;
-    --primary-press: #c9b8c5;
-    --primary-text: #1a1418;
-    --quiet: rgba(255, 255, 255, 0.06);
-    --quiet-hover: rgba(255, 255, 255, 0.11);
-    --plum: #c07a98;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 32px rgba(0, 0, 0, 0.35);
-    --scrim: rgba(18, 18, 18, 0.7);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #121212;
-  --card: #1c1a1b;
-  --card-2: #242123;
-  --text: #ffffff;
-  --text-2: #ffffff80;
-  --text-3: #ffffff59;
-  --border: rgba(255, 255, 255, 0.1);
-  --divider: rgba(255, 255, 255, 0.08);
-  --accent: #4a77d4;
-  --primary: #dccbd8;
-  --primary-hover: #e6d8e2;
-  --primary-press: #c9b8c5;
-  --primary-text: #1a1418;
-  --quiet: rgba(255, 255, 255, 0.06);
-  --quiet-hover: rgba(255, 255, 255, 0.11);
-  --plum: #c07a98;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 32px rgba(0, 0, 0, 0.35);
-  --scrim: rgba(18, 18, 18, 0.7);
-  color-scheme: dark;
-}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -106,7 +69,7 @@ kbd {
   flex: none;
 }
 .offline-icon { color: var(--text-3); display: grid; place-items: center; }
-.offline h1 { margin: 0 0 2px; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.offline h1 { margin: 0 0 2px; font: 600 23px/1.2 var(--serif); letter-spacing: -0.01em; }
 .offline-sub { margin: 0; color: var(--text-2); max-width: 62ch; }
 .offline-code {
   margin: 6px 0 0;
@@ -180,7 +143,7 @@ body.standalone #retry { display: none; }
   background: var(--card-2);
   flex: none;
 }
-.hud-name { font-weight: 600; font-size: 13px; }
+.hud-name { font: 600 15px/1.2 var(--serif); }
 .hud-meta { color: var(--text-2); font-size: 12px; }
 .hud-stats { display: flex; align-items: center; gap: 14px; }
 .stat { display: flex; flex-direction: column; align-items: flex-end; min-width: 44px; }
@@ -202,8 +165,8 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 canvas.grabbing { cursor: grabbing; }
 .stage.paused canvas { filter: blur(18px) saturate(0.6); }
 
-.timebar { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: transparent; pointer-events: none; }
-.timebar-fill { height: 100%; width: 100%; background: var(--plum); transform-origin: 0 50%; }
+.timebar { position: absolute; left: 0; right: 0; top: 0; height: 4px; background: transparent; pointer-events: none; }
+.timebar-fill { height: 100%; width: 100%; background: var(--sun); transform-origin: 0 50%; }
 .timebar-fill.low { background: var(--bad); }
 
 .toast {
@@ -213,8 +176,8 @@ canvas.grabbing { cursor: grabbing; }
   transform: translate(-50%, 8px);
   padding: 7px 12px;
   border-radius: 999px;
-  background: rgba(20, 17, 18, 0.86);
-  color: #fff;
+  background: rgba(24, 45, 36, 0.9);
+  color: #f2f0df;
   font-weight: 500;
   opacity: 0;
   pointer-events: none;
@@ -223,7 +186,7 @@ canvas.grabbing { cursor: grabbing; }
   backdrop-filter: blur(10px);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast.bad { background: rgba(120, 36, 44, 0.92); }
+.toast.bad { background: rgba(132, 56, 36, 0.92); }
 
 .overlay {
   position: absolute;
@@ -257,17 +220,14 @@ canvas.grabbing { cursor: grabbing; }
   object-position: 50% 0;
   margin: -4px auto 6px;
   display: block;
-  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25));
+  filter: drop-shadow(0 6px 10px rgba(24, 45, 36, 0.25));
 }
 .card-portrait:not([src]) { visibility: hidden; }
-.card-title { margin: 0 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.card-title { margin: 0 0 6px; font: 600 21px/1.2 var(--serif); letter-spacing: -0.01em; }
 .card-body { margin: 0 0 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .card-quote {
   margin: 0 0 12px;
-  font-size: 15px;
-  line-height: 1.35;
-  font-weight: 500;
-  font-style: italic;
+  font: italic 500 16px/1.35 var(--serif);
   color: var(--text);
 }
 .card-actions { display: flex; gap: 8px; justify-content: center; }
@@ -299,13 +259,13 @@ canvas.grabbing { cursor: grabbing; }
   .page { padding: 16px 16px 12px; gap: 12px; }
   .offline { grid-template-columns: 1fr auto; }
   .offline-icon { display: none; }
-  .offline h1 { font-size: 17px; }
+  .offline h1 { font-size: 19px; }
   .offline-sub { display: none; }
   .hud { flex-wrap: wrap; }
   .hud-stats { gap: 10px; }
   .stat { min-width: 36px; }
   .stat-value { font-size: 14px; }
-  .hud-name { font-size: 12px; }
+  .hud-name { font-size: 14px; }
 }
 @media (max-width: 480px) {
   .stat:nth-child(3) { display: none; }

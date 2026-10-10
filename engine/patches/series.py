@@ -213,7 +213,7 @@ def cmd_apply(args):
         if error:
             sys.exit(f"error: {step} does not apply:\n{error}")
         print(f"applied {step}")
-    # The offline page chromium-neterror-mascot.patch names is generated, not patched in.
+    # The offline page chromium-neterror-game.patch names is generated, not patched in.
     run([os.path.join(HERE, "build", "game-resource.sh")], HERE, check=True)
 
 

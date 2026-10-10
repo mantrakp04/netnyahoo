@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Packs the app's offline game (apps/browser/assets/offline-game in $AC_REPO) into
-# the single file chromium-neterror-mascot.patch's resource names,
+# the single file chromium-neterror-game.patch's resource names,
 # components/neterror/resources/game/game.html (untracked in the Chromium tree).
 # apply-chromium-patches.sh and step 5 run it, so a build always ships the game as it is.
 set -euo pipefail

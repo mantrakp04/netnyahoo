@@ -20,7 +20,7 @@ chromium chromium-devtools-window-title.patch
 chromium chromium-extension-install-prompt-hook.patch
 chromium chromium-extension-updates.patch
 chromium chromium-extension-window-hidden.patch
-chromium chromium-neterror-mascot.patch
+chromium chromium-neterror-game.patch
 chromium chromium-branding.patch
 chromium chromium-icloud-keychain-window.patch
 # Load-bearing for every user's data: the Safe Storage item ("Arcadia Safe Storage" / "Arcadia") holds the key to

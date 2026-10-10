@@ -61,7 +61,7 @@ SELECT event, count(), uniqExact(distinct_id) FROM telemetry.events
 WHERE SITE AND event IN ('github_clicked', 'screenshot_opened', 'notify_clicked', 'support_opened', '$rageclick', '$dead_click')
   AND timestamp > now() - INTERVAL 24 HOUR GROUP BY event;
 
--- Dead clicks by element text (the mascot canvas has none)
+-- Dead clicks by element text (images have none)
 SELECT properties['$el_text'] AS text, count() FROM telemetry.events
 WHERE SITE AND event = '$dead_click' AND timestamp > now() - INTERVAL 24 HOUR GROUP BY text ORDER BY 2 DESC LIMIT 10;
 ```

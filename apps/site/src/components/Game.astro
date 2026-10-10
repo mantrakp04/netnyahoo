@@ -3,24 +3,24 @@ import { Image, Picture } from "astro:assets";
 import crowd from "../assets/game/crowd.webp";
 import wanted from "../assets/game/wanted.webp";
 
-// Where he is in this particular screenshot (fractions of the image).
-const spot = { x: 0.312, y: 0.335, r: 0.045 };
+// Where she is in this particular screenshot (fractions of the image).
+const spot = { x: 0.193, y: 0.388, r: 0.04 };
 ---
 
 <section class="game" id="game" aria-labelledby="game-title" data-shot="game">
   <div class="wrap">
     <div class="game-head">
       <div class="wanted">
-        <Image src={wanted} alt="" width={120} height={122} densities={[1, 2]} />
-        <p class="label">Wanted<br />for questioning</p>
+        <Image src={wanted} alt="A painted notice nailed to a fence post: LOST, over a portrait of a black-faced lamb with a yellow bell." width={120} height={120} densities={[1, 2]} />
+        <p class="label">Answers to<br />a yellow bell</p>
       </div>
       <div class="game-title">
         <p class="label kicker">The offline page</p>
-        <h2 class="poster" id="game-title" data-reveal>Where’s the mascot?</h2>
+        <h2 class="poster" id="game-title" data-reveal>Where’s the lamb?</h2>
       </div>
       <p class="game-copy" data-reveal style="--i: 1">
-        Chrome gives you a dinosaur. We give you a room full of donors, lobbyists and very generous friends. Find
-        him.
+        Chrome gives you a dinosaur. We give you a hillside of sheep, goats and very helpful dogs, and one lamb
+        with a yellow bell. Find her.
       </p>
     </div>
 
@@ -30,7 +30,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       <div class="board-img" style={`aspect-ratio: ${crowd.width} / ${crowd.height}`}>
         <Picture
           src={crowd}
-          alt="An early screenshot of the game: a ballroom packed with caricatured party guests, the mascot somewhere among them."
+          alt="A screenshot of the game: a painted meadow packed with sheep, goats and sheepdogs, the lost lamb somewhere among them."
           formats={["avif"]}
           fallbackFormat="webp"
           widths={[640, 1024, 1440, 2248]}
@@ -41,7 +41,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
           class="found"
           type="button"
           data-found
-          aria-label="That’s him. Reveal the mascot."
+          aria-label="That’s her. Reveal the lamb."
           style={`left: ${(spot.x - spot.r) * 100}%; top: ${spot.y * 100}%; width: ${spot.r * 200}%`}
         ></button>
       </div>
@@ -49,8 +49,8 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
         <p class="toast label" role="status" aria-live="polite" data-toast></p>
       </div>
       <figcaption class="label">
-        <span>Fig. 8 — Level 1, 83 suspects</span>
-        <span class="swipe">Swipe the crowd. He’s in there.</span>
+        <span>Fig. 8 — Level 1, 100 in the flock</span>
+        <span class="swipe">Swipe the flock. She’s in there.</span>
         <span>Online too, at arcadia://game</span>
       </figcaption>
     </figure>
@@ -76,7 +76,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
     text-align: center;
     border: 2px solid var(--ink);
     padding: 10px 10px 8px;
-    background: #f7f3ea;
+    background: #f9f5e3;
     transform: rotate(-3deg);
     width: clamp(96px, 12vw, 148px);
   }
@@ -176,7 +176,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       grid-template-columns: 1fr auto;
       grid-template-areas: "title wanted" "copy copy";
     }
-    /* On a phone the whole ballroom is too small to search: show it big and let the crowd pan. */
+    /* On a phone the whole meadow is too small to search: show it big and let the flock pan. */
     .pan {
       overflow-x: auto;
       overscroll-behavior-x: contain;
@@ -209,7 +209,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
   const board = document.querySelector<HTMLElement>("[data-board]");
   const spot = board?.querySelector<HTMLButtonElement>("[data-found]");
   const toast = board?.querySelector<HTMLElement>("[data-toast]");
-  // Phones: start at the far end of the ballroom, so finding him takes a swipe.
+  // Phones: start at the far end of the meadow, so finding her takes a swipe.
   const pan = board?.querySelector<HTMLElement>("[data-pan]");
   if (pan && pan.scrollWidth > pan.clientWidth) pan.scrollLeft = pan.scrollWidth;
   if (board && spot && toast) {
@@ -227,18 +227,18 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       clearTimeout(Number(toast.dataset.t));
       toast.dataset.t = String(setTimeout(() => toast.removeAttribute("data-show"), 2600));
     };
-    // Once he's found, any click repeats the result: most solvers kept clicking a board that had gone quiet.
+    // Once she's found, any click repeats the result: most solvers kept clicking a board that had gone quiet.
     let found = "";
     spot.addEventListener("click", (e) => {
       e.stopPropagation();
       if (found) return say(found);
       board.setAttribute("data-solved", "");
       const s = started ? ((performance.now() - started) / 1000).toFixed(1) : null;
-      found = s ? `Found him in ${s} s. He hides better offline.` : "Found him. He hides better offline.";
+      found = s ? `Found her in ${s} s. She hides better offline.` : "Found her. She hides better offline.";
       say(found);
-      track("mascot_found", { seconds: s ? Number(s) : null, misses });
+      track("game_solved", { seconds: s ? Number(s) : null, misses });
     });
-    const lines = ["That’s a donor.", "That’s a lobbyist.", "Close. That’s his friend with the envelope.", "Not him. Keep looking."];
+    const lines = ["Not her. That’s just the flock.", "Wrong woolly.", "Close. Look for the yellow bell.", "Not her. Keep looking."];
     board.addEventListener("click", () => say(found || lines[misses++ % lines.length]));
   }
 </script>

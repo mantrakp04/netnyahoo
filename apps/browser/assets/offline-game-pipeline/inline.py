@@ -5,7 +5,7 @@ Usage: python3 inline.py <out.html>
 The engine serves the result in place of Chrome's dino page
 (engine/patches/chromium-neterror-mascot.patch), and step 5 of the CEF
 build regenerates it, so ../offline-game stays the source: CSS, scripts and
-the manifest go inline, every WebP becomes a data: URL in window.MASCOT_ASSETS
+the manifest go inline, every WebP becomes a data: URL in window.GAME_ASSETS
 (read by game.js), and the CSP allows exactly those inline blocks by hash.
 
 The embedder fills the JSON block `<script type="application/json"
@@ -53,7 +53,7 @@ def main():
         rel = path.relative_to(GAME).as_posix()
         data = base64.b64encode(path.read_bytes()).decode()
         assets.append(f'"{rel}":"data:image/webp;base64,{data}"')
-    assets_js = "window.MASCOT_ASSETS = {" + ",".join(assets) + "};\n" + manifest
+    assets_js = "window.GAME_ASSETS = {" + ",".join(assets) + "};\n" + manifest
 
     scripts = [BOOTSTRAP, assets_js, game]
     csp = CSP.format(styles=source_hash(css), scripts=" ".join(source_hash(s) for s in scripts))

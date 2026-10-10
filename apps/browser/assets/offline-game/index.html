@@ -16,18 +16,18 @@
     </div>
     <div class="offline-text">
       <h1 id="offline-title">No internet</h1>
-      <p class="offline-sub" id="offline-sub">Try checking your network cables, router, or Wi‑Fi. Meanwhile, somebody slipped into the crowd.</p>
+      <p class="offline-sub" id="offline-sub">Try checking your network cables, router, or Wi‑Fi. Meanwhile, a lamb has wandered off.</p>
       <p class="offline-code"><span id="error-code">ERR_INTERNET_DISCONNECTED</span><span class="offline-host" id="error-host"></span></p>
     </div>
     <button class="btn btn-primary" id="retry" type="button">Retry</button>
   </header>
 
-  <section class="game" id="game" aria-label="Where's the mascot? game">
+  <section class="game" id="game" aria-label="Where's the lamb? game">
     <div class="hud" id="hud">
       <div class="hud-title">
         <img class="wanted" id="wanted" alt="" width="36" height="36">
         <div>
-          <div class="hud-name">Where's the mascot?</div>
+          <div class="hud-name">Where's the lamb?</div>
           <div class="hud-meta" id="hud-level">Level 1</div>
         </div>
       </div>
@@ -43,15 +43,15 @@
     </div>
 
     <div class="stage" id="stage">
-      <canvas id="canvas" aria-label="A crowd of politicians. Click the mascot when you spot him."></canvas>
+      <canvas id="canvas" aria-label="A flock of sheep, goats and dogs. Click the lamb with the yellow bell when you spot her."></canvas>
       <div class="timebar" aria-hidden="true"><div class="timebar-fill" id="timebar"></div></div>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
       <div class="overlay" id="overlay">
         <div class="card" id="card">
-          <img class="card-portrait" id="card-portrait" alt="The mascot">
-          <h2 class="card-title" id="card-title">Where's the mascot?</h2>
-          <p class="card-body" id="card-body">He's hiding in a crowd of donors, lobbyists and very generous friends. Find him before the clock runs out.</p>
+          <img class="card-portrait" id="card-portrait" alt="The lost lamb, with her yellow bell">
+          <h2 class="card-title" id="card-title">Where's the lamb?</h2>
+          <p class="card-body" id="card-body">She's wandered into a flock of sheep, goats and very helpful dogs. Look for the yellow bell.</p>
           <p class="card-quote" id="card-quote" hidden></p>
           <div class="card-actions">
             <button class="btn btn-primary" id="card-action" type="button">Start</button>
@@ -59,7 +59,7 @@
           <p class="card-keys" id="card-keys"><kbd>Space</kbd> start · <kbd>H</kbd> hint · <kbd>Esc</kbd> pause · pinch or scroll to zoom and pan</p>
         </div>
       </div>
-      <div class="loading" id="loading">Rounding up donors…</div>
+      <div class="loading" id="loading">Rounding up the flock…</div>
     </div>
   </section>
 
