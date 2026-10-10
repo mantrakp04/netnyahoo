@@ -10,7 +10,7 @@ Two oil-painted hills (sage `#71955A`, forest `#203F32`) under a sun (`#E6BC62`)
 |---|---|
 | `icon-1024.png` (Apple's template: 824 px body at a 100 px inset, with its shadow) | `apps/browser/macos/Arcadia-macOS/Assets.xcassets/AppIcon.appiconset/*` (each size), `apps/browser/assets/app-icon.png` |
 | `plate-mark-1024.png` | `AppIconMark.imageset/mark.png`: the coloured app-icon variants (`packages/shell/ios/AppIcon.swift`) |
-| `ntp-mark*.png` | `apps/browser/assets/ntp-mark*.png`: the New Tab page, hills on the bottom edge rising from behind the bar |
+| `ntp-mark*.png`, `ntp-mark-<colour>*.png` | `apps/browser/assets/`: the New Tab page, hills on the bottom edge rising from behind the bar; one per profile colour (green is the brand painting) |
 | `new-tab-mark*.png` | `apps/browser/assets/new-tab-mark*.png`: one colour (drawn tinted), hills split and the sun cut free |
 | `icon-512.png` | `extras/raycast-arcadia/assets/icon.png` |
 | `apple-touch-icon.png` | `apps/site/public/apple-touch-icon.png` |

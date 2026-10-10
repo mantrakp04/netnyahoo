@@ -111,3 +111,60 @@ fit(glyph, 512, 1.0).save(OUT / "new-tab-mark-512.png")
 # iOS home-screen icon: opaque, full-bleed (iOS rounds it).
 square.convert("RGB").resize((180, 180), LZ).save(OUT / "apple-touch-icon.png")
 print("done")
+
+# New Tab marks per profile colour (apps/browser/src/lib/theme.ts PROFILE_COLORS), like Dia's painted mark per
+# colour: the hills repainted in shades of the swatch from their own brushwork's lightness, the light hill kept
+# lighter; the sun stays gold except where it would vanish into the hills. Green is the brand painting itself.
+import sys  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).parent))
+import hsv_np as hsvlib  # noqa: E402
+
+PROFILE_SWATCHES = {"plum": "#C07A98", "blue": "#4691C3", "purple": "#7873AF", "pink": "#D37B8B", "red": "#C1575C",
+                    "orange": "#D87249", "yellow": "#E3AC38", "neutral": "#8E8E93"}
+SUNS = {"orange": "#FFD873", "yellow": "#FFF1CF"}
+
+
+def tinted_marks(base):
+    a = np.array(base.convert("RGBA")).astype(np.float32) / 255
+    rgb, al = a[..., :3], a[..., 3]
+    h, s, v = np.moveaxis(hsvlib.rgb_to_hsv(rgb), -1, 0)
+
+    scale = base.width / 300
+
+    def soft(mask, median, blur):
+        size = max(3, int(median * scale) // 2 * 2 + 1)
+        img = Image.fromarray((mask * 255).astype(np.uint8)).filter(ImageFilter.MedianFilter(size))
+        return np.array(img.filter(ImageFilter.GaussianBlur(blur))).astype(np.float32) / 255
+
+    sun = soft((h > 0.06) & (h < 0.18) & (s > 0.35) & (v > 0.5), 5, 1.2 * scale)
+    hill = 1 - sun
+    lum = rgb @ np.array([0.2126, 0.7152, 0.0722])
+    solid = (hill > 0.9) & (al > 0.5)
+    lo, hi = np.percentile(lum[solid], 1), np.percentile(lum[solid], 99.5)
+    light_hill = soft((h > 0.15) & (h < 0.33) & (al > 0.5) & (sun < 0.5), 9, 2 * scale)
+    t = np.clip((lum - lo) / (hi - lo) + 0.18 * light_hill - 0.1 * (1 - light_hill), 0, 1)
+
+    def ramp(color):
+        stops = [(0.0, color * 0.4), (0.55, color * 0.78), (1.0, color + (1 - color) * 0.6)]
+        out = np.zeros(t.shape + (3,))
+        for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
+            k = np.clip((t - t0) / (t1 - t0), 0, 1)[..., None]
+            out = np.where(((t >= t0) & (t <= t1))[..., None], c0 + (c1 - c0) * k, out)
+        return out
+
+    sun_lum = np.percentile(lum[sun > 0.9], 70)
+    for name, swatch in PROFILE_SWATCHES.items():
+        color = hsvlib.to_rgb(swatch)
+        if name == "neutral":
+            color = np.full(3, color @ np.array([0.2126, 0.7152, 0.0722]))
+        sun_rgb = rgb if name not in SUNS else np.clip(hsvlib.to_rgb(SUNS[name]) * (lum / sun_lum)[..., None], 0, 1)
+        out = ramp(color) * hill[..., None] + sun_rgb * sun[..., None]
+        yield name, Image.fromarray((np.dstack([np.clip(out, 0, 1), al]) * 255).astype(np.uint8))
+
+
+for scale in (1, 2, 3):
+    suffix = "" if scale == 1 else f"@{scale}x"
+    for name, im in tinted_marks(Image.open(OUT / f"ntp-mark{suffix}.png")):
+        im.save(OUT / f"ntp-mark-{name}{suffix}.png", optimize=True)
+print("tinted marks")

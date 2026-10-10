@@ -9,7 +9,19 @@ import { Omnibox } from "./Omnibox";
 
 const REBRAND = true;
 const BAR_HEIGHT = 112;
-const MARK = require("../../assets/ntp-mark.png");
+// The painted hills in each profile colour, as Dia paints its mark per colour; green is the brand painting.
+const MARKS = {
+  green: require("../../assets/ntp-mark.png"),
+  plum: require("../../assets/ntp-mark-plum.png"),
+  blue: require("../../assets/ntp-mark-blue.png"),
+  purple: require("../../assets/ntp-mark-purple.png"),
+  pink: require("../../assets/ntp-mark-pink.png"),
+  red: require("../../assets/ntp-mark-red.png"),
+  orange: require("../../assets/ntp-mark-orange.png"),
+  yellow: require("../../assets/ntp-mark-yellow.png"),
+  neutral: require("../../assets/ntp-mark-neutral.png"),
+  incognito: require("../../assets/ntp-mark-neutral.png"),
+};
 const MARK_SIZE = 100;
 const MARK_ABOVE_BAR = 84.1;
 const MARK_HIDDEN = 86;
@@ -125,7 +137,7 @@ export function NewTabPage({ tabId, toolbar = true }: { tabId: string; toolbar?:
         }}
       >
         <Animated.Image
-          source={MARK}
+          source={MARKS[theme.profileColor] ?? MARKS.green}
           style={{
             width: MARK_SIZE,
             height: MARK_SIZE,

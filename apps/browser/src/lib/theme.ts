@@ -6,6 +6,7 @@ import type { ProfileColor } from "../store/types";
 import { backdropTint, opaqueTint, tintForHue, type BackdropTint } from "./windowTint";
 
 export type Theme = typeof dark & ProfileTheme & {
+  profileColor: ProfileColor | "incognito";
   backdrop: BackdropTint;
   windowTint: [string, string];
   powerUpColor: string | null;
@@ -207,6 +208,7 @@ export function themeFor(key: string): Theme {
     const backdrop = backdropTint(spec ? (spec.tint ?? tintForHue(spec.swatch, !spec.palette)) : INCOGNITO_TINT, !spec?.palette);
     theme = {
       ...base,
+      profileColor: color,
       backdrop,
       windowTint: opaqueTint(backdrop, base.dark),
       powerUpColor,
