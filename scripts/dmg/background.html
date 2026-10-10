@@ -1,0 +1,34 @@
+<!doctype html>
+<!-- The picture behind the disk image's window, in the site's poster system (apps/site/src/styles/global.css).
+     scripts/dmg/render.sh renders it to background.tiff. Finder draws the two icons (112 pt, centred at 176,208 and
+     484,208: scripts/dmg/layout.sh) and their labels, in black, so each sits on a light name card.
+     The window is 660×384 pt with its title bar, which leaves about 354 pt of picture, about 327 pt with
+     Finder's status bar on and about 299 pt with its path bar too: the name cards end at 294. The picture is taller
+     than the window so a resized window shows paper. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=block">
+<style>
+:root {
+  --paper: #f1ece2;
+  --ink: #16130f;
+  --paper-deep: #e6dfd1;
+}
+html, body { margin: 0; }
+body { width: 660px; height: 460px; position: relative; overflow: hidden; background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased; }
+body * { position: absolute; margin: 0; }
+.word { left: 28px; top: 20px; font-family: "Archivo", sans-serif; font-weight: 800; font-size: 15px; letter-spacing: -0.01em; }
+.hl { left: 26px; top: 48px; font-family: "Archivo", "Arial Narrow", sans-serif; font-stretch: 62%; font-weight: 860; font-size: 96px; line-height: 0.85; text-transform: uppercase; white-space: nowrap; }
+.arrow { left: 262px; top: 196px; }
+.plate { top: 270px; width: 112px; height: 24px; margin-left: -56px; border-radius: 12px; background: var(--paper-deep); }
+</style>
+</head>
+<body>
+<span class="word">arcadia</span>
+<span class="hl">Lead it home.</span>
+<svg class="arrow" width="136" height="24" viewBox="0 0 136 24" fill="none"><path d="M0 12h124M110 2l14 10-14 10" stroke="#16130f" stroke-width="5" stroke-linecap="square"/></svg>
+<div class="plate" style="left:176px"></div>
+<div class="plate" style="left:484px"></div>
+</body>
+</html>
