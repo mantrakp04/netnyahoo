@@ -1,24 +1,26 @@
 import { cleanUrl } from "@arcadia/core";
 import { confirm, ContextMenuArea, copyText, MouseArea, showMenu, Symbol } from "@arcadia/shell";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { markHoverProps } from "../../lib/hoverShift";
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import type { HistoryEntry } from "../../store/types";
 import { openModeFor, openUrl } from "../bookmarks/actions";
 import { HoverSlot } from "../HoverSlot";
-import { Favicon, IconButton, useHover } from "../primitives";
+import { Favicon, IconButton } from "../primitives";
 import { Button, Checkbox, useFormColors } from "../settings/controls";
 import { ClearDataDialog, useClearDataRequest } from "./ClearDataDialog";
 import { dayLabel, EmptyState, hostLabel, matchesQuery, PAGE_WIDTH, PageHeader, timeLabel } from "./PageLayout";
+import { RecycledList } from "./RecycledList";
 
 const ROW = 38;
 const HEADER = 44;
 const NO_HISTORY: HistoryEntry[] = [];
 
 type Item =
-  | { type: "day"; key: string; label: string; offset: number }
-  | { type: "row"; key: string; entry: HistoryEntry; first: boolean; last: boolean; offset: number };
+  | { type: "day"; kind: "day"; key: string; label: string; offset: number; height: number }
+  | { type: "row"; kind: "row"; key: string; entry: HistoryEntry; first: boolean; last: boolean; offset: number; height: number };
 
 export function HistoryPage({ tabId, profileId, initialQuery }: { tabId: string; profileId: string; initialQuery: string }) {
   const theme = useTheme();
@@ -52,17 +54,19 @@ export function HistoryPage({ tabId, profileId, initialQuery }: { tabId: string;
         const d = new Date(entry.lastVisit);
         start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
         end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
-        out.push({ type: "day", key: `d${start}`, label: dayLabel(start), offset });
+        out.push({ type: "day", kind: "day", key: `d${start}`, label: dayLabel(start), offset, height: HEADER });
         offset += HEADER;
       }
       const next = matches[i + 1];
       out.push({
         type: "row",
+        kind: "row",
         key: entry.url,
         entry,
         first: out.at(-1)?.type === "day",
         last: !next || next.lastVisit < start || next.lastVisit >= end,
         offset,
+        height: ROW,
       });
       offset += ROW;
     });
@@ -74,23 +78,25 @@ export function HistoryPage({ tabId, profileId, initialQuery }: { tabId: string;
 
   // Stable callbacks: a row re-renders only when its own props change, not for every selection or visit.
   const toggle = useCallback((url: string, shift: boolean) => {
+    // Read before the update: React may run the updater later, after lastClicked has moved on to `url`.
+    const from = lastClicked.current;
+    const urls = rowUrls.current;
+    lastClicked.current = url;
     setSelected((prev) => {
       const next = new Set(prev);
-      const urls = rowUrls.current;
-      if (shift && lastClicked.current && urls.includes(lastClicked.current)) {
-        const [a, b] = [urls.indexOf(lastClicked.current), urls.indexOf(url)].sort((x, y) => x - y);
+      if (shift && from && urls.includes(from)) {
+        const [a, b] = [urls.indexOf(from), urls.indexOf(url)].sort((x, y) => x - y);
         urls.slice(a!, b! + 1).forEach((u) => next.add(u));
       } else if (next.has(url)) next.delete(url);
       else next.add(url);
       return next;
     });
-    lastClicked.current = url;
   }, []);
   const moreFromSite = useCallback((url: string) => setQuery(hostLabel(url)), []);
   const remove = useCallback((url: string) => useBrowser.getState().removeHistory(profileId, [url]), [profileId]);
   const selecting = selected.size > 0;
   const renderItem = useCallback(
-    ({ item }: { item: Item }) =>
+    (item: Item) =>
       item.type === "day" ? (
         <View style={{ width: PAGE_WIDTH, maxWidth: "100%", height: HEADER, justifyContent: "flex-end", paddingBottom: 8, paddingHorizontal: 30 }}>
           <Text style={{ fontSize: 12.5, fontWeight: "600", color: theme.textSecondary }}>{item.label}</Text>
@@ -145,18 +151,7 @@ export function HistoryPage({ tabId, profileId, initialQuery }: { tabId: string;
           title={query ? "No search results found" : "Your browsing history appears here"}
         />
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(i) => i.key}
-          getItemLayout={(_, index) => {
-            const item = items[index]!;
-            return { length: item.type === "day" ? HEADER : ROW, offset: item.offset, index };
-          }}
-          initialNumToRender={30}
-          windowSize={8}
-          contentContainerStyle={{ paddingBottom: 40, alignItems: "center" }}
-          renderItem={renderItem}
-        />
+        <RecycledList items={items} renderItem={renderItem} paddingBottom={40} />
       )}
       {clearOpen && <ClearDataDialog profileId={profileId} onClose={() => setClearOpen(false)} />}
     </View>
@@ -189,7 +184,14 @@ const HistoryRow = memo(function HistoryRow({
 }) {
   const theme = useTheme();
   const colors = useFormColors();
-  const { hovered, hoverProps } = useHover();
+  // The list reuses a row for another page as it scrolls: hover belongs to the page that was under the mouse.
+  const url = useRef(entry.url);
+  url.current = entry.url;
+  const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
+  const [hoverProps] = useState(() =>
+    markHoverProps({ onMouseEnter: () => setHoveredUrl(url.current), onMouseLeave: () => setHoveredUrl(null) }),
+  );
+  const hovered = hoveredUrl === entry.url;
   const menu = async () => {
     const choice = await showMenu([
       { id: "tab", title: "Open in New Tab" },
